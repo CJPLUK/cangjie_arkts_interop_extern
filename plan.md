@@ -10,8 +10,12 @@ and a step is finished only when its tests and all earlier tests pass.
   be instantiated: `public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime>`
   (subclassing is possible but useless, since a subclass is not a `ForeignRuntime` of itself).
   Values are
-  `Extern<ArkTSRuntime>`. The bound context is a plain `static var` guarded by a static
-  `Mutex`, as in section 3 of the design.
+  `Extern<ArkTSRuntime>`.
+- **Binding.** The context lives in an internal `ContextCell<JSContext>` (`context_cell.cj`)
+  backed by `AtomicOptionReference`: `bind` installs it with one compare-and-swap, so exactly
+  one call succeeds, without the design's mutex. `index.cj` binds the runtime when the module
+  is registered (`if (!ArkTSRuntime.isBound()) { ArkTSRuntime.bind(runtime) }`). `isBound()` is
+  public (not in the design).
 - **`Int64` / `UInt64` map to `bigint`**, as in the design's type mapping table.
 - **Package:** `ohos_app_cangjie_entry.arkts` in `entry/src/main/cangjie/arkts/`.
   `entry/src/main/cangjie/index.cj` stays the module entry point.
@@ -46,6 +50,12 @@ and a step is finished only when its tests and all earlier tests pass.
   visibility, plus a self-test of `expectThrows`). Host: 24 pass. A build where `index.cj` calls
   an internal member fails with "no matching function declaration"; one that writes
   `ArkTSRuntime()` fails with "abstract class 'ArkTSRuntime' can not be instantiated".
+- **Step 2 done** (2026-10-08). Device: 28 tests pass on both devices (9 new). `ContextCell`
+  tested on fresh instances: unbound reads throw, first bind installs, rebinding with the same
+  or another value throws and leaves the value unchanged, 8 racing threads × 200 rounds give
+  exactly one winner, concurrent readers never see a wrong value. Real runtime: bound at
+  module registration, to the same engine the tests run in, and rebinding throws. Mutation
+  check: replacing the compare-and-swap with check-then-set makes 2 tests fail.
 
 ## Testing strategy
 
@@ -123,10 +133,10 @@ quick checks on the phone without the test runner.
   exception type).
 - Exceptions are asserted by type, and by message only where the message is part of the
   contract.
-- Tests that need an unbound runtime cannot share the process with bound tests (binding is
-  permanent). They run first in a dedicated `describe` that executes before anything calls
-  `bind`, or are checked through a separate test entry that is invoked before module
-  registration binds. Step 2 settles which.
+- The real runtime is bound before any test runs (at module registration) and binding is
+  permanent, so the unbound state is tested on fresh `ContextCell` instances, which run the
+  same code as `ArkTSRuntime.bind` / `context`.
+- Concurrency code gets a mutation check: break it on purpose once and confirm a test fails.
 - A failing test is never deleted or weakened to make a step pass; if the expected behaviour
   was wrong, the plan or the design doc is updated first.
 
@@ -135,6 +145,7 @@ quick checks on the phone without the test runner.
 ```
 entry/src/main/cangjie/arkts/
 ├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
+├── context_cell.cj ContextCell: set-once holder for the bound JSContext
 ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index, compound assignment
 ├── handle.cj       ArkTSHandle (Imm / Ref), retain, evalPayload
 ├── conversion.cj   toJSValue, toExtern, fromExtern, array helpers
@@ -434,4 +445,3 @@ Done when: all tests pass; smoke page shows all PASS on the phone.
 - Exact exception type thrown by `ark_interop` on a JS exception (step 7).
 - Whether `requireArkModule` paths resolve as `"entry/ets/..."` in this project layout (step 8).
 - Compound assignment semantics in step 5 are ours; to confirm or move into the design doc.
-- How to test the unbound state given that binding is permanent (step 2).

@@ -10,7 +10,7 @@ import ohos.ark_interop.*
 public type Scenario = (JSContext, Array<JSValue>) -> String
 
 func allScenarios(): Array<(String, Scenario)> {
-    concat([step0Scenarios(), step1Scenarios()])
+    concat([step0Scenarios(), step1Scenarios(), step2Scenarios()])
 }
 
 func concat(groups: Array<Array<(String, Scenario)>>): Array<(String, Scenario)> {

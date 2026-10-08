@@ -4,6 +4,7 @@ import ohos.ark_interop.JSModule
 import ohos.ark_interop.JSContext
 import ohos.ark_interop.JSCallInfo
 import ohos.ark_interop.JSValue
+import ohos_app_cangjie_entry.arkts.ArkTSRuntime
 import ohos_app_cangjie_entry.arkts.tests.*
 
 func testCJ(runtime: JSContext, callInfo: JSCallInfo): JSValue {
@@ -26,6 +27,11 @@ func listArkTSTests(runtime: JSContext, _: JSCallInfo): JSValue {
 
 let EXPORT_MODULE = JSModule.registerModule {
     runtime, exports =>
+    // Registration can run for each JS engine instance that loads the library; the runtime is
+    // bound to the first one.
+    if (!ArkTSRuntime.isBound()) {
+        ArkTSRuntime.bind(runtime)
+    }
     exports["testCJ"] = runtime.function(testCJ).toJSValue()
     exports["runArkTSTest"] = runtime.function(runArkTSTest).toJSValue()
     exports["listArkTSTests"] = runtime.function(listArkTSTests).toJSValue()
