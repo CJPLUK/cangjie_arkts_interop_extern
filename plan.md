@@ -6,8 +6,10 @@ and a step is finished only when its tests and all earlier tests pass.
 
 ## Decisions
 
-- **Single runtime.** One concrete, non-generic class:
-  `public class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime>`. Values are
+- **Single runtime.** One non-generic class with only static members, abstract so it cannot
+  be instantiated: `public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime>`
+  (subclassing is possible but useless, since a subclass is not a `ForeignRuntime` of itself).
+  Values are
   `Extern<ArkTSRuntime>`. The bound context is a plain `static var` guarded by a static
   `Mutex`, as in section 3 of the design.
 - **`Int64` / `UInt64` map to `bigint`**, as in the design's type mapping table.
@@ -31,12 +33,19 @@ and a step is finished only when its tests and all earlier tests pass.
 | `std.unittest` is available for macOS | Host tests in layer 1 below |
 | Compiler bug: `let _: Extern<R> = expr` runs `expr` but skips `toExtern` (named bindings, assignments and arguments are fine) | Pinned by `wildcardBindingSkipsToExtern` in `hosttest/compiler_contract_test.cj`; flip it when cjc is fixed |
 | Without the forced cast, `R.fromExtern<U>(e.a.b)` receives the already evaluated `r1`, not the tree (the argument is desugared like any call argument) | `fromExtern` cannot avoid retaining the result until `(U)e` is supported; pinned by `explicitFromExternReceivesEvaluatedValue` |
+| Default (`internal`) members are visible to subpackages but not to the parent package; `extend` in another file can add `public static` functions | Device scenarios live in the subpackage `arkts.tests` and can use internal hooks; `index.cj` and user code cannot (checked by a deliberate failing build, step 1) |
+| A user exception class prints as `Exception: ...` unless it overrides `getClassName` | Our exceptions override it; tested in step 1 |
 
 ## Status
 
 - **Step 0 done** (2026-10-08). Host: 24 compiler-contract tests pass. Device: 9 tests pass on
   the emulator (`127.0.0.1:5555`) and the phone (`0123456789ABCDEF`), with signed HAPs. Both
   scripts verified to exit non-zero on a failing test.
+- **Step 1 done** (2026-10-08). Device: 19 tests pass on both devices (10 new: exception names,
+  stubs reached through dynamic syntax and implicit conversion, `extend` helper, internal
+  visibility, plus a self-test of `expectThrows`). Host: 24 pass. A build where `index.cj` calls
+  an internal member fails with "no matching function declaration"; one that writes
+  `ArkTSRuntime()` fails with "abstract class 'ArkTSRuntime' can not be instantiated".
 
 ## Testing strategy
 
@@ -74,8 +83,9 @@ compiling the same source files (they must not import `ohos.*`).
 Instrumented tests in `entry/src/ohosTest` with `@ohos/hypium`, which import
 `libohos_app_cangjie_entry.so` and call Cangjie test entry points.
 
-- **Cangjie side:** `entry/src/main/cangjie/arkts_tests/` (package
-  `ohos_app_cangjie_entry.arkts_tests`) holds one function per scenario. Each scenario returns
+- **Cangjie side:** `entry/src/main/cangjie/arkts/tests/` (package
+  `ohos_app_cangjie_entry.arkts.tests`, a subpackage so it can reach internal members) holds
+  one function per scenario, one file per step, registered in `registry.cj`. Each scenario returns
   `""` on success or a failure message (expected vs actual, or the exception class and
   message). `index.cj` exports them through `JSModule.registerModule`.
 - **ArkTS side:** `entry/src/ohosTest/ets/test/ArkTSRuntime.test.ets` with one `describe` per
@@ -132,7 +142,7 @@ entry/src/main/cangjie/arkts/
 └── helpers.cj      undefined, null, object, global, symbol, strictEqual, isNull, isUndefined,
                     objectHasProperty, objectKeys, objectDefineOwnProperty,
                     requireArkModule, requireSystemNativeModule
-entry/src/main/cangjie/arkts_tests/   device scenarios, one file per step
+entry/src/main/cangjie/arkts/tests/   device scenarios, one file per step
 entry/src/ohosTest/ets/test/          hypium suites and fixtures
 hosttest/                             host tests and run.sh
 ```
@@ -149,7 +159,7 @@ with `extend ArkTSRuntime { public static func ... }`. Both points are verified 
 Code:
 - `hosttest/run.sh` and a trivial host test.
 - `RecordingRuntime` in `hosttest/`.
-- `arkts_tests` package with one trivial scenario returning `""`, exported from `index.cj`.
+- `arkts.tests` package with one trivial scenario returning `""`, exported from `index.cj`.
 - `ArkTSRuntime.test.ets` with one `it` calling it; registered in `List.test.ets`.
 - `fixtures.ets`.
 - `devicetest.sh`.
@@ -185,11 +195,13 @@ Code:
 - One `extend ArkTSRuntime { public static func ... }` stub in `helpers.cj`.
 
 Tests (device):
-- `index.cj` imports the package and calls a public static from the class body and one from
-  the `extend`.
-- Stubs throw `ExternUnsupportedOperation` (proves `T.eval` dispatches to our class on device).
-- A compile-fail check: a file in `arkts_tests` referencing an `internal` member fails to build
-  (run once by hand, not part of the suite; result noted in this plan).
+- Scenarios call a public static from the class body and one from the `extend`.
+- Stubs throw `ExternUnsupportedOperation`, reached directly, through `e.f` and through an
+  implicit conversion (proves the device toolchain dispatches to our class).
+- Exception classes print their own name.
+- A compile-fail check: `index.cj` (parent package, i.e. user code) referencing an `internal`
+  member or instantiating `ArkTSRuntime` fails to build (run once by hand, not part of the suite;
+  result noted in Status).
 
 Done when: all tests pass on emulator and phone; the `internal` / `extend` layout is confirmed
 or the Files section is updated.
@@ -395,7 +407,7 @@ Done when: all tests pass on emulator and phone.
 ### 9. End-to-end scenario and smoke page
 
 Code: the design's example from section 1 (`createRectangle`, `width` update, `+=`, `area()`)
-written with dynamic syntax in `arkts_tests`, plus the Layer 3 button.
+written with dynamic syntax in `arkts.tests`, plus the Layer 3 button.
 
 Tests (device):
 - The design example produces `area == 25.0` (with `height = 5.0`) and ArkTS sees

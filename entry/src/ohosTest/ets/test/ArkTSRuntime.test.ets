@@ -14,7 +14,17 @@ export default function arkTSRuntimeTest() {
         'step0.readFixture',
         'step0.writeFixture',
         'step0.reportsFailure',
-        'step0.reportsException'
+        'step0.reportsException',
+        'step0.expectThrowsHelper',
+        'step1.notBoundExceptionNames',
+        'step1.alreadyBoundExceptionNames',
+        'step1.evalStub',
+        'step1.dynamicSyntaxReachesEval',
+        'step1.toExternStub',
+        'step1.implicitConversionReachesToExtern',
+        'step1.fromExternStub',
+        'step1.extendHelperReachable',
+        'step1.internalVisibleToSubpackage'
       ]));
     });
 
@@ -30,6 +40,10 @@ export default function arkTSRuntimeTest() {
       expect(runArkTSTest('step0.reportsException')).assertContain('deliberate');
     });
 
+    it('expectThrowsHelper', 0, () => {
+      expect(runArkTSTest('step0.expectThrowsHelper')).assertEqual('');
+    });
+
     it('fixtureReachesCangjie', 0, () => {
       expect(runArkTSTest('step0.readFixture', new Rectangle(3, 4))).assertEqual('');
     });
@@ -43,6 +57,44 @@ export default function arkTSRuntimeTest() {
       expect(runArkTSTest('step0.writeFixture', rect)).assertEqual('');
       expect(rect.width).assertEqual(5);
       expect(rect.area()).assertEqual(20);
+    });
+  });
+
+  describe('Step1_Skeleton', () => {
+    it('notBoundExceptionNames', 0, () => {
+      expect(runArkTSTest('step1.notBoundExceptionNames')).assertEqual('');
+    });
+
+    it('alreadyBoundExceptionNames', 0, () => {
+      expect(runArkTSTest('step1.alreadyBoundExceptionNames')).assertEqual('');
+    });
+
+    it('evalStub', 0, () => {
+      expect(runArkTSTest('step1.evalStub')).assertEqual('');
+    });
+
+    it('dynamicSyntaxReachesEval', 0, () => {
+      expect(runArkTSTest('step1.dynamicSyntaxReachesEval')).assertEqual('');
+    });
+
+    it('toExternStub', 0, () => {
+      expect(runArkTSTest('step1.toExternStub')).assertEqual('');
+    });
+
+    it('implicitConversionReachesToExtern', 0, () => {
+      expect(runArkTSTest('step1.implicitConversionReachesToExtern')).assertEqual('');
+    });
+
+    it('fromExternStub', 0, () => {
+      expect(runArkTSTest('step1.fromExternStub')).assertEqual('');
+    });
+
+    it('extendHelperReachable', 0, () => {
+      expect(runArkTSTest('step1.extendHelperReachable')).assertEqual('');
+    });
+
+    it('internalVisibleToSubpackage', 0, () => {
+      expect(runArkTSTest('step1.internalVisibleToSubpackage')).assertEqual('');
     });
   });
 }

@@ -1,5 +1,6 @@
-package ohos_app_cangjie_entry.arkts_tests
+package ohos_app_cangjie_entry.arkts.tests
 
+import std.collection.*
 import ohos.ark_interop.*
 
 /**
@@ -9,7 +10,15 @@ import ohos.ark_interop.*
 public type Scenario = (JSContext, Array<JSValue>) -> String
 
 func allScenarios(): Array<(String, Scenario)> {
-    step0Scenarios()
+    concat([step0Scenarios(), step1Scenarios()])
+}
+
+func concat(groups: Array<Array<(String, Scenario)>>): Array<(String, Scenario)> {
+    let all = ArrayList<(String, Scenario)>()
+    for (group in groups) {
+        all.add(all: group)
+    }
+    all.toArray()
 }
 
 public func scenarioNames(): Array<String> {
@@ -33,6 +42,23 @@ public func runScenario(context: JSContext, name: String, fixtures: Array<JSValu
 /** Returns "" when `actual == expected`, otherwise a message naming `what`. */
 func expectEqual<T>(what: String, actual: T, expected: T): String where T <: Equatable<T> & ToString {
     if (actual == expected) { "" } else { "${what}: expected ${expected}, got ${actual}" }
+}
+
+/**
+ * Returns "" when `block` throws an `E` whose `toString()` contains `fragment`, otherwise a
+ * message naming `what` and what happened instead.
+ */
+func expectThrows<E>(what: String, fragment: String, block: () -> Any): String where E <: Exception {
+    try {
+        let result = block()
+        "${what}: expected an exception, returned ${(result as ToString)?.toString() ?? "a value"}"
+    } catch (e: Exception) {
+        match (e) {
+            case _: E where e.toString().contains(fragment) => ""
+            case _: E => "${what}: expected '${fragment}' in '${e}'"
+            case _ => "${what}: wrong exception '${e}'"
+        }
+    }
 }
 
 /** Returns the first failure message, or "" if all checks passed. */

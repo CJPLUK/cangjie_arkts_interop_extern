@@ -4,7 +4,7 @@ import ohos.ark_interop.JSModule
 import ohos.ark_interop.JSContext
 import ohos.ark_interop.JSCallInfo
 import ohos.ark_interop.JSValue
-import ohos_app_cangjie_entry.arkts_tests.*
+import ohos_app_cangjie_entry.arkts.tests.*
 
 func testCJ(runtime: JSContext, callInfo: JSCallInfo): JSValue {
     let result = "Hello ${callInfo[0].toString()}"
