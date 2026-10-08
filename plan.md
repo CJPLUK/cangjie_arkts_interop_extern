@@ -29,6 +29,14 @@ and a step is finished only when its tests and all earlier tests pass.
 | `JSKeyable` is only `String`, `JSString`, `JSSymbol` (not `Float64`) | Numeric `Extern` indices go through `getElement(Int64)` instead of `getProperty(Float64)` (deviation from the design) |
 | `--enable-extern-sequence` exists | Used to test `ExternSequence` in step 10 |
 | `std.unittest` is available for macOS | Host tests in layer 1 below |
+| Compiler bug: `let _: Extern<R> = expr` runs `expr` but skips `toExtern` (named bindings, assignments and arguments are fine) | Pinned by `wildcardBindingSkipsToExtern` in `hosttest/compiler_contract_test.cj`; flip it when cjc is fixed |
+| Without the forced cast, `R.fromExtern<U>(e.a.b)` receives the already evaluated `r1`, not the tree (the argument is desugared like any call argument) | `fromExtern` cannot avoid retaining the result until `(U)e` is supported; pinned by `explicitFromExternReceivesEvaluatedValue` |
+
+## Status
+
+- **Step 0 done** (2026-10-08). Host: 24 compiler-contract tests pass. Device: 9 tests pass on
+  the emulator (`127.0.0.1:5555`) and the phone (`0123456789ABCDEF`), with signed HAPs. Both
+  scripts verified to exit non-zero on a failing test.
 
 ## Testing strategy
 
@@ -80,20 +88,19 @@ Instrumented tests in `entry/src/ohosTest` with `@ohos/hypium`, which import
   `height`, `area()`), `calculator` object, functions that record their `this`, arrays, an
   object with a symbol key, a function that throws, a getter with a call counter.
 
-Build and run (paths from DevEco Studio):
+Build and run with `./devicetest.sh` (`DEVICE=<id>` to pick a target, `--all` for every
+connected device; extra arguments go to `aa test`, e.g. `-s class Step0_Infrastructure`). It builds `entry@default` and
+`entry@ohosTest` with DevEco's `hvigorw`, installs both HAPs with `hdc`, runs
+`aa test -b com.example.externwithenum -m entry_test -s unittest OpenHarmonyTestRunner`, prints
+one line per test, and exits non-zero on failure. Full runner output is in
+`.devicetest/last-<device>.log`, build logs in `.devicetest/build-*.log`.
 
-```
-HVIGOR=/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw
-HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc
-$HVIGOR --mode module -p module=entry@default -p product=default assembleHap
-$HVIGOR --mode module -p module=entry@ohosTest -p product=default assembleHap
-$HDC install -r <entry hap>; $HDC install -r <entry-ohosTest hap>
-$HDC shell aa test -b com.example.externwithenum -m entry_test \
-    -s unittest OpenHarmonyTestRunner -s timeout 15000
-```
+Outside the IDE, hvigor only accepts `cangjieOptions` when `DEVECO_CANGJIE_PLUGIN_ENABLED=true`
+and `DEVECO_CANGJIE_PATH` are set and `@ohos/cangjie-build-support` (from the Cangjie SDK) is on
+`NODE_PATH`; packaging needs DevEco's bundled Java. The script sets all of this up.
 
-wrapped in `devicetest.sh`, which prints per-test results and exits non-zero on failure. The
-exact HAP paths and runner arguments are confirmed in step 0.
+Scenario names are `step<N>.<name>`; `runArkTSTest(name, ...fixtures)` and
+`listArkTSTests()` are exported from `index.cj`.
 
 ### Layer 3: manual smoke check
 
@@ -160,7 +167,8 @@ Tests (host, compiler contract; these stay as regression tests for the whole pro
 - `x += 1` on a variable `x: Extern` → `x = eval(ExternFunctionCall(ExternMemberAccess(x, "+"), [1]))`.
 - `let v: Extern<R> = 42` → `toExtern<Int64>(42)`; array literal `[1, "a"]` as
   `Array<Extern<R>>` → one `toExtern` per element.
-- `R.fromExtern<Float64>(e.a.b)` receives the unevaluated tree.
+- `R.fromExtern<Float64>(e.a.b)` receives the evaluated result (no forced cast yet).
+- `let _: Extern<R> = expr` skips `toExtern` (compiler bug, pinned).
 - `f(e.a)` with a normal Cangjie `f` → `eval` happens before `f` runs.
 
 Done when: `hosttest/run.sh` passes; `devicetest.sh` builds, installs, runs the trivial

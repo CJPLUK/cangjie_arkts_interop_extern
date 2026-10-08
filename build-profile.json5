@@ -1,6 +1,20 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/claudio/.ohos/config/default_ExternWithEnum_84CNh0VIZlU553XxvT9E5LrqJV_LG3fpmbVyfenpSVs=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "000000189EBC08780AF381AC332D61DE2D92E9119B9D7A5430DBE48ACD0971F8825ED62472A73991",
+          "profile": "/Users/claudio/.ohos/config/default_ExternWithEnum_84CNh0VIZlU553XxvT9E5LrqJV_LG3fpmbVyfenpSVs=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/claudio/.ohos/config/default_ExternWithEnum_84CNh0VIZlU553XxvT9E5LrqJV_LG3fpmbVyfenpSVs=.p12",
+          "storePassword": "0000001811D0E175EC3BD803FF264FED7C928725CB42773FABF7E368854CEC2E6B29A2492600BFCA"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
