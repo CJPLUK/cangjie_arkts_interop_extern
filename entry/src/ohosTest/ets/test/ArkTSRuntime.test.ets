@@ -25,15 +25,10 @@ export default function arkTSRuntimeTest() {
         'step1.fromExternStub',
         'step1.extendHelperReachable',
         'step1.internalVisibleToSubpackage',
-        'step2.freshCellIsUnbound',
-        'step2.firstBindInstalls',
-        'step2.rebindSameValueThrows',
-        'step2.rebindDifferentValueThrows',
-        'step2.concurrentBindExactlyOneWins',
-        'step2.concurrentReadersSeeNothingOrWinner',
         'step2.runtimeIsBound',
         'step2.runtimeBoundToCallerContext',
-        'step2.runtimeRebindThrows'
+        'step2.runtimeRebindThrows',
+        'step2.concurrentRebindAllThrow'
       ]));
     });
 
@@ -108,30 +103,6 @@ export default function arkTSRuntimeTest() {
   });
 
   describe('Step2_Binding', () => {
-    it('freshCellIsUnbound', 0, () => {
-      expect(runArkTSTest('step2.freshCellIsUnbound')).assertEqual('');
-    });
-
-    it('firstBindInstalls', 0, () => {
-      expect(runArkTSTest('step2.firstBindInstalls')).assertEqual('');
-    });
-
-    it('rebindSameValueThrows', 0, () => {
-      expect(runArkTSTest('step2.rebindSameValueThrows')).assertEqual('');
-    });
-
-    it('rebindDifferentValueThrows', 0, () => {
-      expect(runArkTSTest('step2.rebindDifferentValueThrows')).assertEqual('');
-    });
-
-    it('concurrentBindExactlyOneWins', 0, () => {
-      expect(runArkTSTest('step2.concurrentBindExactlyOneWins')).assertEqual('');
-    });
-
-    it('concurrentReadersSeeNothingOrWinner', 0, () => {
-      expect(runArkTSTest('step2.concurrentReadersSeeNothingOrWinner')).assertEqual('');
-    });
-
     it('runtimeIsBound', 0, () => {
       expect(runArkTSTest('step2.runtimeIsBound')).assertEqual('');
     });
@@ -142,6 +113,10 @@ export default function arkTSRuntimeTest() {
 
     it('runtimeRebindThrows', 0, () => {
       expect(runArkTSTest('step2.runtimeRebindThrows')).assertEqual('');
+    });
+
+    it('concurrentRebindAllThrow', 0, () => {
+      expect(runArkTSTest('step2.concurrentRebindAllThrow')).assertEqual('');
     });
   });
 }

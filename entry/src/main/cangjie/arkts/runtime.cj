@@ -1,5 +1,6 @@
 package ohos_app_cangjie_entry.arkts
 
+import std.sync.Mutex
 import ohos.ark_interop.JSContext
 
 /**
@@ -10,7 +11,8 @@ import ohos.ark_interop.JSContext
  * All members are static; the class is never instantiated.
  */
 public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
-    private static let contextCell = ContextCell<JSContext>()
+    private static let contextMutex = Mutex()
+    private static var context_: ?JSContext = None
 
     /**
      * Associates the runtime with the JS engine instance `newContext`. Only the first call
@@ -18,17 +20,27 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      * same context.
      */
     public static func bind(newContext: JSContext): Unit {
-        contextCell.bind(newContext)
+        synchronized(contextMutex) {
+            match (context_) {
+                case None => context_ = Some(newContext)
+                case Some(_) => throw ArkTSContextAlreadyBoundException(
+                    "ArkTS runtime is already associated with a host JSContext")
+            }
+        }
     }
 
     public static func isBound(): Bool {
-        contextCell.isBound()
+        context_.isSome()
     }
 
     /** The bound context; throws `ArkTSContextNotBoundException` before `bind`. */
     static prop context: JSContext {
         get() {
-            contextCell.get()
+            match (context_) {
+                case Some(context) => context
+                case None => throw ArkTSContextNotBoundException(
+                    "ArkTS runtime is not associated with a host JSContext")
+            }
         }
     }
 
