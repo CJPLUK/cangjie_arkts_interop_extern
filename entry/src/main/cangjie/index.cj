@@ -19,6 +19,24 @@ func runArkTSTest(runtime: JSContext, callInfo: JSCallInfo): JSValue {
     runtime.string(runScenario(runtime, name, fixtures)).toJSValue()
 }
 
+/**
+ * runArkTSTestOffThread(name): Promise<string>. Runs the scenario on a spawned thread and
+ * resolves on the JS thread with "" on success, otherwise a failure message.
+ */
+func runArkTSTestOffThread(runtime: JSContext, callInfo: JSCallInfo): JSValue {
+    let name = callInfo[0].toString()
+    let promise = runtime.promiseCapability()
+    spawn {
+        let result = runOffThreadScenario(name)
+        runtime.postJSTask {
+            runtime.newScope {
+                promise.resolve(runtime.string(result).toJSValue())
+            }
+        }
+    }
+    promise.toJSValue()
+}
+
 /** listArkTSTests(): names of all device scenarios. */
 func listArkTSTests(runtime: JSContext, _: JSCallInfo): JSValue {
     let names = scenarioNames()
@@ -34,5 +52,6 @@ let EXPORT_MODULE = JSModule.registerModule {
     }
     exports["testCJ"] = runtime.function(testCJ).toJSValue()
     exports["runArkTSTest"] = runtime.function(runArkTSTest).toJSValue()
+    exports["runArkTSTestOffThread"] = runtime.function(runArkTSTestOffThread).toJSValue()
     exports["listArkTSTests"] = runtime.function(listArkTSTests).toJSValue()
 }

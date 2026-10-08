@@ -10,7 +10,7 @@ import ohos.ark_interop.*
 public type Scenario = (JSContext, Array<JSValue>) -> String
 
 func allScenarios(): Array<(String, Scenario)> {
-    concat([step0Scenarios(), step1Scenarios(), step2Scenarios()])
+    concat([step0Scenarios(), step1Scenarios(), step2Scenarios(), step3Scenarios()])
 }
 
 func concat(groups: Array<Array<(String, Scenario)>>): Array<(String, Scenario)> {
@@ -21,8 +21,21 @@ func concat(groups: Array<Array<(String, Scenario)>>): Array<(String, Scenario)>
     all.toArray()
 }
 
+/**
+ * A device test scenario whose body runs on a spawned Cangjie thread, so the JS thread stays
+ * free to serve `run`. Returns "" on success or a failure message.
+ */
+public type OffThreadScenario = () -> String
+
+func allOffThreadScenarios(): Array<(String, OffThreadScenario)> {
+    step3OffThreadScenarios()
+}
+
+/** Names of all scenarios: those run on the JS thread first, then the off-thread ones. */
 public func scenarioNames(): Array<String> {
-    allScenarios().map({ entry => entry[0] })
+    let names = ArrayList<String>(allScenarios().map({ entry => entry[0] }))
+    names.add(all: allOffThreadScenarios().map({ entry => entry[0] }))
+    names.toArray()
 }
 
 /** Runs the scenario called `name`. Exceptions become failure messages. */
@@ -31,6 +44,23 @@ public func runScenario(context: JSContext, name: String, fixtures: Array<JSValu
         if (scenarioName == name) {
             return try {
                 scenario(context, fixtures)
+            } catch (e: Exception) {
+                "unexpected exception ${e}"
+            }
+        }
+    }
+    "unknown scenario '${name}'"
+}
+
+/**
+ * Runs the off-thread scenario called `name` on the calling thread, which must not be the JS
+ * thread. Exceptions become failure messages.
+ */
+public func runOffThreadScenario(name: String): String {
+    for ((scenarioName, scenario) in allOffThreadScenarios()) {
+        if (scenarioName == name) {
+            return try {
+                scenario()
             } catch (e: Exception) {
                 "unexpected exception ${e}"
             }

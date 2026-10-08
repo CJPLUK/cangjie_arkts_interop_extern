@@ -1,7 +1,14 @@
 package ohos_app_cangjie_entry.arkts
 
 import std.sync.Mutex
+import std.sync.Condition
 import ohos.ark_interop.JSContext
+
+/** Outcome of an operation run on the JS thread, carried back to the waiting thread. */
+private enum ArkTSResult<R> {
+    | Ok(R)
+    | Err(Exception)
+}
 
 /**
  * The ArkTS foreign runtime: evaluates `Extern<ArkTSRuntime>` trees built by the compiler
@@ -40,6 +47,53 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 case Some(context) => context
                 case None => throw ArkTSContextNotBoundException(
                     "ArkTS runtime is not associated with a host JSContext")
+            }
+        }
+    }
+
+    /**
+     * Runs `operation` on the bind thread inside a fresh engine scope and returns its result,
+     * or rethrows its exception on the calling thread. Blocks callers on other threads until
+     * the JS thread has run it, so the JS thread must never wait for a thread that is inside
+     * `run`. Public entry points call it exactly once; internal recursion never does.
+     */
+    static func run<R>(operation: () -> R): R {
+        if (context.isInBindThread()) {
+            // (a) already on JS thread: run immediately
+            return context.newScope {
+                operation()
+            }
+        }
+
+        // (b) other thread: hand the work to the JS thread and block for its result
+        let result = Box(None<ArkTSResult<R>>)
+        let mutex = Mutex()
+        let done: Condition
+        synchronized(mutex) {
+            done = mutex.condition()
+        }
+
+        context.postJSTask {
+            let completed: ArkTSResult<R> =
+                try {
+                    let res = context.newScope {
+                        operation()
+                    }
+                    ArkTSResult.Ok(res)
+                } catch (e: Exception) {
+                    ArkTSResult.Err(e)
+                }
+            synchronized(mutex) {
+                result.value = Some(completed)
+                done.notify()
+            }
+        }
+
+        synchronized(mutex) {
+            done.waitUntil({ => result.value.isSome() })
+            match (result.value.getOrThrow()) {
+                case Ok(value) => value
+                case Err(error) => throw error
             }
         }
     }

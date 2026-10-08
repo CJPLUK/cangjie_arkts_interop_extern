@@ -57,6 +57,14 @@ and a step is finished only when its tests and all earlier tests pass.
   × 50 rounds. Not testable, because the runtime is already bound when tests start: the
   unbound state, the first bind, and the race between concurrent first binds (removing the
   mutex would not make any test fail).
+- **Step 3 done** (2026-10-08), `run` as in section 4 of the design, `internal` instead of
+  `private` (tests call it directly; no public method uses it yet). Device: 33 tests pass on
+  both devices, suite run 3 times (10 new: `run` on the JS thread and from spawned threads,
+  value, engine calls, exception identity, nesting, 16 threads × 100 calls without overlap, plus
+  the unknown off-thread scenario). Mutation checks on the emulator, each caught: always running
+  the operation directly (5 off-thread tests fail with "Thread mismatch"); running it directly
+  on the calling thread without a scope (4 fail on our own checks); rethrowing a copy of the
+  exception (the rethrow test fails on identity).
 
 ## Testing strategy
 
@@ -122,6 +130,13 @@ and `DEVECO_CANGJIE_PATH` are set and `@ohos/cangjie-build-support` (from the Ca
 
 Scenario names are `step<N>.<name>`; `runArkTSTest(name, ...fixtures)` and
 `listArkTSTests()` are exported from `index.cj`.
+
+**Off-thread scenarios.** ArkTS calls scenarios on the JS thread and waits for the answer, so
+a scenario that waits for a spawned thread calling `run` would deadlock (the JS thread could
+never execute the posted operation). Such scenarios are registered separately
+(`OffThreadScenario = () -> String`, no fixtures) and called with
+`runArkTSTestOffThread(name)`, which runs the body on a spawned thread and returns a
+`Promise<string>` resolved on the JS thread. The ArkTS `it` awaits it.
 
 ### Layer 3: manual smoke check
 
@@ -252,8 +267,11 @@ Tests (device):
 - Same from a `spawn`ed thread: rethrown on the calling thread with the same type and message.
 - 16 `spawn`ed threads each call `run` 100 times returning their own id: every result matches,
   no deadlock (test has a timeout).
-- Nested: an operation that itself calls a public entry point on the JS thread completes (no
-  deadlock, because the inner call sees `isInBindThread()`).
+- Nested: an operation that itself calls `run` completes, from the JS thread and from a
+  spawned thread (no deadlock, because the inner call sees `isInBindThread()`). Repeat through
+  a public entry point once one uses `run` (step 5).
+- Engine calls (`context.string`, `context.number`) work inside the operation from both
+  threads.
 Known limitation (documented, not tested): if the JS thread blocks waiting for a `spawn`ed
 thread that is itself inside `run`, both wait forever. No public method of the runtime waits on
 another Cangjie thread, so this can only come from user code.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { runArkTSTest, listArkTSTests } from 'libohos_app_cangjie_entry.so';
+import { runArkTSTest, runArkTSTestOffThread, listArkTSTests } from 'libohos_app_cangjie_entry.so';
 import { Rectangle } from './fixtures';
 
 export default function arkTSRuntimeTest() {
@@ -28,12 +28,26 @@ export default function arkTSRuntimeTest() {
         'step2.runtimeIsBound',
         'step2.runtimeBoundToCallerContext',
         'step2.runtimeRebindThrows',
-        'step2.concurrentRebindAllThrow'
+        'step2.concurrentRebindAllThrow',
+        'step3.runOnJSThreadReturnsValue',
+        'step3.runOnJSThreadUsesEngine',
+        'step3.runOnJSThreadPropagatesException',
+        'step3.runOnJSThreadNested',
+        'step3.runOffThreadReturnsValue',
+        'step3.runOffThreadUsesEngine',
+        'step3.runOffThreadRethrows',
+        'step3.runOffThreadNested',
+        'step3.runFromManyThreads'
       ]));
     });
 
     it('unknownScenarioIsReported', 0, () => {
       expect(runArkTSTest('step0.doesNotExist')).assertEqual("unknown scenario 'step0.doesNotExist'");
+    });
+
+    it('unknownOffThreadScenarioIsReported', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step0.doesNotExist')).assertEqual("unknown scenario 'step0.doesNotExist'");
+      done();
     });
 
     it('failureMessageIsReturned', 0, () => {
@@ -117,6 +131,51 @@ export default function arkTSRuntimeTest() {
 
     it('concurrentRebindAllThrow', 0, () => {
       expect(runArkTSTest('step2.concurrentRebindAllThrow')).assertEqual('');
+    });
+  });
+
+  // The off-thread scenarios run on a spawned Cangjie thread and resolve a promise; the JS
+  // thread must stay free meanwhile, because `run` posts the operations to it.
+  describe('Step3_Run', () => {
+    it('runOnJSThreadReturnsValue', 0, () => {
+      expect(runArkTSTest('step3.runOnJSThreadReturnsValue')).assertEqual('');
+    });
+
+    it('runOnJSThreadUsesEngine', 0, () => {
+      expect(runArkTSTest('step3.runOnJSThreadUsesEngine')).assertEqual('');
+    });
+
+    it('runOnJSThreadPropagatesException', 0, () => {
+      expect(runArkTSTest('step3.runOnJSThreadPropagatesException')).assertEqual('');
+    });
+
+    it('runOnJSThreadNested', 0, () => {
+      expect(runArkTSTest('step3.runOnJSThreadNested')).assertEqual('');
+    });
+
+    it('runOffThreadReturnsValue', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step3.runOffThreadReturnsValue')).assertEqual('');
+      done();
+    });
+
+    it('runOffThreadUsesEngine', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step3.runOffThreadUsesEngine')).assertEqual('');
+      done();
+    });
+
+    it('runOffThreadRethrows', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step3.runOffThreadRethrows')).assertEqual('');
+      done();
+    });
+
+    it('runOffThreadNested', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step3.runOffThreadNested')).assertEqual('');
+      done();
+    });
+
+    it('runFromManyThreads', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step3.runFromManyThreads')).assertEqual('');
+      done();
     });
   });
 }
