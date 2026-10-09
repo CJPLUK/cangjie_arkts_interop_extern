@@ -52,10 +52,13 @@ export default function arkTSRuntimeTest() {
         'step5.argumentTypes',
         'step5.callNonFunction',
         'step5.indexReadWrite',
+        'step5.indexBoundaries',
+        'step5.nonArrayIndexing',
         'step5.unsupportedIndex',
         'step5.indexWriteOrder',
         'step5.compoundAssignmentOrder',
         'step5.compoundOperators',
+        'step5.stringConversions',
         'step5.compoundThroughSyntax',
         'step5.logicalAssignment',
         'step5.compoundReceiverOnce',
@@ -346,6 +349,25 @@ export default function arkTSRuntimeTest() {
       expect(t.num).assertEqual(4);
     });
 
+    it('indexBoundaries', 0, () => {
+      const items: number[] = [10, 20, 30];
+      expect(runArkTSTest('step5.indexBoundaries', items)).assertEqual('');
+      expect(items.length).assertEqual(4294967295);
+      expect(items[-1]).assertEqual(5);
+      expect(items[4294967295]).assertEqual(7);
+      expect(items[4294967294]).assertEqual(9);
+      expect(items[0]).assertEqual(10);
+    });
+
+    it('nonArrayIndexing', 0, () => {
+      const m = new Map<number, string>([[0, 'zero']]);
+      const u8 = new Uint8Array([1, 2, 3, 4]);
+      expect(runArkTSTest('step5.nonArrayIndexing', m, u8)).assertEqual('');
+      expect(m.size).assertEqual(1);
+      expect(m.get(0)).assertEqual('zero');
+      expect(JSON.stringify(Array.from(u8))).assertEqual(JSON.stringify([1, 44, 3, 4]));
+    });
+
     it('unsupportedIndex', 0, () => {
       expect(runArkTSTest('step5.unsupportedIndex', new Target())).assertEqual('');
     });
@@ -369,6 +391,10 @@ export default function arkTSRuntimeTest() {
       expect(runArkTSTest('step5.compoundOperators', t)).assertEqual('');
       expect(t.big).assertEqual(225n);
       expect(t.str).assertEqual('a1.52');
+    });
+
+    it('stringConversions', 0, () => {
+      expect(runArkTSTest('step5.stringConversions', new Target())).assertEqual('');
     });
 
     it('compoundThroughSyntax', 0, () => {

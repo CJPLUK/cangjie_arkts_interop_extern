@@ -18,10 +18,13 @@ func step5Scenarios(): Array<(String, Scenario)> {
         ("step5.argumentTypes", { _, f => argumentTypes(f) }),
         ("step5.callNonFunction", { _, f => callNonFunction(f) }),
         ("step5.indexReadWrite", indexReadWrite),
+        ("step5.indexBoundaries", { c, f => indexBoundaries(c, f) }),
+        ("step5.nonArrayIndexing", { _, f => nonArrayIndexing(f) }),
         ("step5.unsupportedIndex", { _, f => unsupportedIndex(f) }),
         ("step5.indexWriteOrder", { _, f => indexWriteOrder(f) }),
         ("step5.compoundAssignmentOrder", { _, f => compoundAssignmentOrder(f) }),
         ("step5.compoundOperators", { _, f => compoundOperators(f) }),
+        ("step5.stringConversions", { c, f => stringConversions(c, f) }),
         ("step5.compoundThroughSyntax", { _, f => compoundThroughSyntax(f) }),
         ("step5.logicalAssignment", { _, f => logicalAssignment(f) }),
         ("step5.compoundReceiverOnce", { _, f => compoundReceiverOnce(f) }),
@@ -225,6 +228,59 @@ func indexReadWrite(context: JSContext, fixtures: Array<JSValue>): String {
     ])
 }
 
+/**
+ * fixtures: [10, 20, 30]. JS array index rules: past the end reads `undefined`; -1 and 4294967295
+ * are plain properties; 4294967294 is the last element. ArkTS checks length == 4294967295,
+ * items[-1] == 5, items[4294967295] == 7, items[4294967294] == 9, items[0] == 10.
+ */
+func indexBoundaries(context: JSContext, fixtures: Array<JSValue>): String {
+    let a = ext(fixtures, 0)
+    func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
+    let before = [
+        expectEqual("a[3] (just past the end) is undefined", unwrap(a[3]).isUndefined(), true),
+        expectEqual("a[5] is undefined", unwrap(a[5]).isUndefined(), true),
+        expectEqual("a[Extern 5] is undefined", unwrap(a[num(5.0)]).isUndefined(), true),
+        expectEqual("a[-1] is undefined", unwrap(a[-1]).isUndefined(), true),
+        expectEqual("a[2] still reads the element", number(a[2]), 30.0)
+    ]
+    a[num(-1.0)] = 5.0
+    a[4294967295] = 7.0
+    a[4294967294] = 9.0
+    firstFailure([
+        firstFailure(before),
+        expectEqual("a[-1] (Int64) after an Extern -1 write", number(a[-1]), 5.0),
+        expectEqual("a[Extern 4294967295]", number(a[num(4294967295.0)]), 7.0),
+        expectEqual("a[Extern 4294967294]", number(a[num(4294967294.0)]), 9.0),
+        expectEqual("a[100] (hole) is undefined", unwrap(a[100]).isUndefined(), true),
+        expectEqual("length", number(a.length), 4294967295.0)
+    ])
+}
+
+/**
+ * fixtures: Map {0 => "zero"}, Uint8Array [1, 2, 3, 4]. JS rules: Map entries are not properties;
+ * typed arrays wrap stored numbers to their element type and ignore writes outside 0..length-1
+ * (including -1). ArkTS checks the Map has one entry and the bytes are [1, 44, 3, 4].
+ */
+func nonArrayIndexing(fixtures: Array<JSValue>): String {
+    let m = ext(fixtures, 0)
+    let u8 = ext(fixtures, 1)
+    let mapChecks = [
+        expectEqual("m[0] is undefined", unwrap(m[0]).isUndefined(), true),
+        expectEqual("m.get(0)", text(m.get(0.0)), "zero")
+    ]
+    u8[1] = 300.0
+    u8[10] = 1.0
+    u8[-1] = 5.0
+    firstFailure([
+        firstFailure(mapChecks),
+        expectEqual("u8[0]", number(u8[0]), 1.0),
+        expectEqual("u8[1] after storing 300", number(u8[1]), 44.0),
+        expectEqual("u8[10] after a write past the end", unwrap(u8[10]).isUndefined(), true),
+        expectEqual("u8[-1] after a write", unwrap(u8[-1]).isUndefined(), true),
+        expectEqual("u8.length", number(u8.length), 4.0)
+    ])
+}
+
 /** fixtures: Target. */
 func unsupportedIndex(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
@@ -297,6 +353,35 @@ func compoundOperators(fixtures: Array<JSValue>): String {
         expectEqual("1.5 += \"x\"", numberStr, "1.5x"),
         expectEqual("undefined += \"s\"", undefinedStr, "undefineds"),
         expectEqual("0.1 += 0.2", fraction, 0.30000000000000004)
+    ])
+}
+
+/**
+ * fixtures: Target. Values become text with JS `String(...)` rules, not Cangjie's ("1.500000"):
+ * in string `+=` and for number index keys. As in JS, a symbol cannot be added to a string.
+ */
+func stringConversions(context: JSContext, fixtures: Array<JSValue>): String {
+    let e = ext(fixtures, 0)
+    func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
+    let symbol = ArkTSRuntime.retain(context.symbol(description: "k").toJSValue())
+    func appended(operand: Any): String {
+        e.str = ""
+        text(compound(member(e, "str"), "+", operand))
+    }
+    e[num(1e21)] = "huge"
+    e[num(-0.0)] = "zero"
+    firstFailure([
+        expectEqual("\"\" += true", appended(true), "true"),
+        expectEqual("\"\" += null", appended(e.nul), "null"),
+        expectEqual("\"\" += NaN", appended(Float64.NaN), "NaN"),
+        expectEqual("\"\" += -0", appended(-0.0), "0"),
+        expectEqual("\"\" += 1e21", appended(1e21), "1e+21"),
+        expectEqual("\"\" += 0.1 + 0.2", appended(0.30000000000000004), "0.30000000000000004"),
+        expectEqual("\"\" += 123456789012 (bigint)", appended(123456789012), "123456789012"),
+        expectThrows<ExternCompoundAssignmentException>("\"\" += symbol", "Unsupported operand for '+='",
+            { => appended(symbol) }),
+        expectEqual("key for Extern 1e21", fixture(fixtures, 0).getProperty("1e+21").toString(), "huge"),
+        expectEqual("key for Extern -0", fixture(fixtures, 0).getProperty("0").toString(), "zero")
     ])
 }
 

@@ -2,7 +2,6 @@ package ohos_app_cangjie_entry.arkts
 
 import std.sync.Mutex
 import std.sync.Condition
-import std.math.trunc
 import ohos.ark_interop.JSContext
 import ohos.ark_interop.JSValue
 import ohos.ark_interop.JSKeyable
@@ -12,15 +11,6 @@ private enum ArkTSResult<R> {
     | Ok(R)
     | Err(Exception)
 }
-
-/** A resolved index: an array element, or a property key. */
-private enum IndexKey {
-    | Element(Int64)
-    | Property(JSKeyable)
-}
-
-/** 2^32 - 1: JS array indices are below it. */
-private const MAX_ARRAY_INDEX = 4294967295.0
 
 /**
  * The ArkTS foreign runtime: evaluates `Extern<ArkTSRuntime>` trees built by the compiler
@@ -230,26 +220,17 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         writeKey(target, key, ArkTSRuntime.toJSValue(value))
     }
 
-    private static func readKey(target: JSValue, key: IndexKey): JSValue {
+    private static func readKey(target: JSValue, key: JSKeyable): JSValue {
         checkIndexTarget(target)
-        let lookup = objectFor(target)
-        match (key) {
-            case Element(position) where lookup.isArray() => lookup.getElement(position)
-            case Element(position) => lookup.getProperty("${position}")
-            case Property(name) => lookup.getProperty(name)
-        }
+        objectFor(target).getProperty(key)
     }
 
-    private static func writeKey(target: JSValue, key: IndexKey, value: JSValue): Unit {
+    private static func writeKey(target: JSValue, key: JSKeyable, value: JSValue): Unit {
         checkIndexTarget(target)
         if (isPrimitive(target)) {
             throw ExternIndexedAccessException("Cannot index-assign a primitive ${typeName(target)}")
         }
-        match (key) {
-            case Element(position) where target.isArray() => target.setElement(position, value)
-            case Element(position) => target.setProperty("${position}", value)
-            case Property(name) => target.setProperty(name, value)
-        }
+        target.setProperty(key, value)
     }
 
     private static func checkIndexTarget(target: JSValue): Unit {
@@ -261,33 +242,23 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     /**
      * Integers and `String`s from Cangjie, or an `Extern` (possibly unevaluated) holding a string,
-     * a symbol or a number. `JSKeyable` has no number key, so array indices become elements (read
-     * with `getElement` on arrays, which is all it accepts) and other numbers property names (their
-     * JS string form), as in JS.
+     * a symbol or a number. Numbers become property names (their JS string form), as JS does
+     * for every index. `getElement` / `setElement` are not used: they throw past the end and at
+     * negative indices, and `setElement(4294967295)` corrupts the array's `length`.
      */
-    private static func toIndexKey(index: Any): IndexKey {
+    private static func toIndexKey(index: Any): JSKeyable {
         match (index) {
-            case position: Int64 => integerKey(position)
-            case position: Int32 => integerKey(Int64(position))
-            case name: String => Property(name)
+            case position: Int64 => "${position}"
+            case position: Int32 => "${position}"
+            case name: String => name
             case external: Extern<ArkTSRuntime> =>
                 let value = evalTree(external)
-                if (value.isString()) { return Property(value.asString()) }
-                if (value.isSymbol()) { return Property(value.asSymbol()) }
-                if (value.isNumber()) {
-                    let n = value.toNumber()
-                    if (n >= 0.0 && n < MAX_ARRAY_INDEX && n == trunc(n)) {
-                        return Element(Int64(n))
-                    }
-                    return Property(jsString(value))
-                }
+                if (value.isString()) { return value.asString() }
+                if (value.isSymbol()) { return value.asSymbol() }
+                if (value.isNumber()) { return jsString(value) }
                 throw ExternIndexedAccessException("Unsupported ArkTS index type")
             case _ => throw ExternIndexedAccessException("Unsupported ArkTS index type")
         }
-    }
-
-    private static func integerKey(position: Int64): IndexKey {
-        if (position >= 0 && Float64(position) < MAX_ARRAY_INDEX) { Element(position) } else { Property("${position}") }
     }
 
     /** `this` is the target of a member or index callee, `undefined` otherwise; evaluated once. */

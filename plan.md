@@ -33,7 +33,7 @@ and a step is finished only when its tests and all earlier tests pass.
 | `match (None<R>) { case _: Option<Int64> => ... }` works | Used for `fromExtern` dispatch |
 | `case x: Extern<ArkTSRuntime>` type patterns work | Used in `toJSValue` / `readIndex` |
 | `std.reflect` is not available | Not used |
-| `JSKeyable` is only `String`, `JSString`, `JSSymbol` (not `Float64`) | Numeric `Extern` indices go through `getElement(Int64)` instead of `getProperty(Float64)` (deviation from the design) |
+| `JSKeyable` is only `String`, `JSString`, `JSSymbol` (not `Float64`) | Numeric indices become property names (their JS string form, `"5"`) instead of `getProperty(Float64)` (deviation from the design) |
 | `--enable-extern-sequence` exists | Used to test `ExternSequence` in step 10 |
 | `std.unittest` is available for macOS | Host tests in layer 1 below |
 | Compiler bug: `let _: Extern<R> = expr` runs `expr` but skips `toExtern` (named bindings, assignments and arguments are fine) | Pinned by `wildcardBindingSkipsToExtern` in `hosttest/compiler_contract_test.cj`; flip it when cjc is fixed |
@@ -45,7 +45,8 @@ and a step is finished only when its tests and all earlier tests pass.
 | ArkTS: allocating garbage triggers only young collections, which never cleared a `WeakRef` (16 collections, 1.8 GB freed); `hidebug.dumpJsHeapData` runs a full one (0.5–0.9 s) | GC tests force collections with a heap dump; memory is measured with `hidebug.getAppVMObjectUsedSize()` after one, not with PSS (too noisy: ±40 MB) |
 | Engine values kept past their scope without a global handle still read correctly until a full GC | Lifetime tests must force a full GC and observe it (`WeakRef`) |
 | The class body cannot call static functions added by an `extend` without qualifying them (`retain(v)` is "undeclared"); the `extend` can call class members unqualified | `runtime.cj` writes `ArkTSRuntime.retain` / `evalPayload` / `toJSValue` |
-| `JSValue.getProperty` works only on objects ("expect object, given string"); `getElement` / `setElement` only on arrays ("expect array, given object"); `toString()` only on strings | Members of primitives are read through `Object(value)`; integer keys on non-arrays use the property named after the number; other values are turned into strings through the global `String` |
+| `JSValue.getProperty` works only on objects ("expect object, given string"); `toString()` only on strings | Members of primitives are read through `Object(value)`; other values are turned into strings through the global `String` |
+| `getElement` / `setElement` differ from JS (probed on the phone, array `[10, 20, 30]`): both work only on arrays ("expect array, given object"); `getElement` throws "index out of range" at and past `length` (JS reads `undefined`) and at -1; `setElement(-1)` throws; `setElement(4294967295)` stores the value but sets `length` to 0 while elements 0–2 remain; `setElement(≥ 2^32)` throws `OverflowException`. Appending and sparse writes up to 4294967294 behave like JS. `setProperty` / `getProperty` with the number's name (`"3"`, `"-1"`, `"4294967294"`, `"4294967295"`) match JS in every case, including `length` | Not used: every numeric index is a property name. Plain ArkTS on the phone has exactly the JS rules (`items[5]` undefined, `-1` / `4294967295` plain properties, `4294967294` the last element) |
 | Cangjie has no `%` on floats; `std.math.fmod` throws for an infinite left side or a zero right side | `operators.cj` handles those cases before calling `fmod` (found by the host tests) |
 
 ## Status
@@ -87,8 +88,8 @@ and a step is finished only when its tests and all earlier tests pass.
     to round 10 (limit 10 MB); released, it grew at most 1.7 MB.
 - **Step 5 done** (2026-10-08). `eval` / `evalTree` in `runtime.cj`, JS operators in
   `operators.cj` (pure Cangjie, also compiled by `hosttest/run.sh`), a basic `toJSValue` in
-  `conversion.cj` (the full table is step 6). Host: 35 tests pass (11 new). Device: 64 tests
-  pass on both devices, suite run 3 times (23 new, 1 removed: `step1.evalStub`;
+  `conversion.cj` (the full table is step 6). Host: 35 tests pass (11 new). Device: 67 tests
+  pass on both devices, suite run 3 times at 65 (26 new, 1 removed: `step1.evalStub`;
   `step1.dynamicSyntaxReachesEval` now expects the "not produced by ArkTSRuntime" error).
   Choices where the design is silent:
   - `&&=` / `||=` short-circuit as in JS: the value is not evaluated and nothing is written.
@@ -96,7 +97,17 @@ and a step is finished only when its tests and all earlier tests pass.
     `ExternIndexedAccessException`, before the value is converted.
   - Primitive receivers (`e.str.length`, `e.str.toUpperCase()`, `e.str[1]`) read from the
     wrapper object, with the primitive as `this`; writes to a primitive throw (strict mode).
-  - Negative or too large integer indices become property names (`"-1"`), as in JS.
+  - Every numeric index is a property name (`"5"`, `"-1"`), which gives the JS rules in all
+    cases; `getElement` / `setElement` are not used (see Constraints). Decided with the user
+    after `e.items[5]` was found to throw through `getElement`. Tested by `indexBoundaries`
+    (past the end, a hole, -1, 4294967294, 4294967295, with `Int64` and `Extern` indices);
+    mutations caught: `getElement` without a length check, Cangjie number formatting for keys.
+    `nonArrayIndexing` pins the JS rules on a `Map` (entries are not indexable) and a
+    `Uint8Array` (300 stored as 44; writes past the end and at -1 ignored).
+  - Values become text with JS `String(...)` (`1.5` → `"1.5"`, `1e21` → `"1e+21"`, `-0` →
+    `"0"`), in string `+=` and for number keys; Cangjie formatting would give `"1.500000"`.
+    A symbol in string `+=` throws, as in JS. Tested by `stringConversions`; Cangjie number
+    formatting in `jsString` is caught by 7 tests.
   - Compound operators: numbers use JS ToNumber for booleans, `null`, `undefined`; bigint
     only with bigint (else error, as in JS); string `+` with any primitive; objects
     unsupported (`ExternCompoundAssignmentException`).
@@ -367,9 +378,8 @@ below.
   Updates return `undefined`.
 - `call`: `ExternMemberAccess` / `ExternIndexedAccess` callee → receiver evaluated once,
   passed as `thisArg`; other callees get `undefined`. Non-function → `ExternFunctionAccessException`.
-- Indexing: `Int64` / `Int32` → `getElement` / `setElement` on arrays (property named after
-  the number otherwise, or when negative / too large); `String` → property;
-  `Extern` → string key, symbol key, integral number → element, other number → string key;
+- Indexing: `Int64` / `Int32` → property named after the number (`"5"`); `String` → property;
+  `Extern` → string key, symbol key, number → its JS string form (`String(n)`);
   else `ExternIndexedAccessException`. Write order: target, index, value.
 - Compound assignment: evaluate receiver and key once, read, compute with `operators.cj`,
   write back, return the new value; unsupported → `ExternCompoundAssignmentException`.
@@ -502,6 +512,19 @@ Done when: all tests pass; smoke page shows all PASS on the phone.
    - Device: whole suite passes; a loop reading the same field 100 000 times is measurably
      faster than without the cache (timing printed, not asserted).
 3. Path / batch access waits for the new `ARKTS_*` FFI functions.
+4. Fast path for array elements: `getElement` / `setElement` when the target is an array and
+   0 ≤ index < `length` (they differ from JS outside that range, see Constraints), instead of
+   building the property name.
+   - Device: whole suite passes; `indexBoundaries` still passes; a loop reading `e.items[1]`
+     100 000 times is measurably faster (timing printed, not asserted).
+5. Cache the JS conversion functions `Object` and `String`. `ark_interop` has no "convert to
+   object" or "convert to text" (`asObject()` / `asString()` / `toString()` only accept values
+   that already have that type), so `objectFor` and `jsString` in `runtime.cj` call the JS
+   global functions, looked up on `context.global` at every call. Looking them up once (after
+   binding) and keeping them saves that lookup, and stops later replacements of the global
+   `Object` / `String` by application code from affecting the runtime.
+   - Device: whole suite passes; a loop reading `e.str.length` 100 000 times is measurably
+     faster than without the cache (timing printed, not asserted).
 
 ## Open points
 
