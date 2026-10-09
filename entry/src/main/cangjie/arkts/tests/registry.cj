@@ -10,11 +10,11 @@ import ohos.ark_interop.*
 public type Scenario = (JSContext, Array<JSValue>) -> String
 
 func allScenarios(): Array<(String, Scenario)> {
-    concat([step0Scenarios(), step1Scenarios(), step2Scenarios(), step3Scenarios()])
+    concat([step0Scenarios(), step1Scenarios(), step2Scenarios(), step3Scenarios(), step4Scenarios()])
 }
 
-func concat(groups: Array<Array<(String, Scenario)>>): Array<(String, Scenario)> {
-    let all = ArrayList<(String, Scenario)>()
+func concat<T>(groups: Array<Array<T>>): Array<T> {
+    let all = ArrayList<T>()
     for (group in groups) {
         all.add(all: group)
     }
@@ -28,7 +28,7 @@ func concat(groups: Array<Array<(String, Scenario)>>): Array<(String, Scenario)>
 public type OffThreadScenario = () -> String
 
 func allOffThreadScenarios(): Array<(String, OffThreadScenario)> {
-    step3OffThreadScenarios()
+    concat([step3OffThreadScenarios(), step4OffThreadScenarios()])
 }
 
 /** Names of all scenarios: those run on the JS thread first, then the off-thread ones. */

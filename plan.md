@@ -40,6 +40,10 @@ and a step is finished only when its tests and all earlier tests pass.
 | Without the forced cast, `R.fromExtern<U>(e.a.b)` receives the already evaluated `r1`, not the tree (the argument is desugared like any call argument) | `fromExtern` cannot avoid retaining the result until `(U)e` is supported; pinned by `explicitFromExternReceivesEvaluatedValue` |
 | Default (`internal`) members are visible to subpackages but not to the parent package; `extend` in another file can add `public static` functions | Device scenarios live in the subpackage `arkts.tests` and can use internal hooks; `index.cj` and user code cannot (checked by a deliberate failing build, step 1) |
 | A user exception class prints as `Exception: ...` unless it overrides `getClassName` | Our exceptions override it; tested in step 1 |
+| Bare `ExternPayload(x)` fails to infer `T` even in non-generic code with a known return type | Written as `Extern<ArkTSRuntime>.ExternPayload(x)` |
+| `foreign` is a keyword | Not used as an identifier |
+| ArkTS: allocating garbage triggers only young collections, which never cleared a `WeakRef` (16 collections, 1.8 GB freed); `hidebug.dumpJsHeapData` runs a full one (0.5–0.9 s) | GC tests force collections with a heap dump; memory is measured with `hidebug.getAppVMObjectUsedSize()` after one, not with PSS (too noisy: ±40 MB) |
+| Engine values kept past their scope without a global handle still read correctly until a full GC | Lifetime tests must force a full GC and observe it (`WeakRef`) |
 
 ## Status
 
@@ -65,6 +69,19 @@ and a step is finished only when its tests and all earlier tests pass.
   the operation directly (5 off-thread tests fail with "Thread mismatch"); running it directly
   on the calling thread without a scope (4 fail on our own checks); rethrowing a copy of the
   exception (the rethrow test fails on identity).
+- **Step 4 done** (2026-10-08), `ArkTSHandle` and `retain` as in section 5 of the design, in
+  `handle.cj` (an `extend ArkTSRuntime`, internal). Two decisions: `evalPayload` throws
+  `ExternConversionException("Extern payload was not produced by ArkTSRuntime")` instead of the
+  design's `getOrThrow()` (`NoneValueException`); the planned public `fromJSValue` /
+  `toJSValue` are not added (revisit when a real use needs them). Device: 41 tests pass on both
+  devices, suite run 4 times (8 new). Mutation checks, each caught:
+  - `retain` without global handles (`Imm` for everything): the WeakRef test reports the
+    retained object collected; the variant checks fail too. The tests that only use a value in
+    a later scope, call or thread still pass, so they do not prove the handle matters.
+  - The handle never released (a leaked copy): the WeakRef test reports the object never
+    collected after the drop.
+  - 100 000 handles per round kept instead of dropped: the ArkTS heap grew ~37 MB from round 4
+    to round 10 (limit 10 MB); released, it grew at most 1.7 MB.
 
 ## Testing strategy
 
@@ -138,6 +155,13 @@ never execute the posted operation). Such scenarios are registered separately
 `runArkTSTestOffThread(name)`, which runs the body on a spawned thread and returns a
 `Promise<string>` resolved on the JS thread. The ArkTS `it` awaits it.
 
+**Garbage collection in tests.** ArkTS only runs a full collection on its own schedule;
+`collectUntil` in `ArkTSRuntime.test.ets` forces one with `hidebug.dumpJsHeapData` and yields to
+the event loop around it (released handles are disposed by tasks queued on the JS thread).
+Lifetime tests observe the result through `WeakRef`s, with an unretained control object to
+prove the collection ran. The ArkTS test must not hold the object in a local across the
+`await`s (do the check in a separate function).
+
 ### Layer 3: manual smoke check
 
 A button in `Index.ets` that runs the whole device suite and shows the report on screen, for
@@ -176,6 +200,10 @@ All runtime files declare `package ohos_app_cangjie_entry.arkts`. The class body
 `runtime.cj`. Members shared across files (`context`, `run`, `evalTree`, `retain`,
 `toJSValue`) use the default `internal` visibility. Public helpers in `helpers.cj` are added
 with `extend ArkTSRuntime { public static func ... }`. Both points are verified in step 1.
+`handle.cj` also uses an `extend` (internal `retain`, `evalPayload`, `handleKind`) so the
+private `ArkTSHandle` stays in that file; the design has them in the class body. An `extend`
+cannot see `private` class members or declare stored (static) variables, so anything needing
+either goes in the class body; move these back there if that ever applies.
 
 ## Steps
 
@@ -282,27 +310,27 @@ to catch flakiness.
 ### 4. Handles
 
 Code:
-- `enum ArkTSHandle { Imm(JSValue) | Ref(JSHeapObject) }`.
-- `retain(value: JSValue): Extern<ArkTSRuntime>` and `evalPayload(payload: Any): JSValue`.
-- `public static func fromJSValue(value: JSValue): Extern<ArkTSRuntime>` and
-  `public static func toJSValue(value: Extern<ArkTSRuntime>): JSValue` (needed to move values
-  across the `JSModule` boundary; not in the design).
+- `private enum ArkTSHandle { Imm(JSValue) | Ref(JSHeapObject) }` in `handle.cj`.
+- `retain(value: JSValue): Extern<ArkTSRuntime>` and `evalPayload(payload: Any): JSValue`
+  (internal, in an `extend ArkTSRuntime`), plus the test hook `handleKind`.
+- No public `fromJSValue` / `toJSValue` for now (decided in step 4).
 
 Tests (device):
 - `retain` classification for each JS kind: `undefined`, `null`, boolean, number → `Imm`;
-  string, bigint, symbol, object, array, function → `Ref` (checked through an internal test
-  hook that reports the variant).
-- Round trip: an ArkTS object passed in, wrapped with `fromJSValue`, returned with
-  `toJSValue`; ArkTS asserts `===` identity with the original.
-- Survival across calls: Cangjie stores a wrapped object in a static, a later separate call
-  returns it; ArkTS asserts identity (proves the global handle outlives the scope).
-- Survival across GC: same as above with `ArkTools.GC` / forced GC on the ArkTS side between the
-  two calls where available.
-- Release: wrap and drop 100 000 objects in a loop, force Cangjie GC; the test passes if the
-  app neither crashes nor grows without bound (memory checked with `hidumper` by hand once,
-  noted here).
-- `evalPayload` with a foreign payload (e.g. `ExternPayload(42)` built by hand) throws
-  `ExternConversionException`.
+  string, bigint, symbol, object, array, function, ArkTS class instance → `Ref` (through
+  `handleKind`).
+- Round trip: `evalPayload(retain(v)) === v` for every kind.
+- A value retained inside a `newScope` is usable after it closes and 10 000 other scopes.
+- Foreign payloads (`Int64`, a bare `JSValue`, a hand-built `ExternPayload(42)`) throw
+  `ExternConversionException`; `handleKind` of an unevaluated node is "not a payload".
+- Survival and release across full GC: ArkTS creates two objects, Cangjie retains one, ArkTS
+  keeps only `WeakRef`s. After forced full collections the unretained control object is gone
+  (proves a collection ran) and the retained one is alive and `===` the kept Extern (Cangjie
+  changes it, ArkTS sees the change). After Cangjie drops the Extern, the object is collected.
+- Release under load: 10 rounds of 100 000 objects retained and dropped; ArkTS heap after full
+  collections grows less than 10 MB between rounds 4 and 10.
+- Off-thread: a value retained in one `run` is held by a spawned thread and used in a later
+  `run`; 10 000 handles dropped on a spawned thread, then the engine still works.
 
 Done when: all tests pass on emulator and phone.
 
