@@ -53,6 +53,72 @@ export class CountingHolder {
   }
 }
 
+// Last call of `Target.record`: its `this` and the `typeof` of each argument.
+export class CallLog {
+  self: Object | undefined = undefined;
+  argTypes: string[] = [];
+  calls: number = 0;
+}
+
+export const callLog: CallLog = new CallLog();
+
+export class Leaf {
+  c: number = 42;
+}
+
+export class Branch {
+  b: Leaf = new Leaf();
+}
+
+// Fields of every kind for member, index and compound-assignment scenarios.
+export class Target {
+  num: number = 1.5;
+  str: string = 'héllo';
+  big: bigint = 10n;
+  flag: boolean = true;
+  zero: number = 0;
+  nothing: Object | undefined = undefined;
+  nul: Object | null = null;
+  a: Branch = new Branch();
+  items: number[] = [10, 20, 30];
+  keyName: string = 'num';
+  one: number = 1;
+  half: number = 1.5;
+  list: Object[] = [];
+
+  record(...args: Object[]): number {
+    callLog.self = this;
+    callLog.argTypes = args.map((arg: Object) => typeof arg);
+    callLog.calls++;
+    return args.length;
+  }
+}
+
+// Getters that log their reads, to check evaluation order.
+export class OrderLog {
+  order: string[] = [];
+  private store: number[] = [0, 0];
+
+  get target(): number[] {
+    this.order.push('target');
+    return this.store;
+  }
+
+  get index(): number {
+    this.order.push('index');
+    return 1;
+  }
+
+  get value(): number {
+    this.order.push('value');
+    return 5;
+  }
+
+  get stored(): number[] {
+    return this.store;
+  }
+}
+
 export class Thrower {
   boom(): void {
     throw new Error('boom');

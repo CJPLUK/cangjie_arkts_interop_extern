@@ -7,7 +7,6 @@ func step1Scenarios(): Array<(String, Scenario)> {
     [
         ("step1.notBoundExceptionNames", { _, _ => notBoundExceptionNames() }),
         ("step1.alreadyBoundExceptionNames", { _, _ => alreadyBoundExceptionNames() }),
-        ("step1.evalStub", { _, _ => evalStub() }),
         ("step1.dynamicSyntaxReachesEval", { _, _ => dynamicSyntaxReachesEval() }),
         ("step1.toExternStub", { _, _ => toExternStub() }),
         ("step1.implicitConversionReachesToExtern", { _, _ => implicitConversionReachesToExtern() }),
@@ -41,14 +40,13 @@ func alreadyBoundExceptionNames(): String {
     ])
 }
 
-func evalStub(): String {
-    expectThrows<ExternUnsupportedOperation>("eval", "ArkTSRuntime.eval", { => ArkTSRuntime.eval(payload()) })
-}
-
-/** `e.f` must be compiled into a call of `ArkTSRuntime.eval` on the device toolchain. */
+/**
+ * `e.f` must be compiled into a call of `ArkTSRuntime.eval` on the device toolchain: on a
+ * payload the runtime did not make, only our `evalPayload` throws this.
+ */
 func dynamicSyntaxReachesEval(): String {
     let e = payload()
-    expectThrows<ExternUnsupportedOperation>("e.f", "ArkTSRuntime.eval", { => e.f })
+    expectThrows<ExternConversionException>("e.f", "Extern payload was not produced by ArkTSRuntime", { => e.f })
 }
 
 func toExternStub(): String {

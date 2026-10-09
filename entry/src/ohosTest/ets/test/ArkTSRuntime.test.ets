@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { runArkTSTest, runArkTSTestOffThread, listArkTSTests } from 'libohos_app_cangjie_entry.so';
 import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
-import { Rectangle } from './fixtures';
+import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog } from './fixtures';
 
 export default function arkTSRuntimeTest() {
   describe('Step0_Infrastructure', () => {
@@ -19,7 +19,6 @@ export default function arkTSRuntimeTest() {
         'step0.expectThrowsHelper',
         'step1.notBoundExceptionNames',
         'step1.alreadyBoundExceptionNames',
-        'step1.evalStub',
         'step1.dynamicSyntaxReachesEval',
         'step1.toExternStub',
         'step1.implicitConversionReachesToExtern',
@@ -42,13 +41,37 @@ export default function arkTSRuntimeTest() {
         'step4.checkKeptObject',
         'step4.dropKeptObject',
         'step4.releaseManyHandles',
+        'step5.memberRead',
+        'step5.primitiveReceivers',
+        'step5.memberUpdate',
+        'step5.memberOfUndefinedOrNull',
+        'step5.methodCallThis',
+        'step5.freeCallThisUndefined',
+        'step5.indexCallThis',
+        'step5.receiverEvaluatedOnce',
+        'step5.argumentTypes',
+        'step5.callNonFunction',
+        'step5.indexReadWrite',
+        'step5.unsupportedIndex',
+        'step5.indexWriteOrder',
+        'step5.compoundAssignmentOrder',
+        'step5.compoundOperators',
+        'step5.compoundThroughSyntax',
+        'step5.logicalAssignment',
+        'step5.compoundReceiverOnce',
+        'step5.compoundErrors',
+        'step5.variableCompoundIsMethodCall',
+        'step5.evalPayloadUnchanged',
+        'step5.derivedConstructor',
+        'step5.longChainLoop',
         'step3.runOffThreadReturnsValue',
         'step3.runOffThreadUsesEngine',
         'step3.runOffThreadRethrows',
         'step3.runOffThreadNested',
         'step3.runFromManyThreads',
         'step4.retainedValueCrossesThreads',
-        'step4.releaseHandlesFromOtherThread'
+        'step4.releaseHandlesFromOtherThread',
+        'step5.evalFromOtherThread'
       ]));
     });
 
@@ -96,10 +119,6 @@ export default function arkTSRuntimeTest() {
 
     it('alreadyBoundExceptionNames', 0, () => {
       expect(runArkTSTest('step1.alreadyBoundExceptionNames')).assertEqual('');
-    });
-
-    it('evalStub', 0, () => {
-      expect(runArkTSTest('step1.evalStub')).assertEqual('');
     });
 
     it('dynamicSyntaxReachesEval', 0, () => {
@@ -256,6 +275,161 @@ export default function arkTSRuntimeTest() {
       done();
     });
   });
+
+  describe('Step5_Evaluation', () => {
+    it('memberRead', 0, () => {
+      expect(runArkTSTest('step5.memberRead', new Target())).assertEqual('');
+    });
+
+    it('primitiveReceivers', 0, () => {
+      const t = new Target();
+      expect(runArkTSTest('step5.primitiveReceivers', t)).assertEqual('');
+      expect(t.str).assertEqual('héllo');
+    });
+
+    it('memberUpdate', 0, () => {
+      const t = new Target();
+      expect(runArkTSTest('step5.memberUpdate', t)).assertEqual('');
+      expect(t.num).assertEqual(7);
+      expect(t.a.b.c).assertEqual(99);
+      expect(t.str).assertEqual('set');
+    });
+
+    it('memberOfUndefinedOrNull', 0, () => {
+      expect(runArkTSTest('step5.memberOfUndefinedOrNull', new Target())).assertEqual('');
+    });
+
+    it('methodCallThis', 0, () => {
+      const t = new Target();
+      resetCallLog();
+      expect(runArkTSTest('step5.methodCallThis', t, callLog)).assertEqual('');
+      expect(callLog.self === t).assertTrue();
+      expect(callLog.calls).assertEqual(1);
+    });
+
+    it('freeCallThisUndefined', 0, () => {
+      resetCallLog();
+      expect(runArkTSTest('step5.freeCallThisUndefined', new Target(), callLog)).assertEqual('');
+      expect(callLog.self === undefined).assertTrue();
+    });
+
+    it('indexCallThis', 0, () => {
+      const t = new Target();
+      resetCallLog();
+      expect(runArkTSTest('step5.indexCallThis', t, callLog)).assertEqual('');
+      expect(callLog.self === t.list).assertTrue();
+      expect(callLog.calls).assertEqual(2);
+    });
+
+    it('receiverEvaluatedOnce', 0, () => {
+      const holder = new CountingHolder(new Target());
+      expect(runArkTSTest('step5.receiverEvaluatedOnce', holder)).assertEqual('');
+      expect(holder.reads).assertEqual(1);
+    });
+
+    it('argumentTypes', 0, () => {
+      resetCallLog();
+      expect(runArkTSTest('step5.argumentTypes', new Target(), callLog, new Rectangle(1, 2))).assertEqual('');
+      expect(JSON.stringify(callLog.argTypes)).assertEqual(
+        JSON.stringify(['bigint', 'number', 'boolean', 'string', 'bigint', 'number', 'object']));
+    });
+
+    it('callNonFunction', 0, () => {
+      expect(runArkTSTest('step5.callNonFunction', new Target())).assertEqual('');
+    });
+
+    it('indexReadWrite', 0, () => {
+      const t = new Target();
+      expect(runArkTSTest('step5.indexReadWrite', t)).assertEqual('');
+      expect(JSON.stringify(t.items)).assertEqual(JSON.stringify([55, 77, 99]));
+      expect(t.str).assertEqual('via string');
+      expect(t.num).assertEqual(4);
+    });
+
+    it('unsupportedIndex', 0, () => {
+      expect(runArkTSTest('step5.unsupportedIndex', new Target())).assertEqual('');
+    });
+
+    it('indexWriteOrder', 0, () => {
+      const log = new OrderLog();
+      expect(runArkTSTest('step5.indexWriteOrder', log)).assertEqual('');
+      expect(JSON.stringify(log.order)).assertEqual(JSON.stringify(['target', 'index', 'value']));
+      expect(log.stored[1]).assertEqual(5);
+    });
+
+    it('compoundAssignmentOrder', 0, () => {
+      const log = new OrderLog();
+      expect(runArkTSTest('step5.compoundAssignmentOrder', log)).assertEqual('');
+      expect(JSON.stringify(log.order)).assertEqual(JSON.stringify(['target', 'index', 'value']));
+      expect(log.stored[1]).assertEqual(5);
+    });
+
+    it('compoundOperators', 0, () => {
+      const t = new Target();
+      expect(runArkTSTest('step5.compoundOperators', t)).assertEqual('');
+      expect(t.big).assertEqual(225n);
+      expect(t.str).assertEqual('a1.52');
+    });
+
+    it('compoundThroughSyntax', 0, () => {
+      const t = new Target();
+      expect(runArkTSTest('step5.compoundThroughSyntax', t)).assertEqual('');
+      expect(t.num).assertEqual(2.5);
+      expect(t.items[0]).assertEqual(11);
+    });
+
+    it('logicalAssignment', 0, () => {
+      const t = new Target();
+      const log = new OrderLog();
+      expect(runArkTSTest('step5.logicalAssignment', t, log)).assertEqual('');
+      expect(t.flag as Object).assertEqual('yes');
+      expect(t.zero).assertEqual(5);
+      expect(t.num).assertEqual(1.5);
+      expect(JSON.stringify(log.order)).assertEqual(JSON.stringify(['value']));
+    });
+
+    it('compoundReceiverOnce', 0, () => {
+      const t = new Target();
+      const holder = new CountingHolder(t);
+      expect(runArkTSTest('step5.compoundReceiverOnce', holder)).assertEqual('');
+      expect(holder.reads).assertEqual(1);
+      expect(t.num).assertEqual(2.5);
+    });
+
+    it('compoundErrors', 0, () => {
+      expect(runArkTSTest('step5.compoundErrors', new Target())).assertEqual('');
+    });
+
+    it('variableCompoundIsMethodCall', 0, () => {
+      expect(runArkTSTest('step5.variableCompoundIsMethodCall', new Target())).assertEqual('');
+    });
+
+    it('evalPayloadUnchanged', 0, () => {
+      expect(runArkTSTest('step5.evalPayloadUnchanged', new Rectangle(1, 2))).assertEqual('');
+    });
+
+    it('derivedConstructor', 0, () => {
+      const t = new Target();
+      expect(runArkTSTest('step5.derivedConstructor', t)).assertEqual('');
+      expect(t.num).assertEqual(2);
+      expect(t.zero).assertEqual(3);
+    });
+
+    it('longChainLoop', 0, () => {
+      expect(runArkTSTest('step5.longChainLoop', new Target())).assertEqual('');
+    });
+
+    it('evalFromOtherThread', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step5.evalFromOtherThread')).assertEqual('');
+      done();
+    });
+  });
+}
+
+function resetCallLog(): void {
+  callLog.self = undefined;
+  callLog.argTypes = [];
+  callLog.calls = 0;
 }
 
 /** Two fresh Rectangles; Cangjie retains the first. Returns WeakRefs to both. */

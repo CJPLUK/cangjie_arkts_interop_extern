@@ -44,6 +44,9 @@ and a step is finished only when its tests and all earlier tests pass.
 | `foreign` is a keyword | Not used as an identifier |
 | ArkTS: allocating garbage triggers only young collections, which never cleared a `WeakRef` (16 collections, 1.8 GB freed); `hidebug.dumpJsHeapData` runs a full one (0.5–0.9 s) | GC tests force collections with a heap dump; memory is measured with `hidebug.getAppVMObjectUsedSize()` after one, not with PSS (too noisy: ±40 MB) |
 | Engine values kept past their scope without a global handle still read correctly until a full GC | Lifetime tests must force a full GC and observe it (`WeakRef`) |
+| The class body cannot call static functions added by an `extend` without qualifying them (`retain(v)` is "undeclared"); the `extend` can call class members unqualified | `runtime.cj` writes `ArkTSRuntime.retain` / `evalPayload` / `toJSValue` |
+| `JSValue.getProperty` works only on objects ("expect object, given string"); `getElement` / `setElement` only on arrays ("expect array, given object"); `toString()` only on strings | Members of primitives are read through `Object(value)`; integer keys on non-arrays use the property named after the number; other values are turned into strings through the global `String` |
+| Cangjie has no `%` on floats; `std.math.fmod` throws for an infinite left side or a zero right side | `operators.cj` handles those cases before calling `fmod` (found by the host tests) |
 
 ## Status
 
@@ -82,6 +85,24 @@ and a step is finished only when its tests and all earlier tests pass.
     collected after the drop.
   - 100 000 handles per round kept instead of dropped: the ArkTS heap grew ~37 MB from round 4
     to round 10 (limit 10 MB); released, it grew at most 1.7 MB.
+- **Step 5 done** (2026-10-08). `eval` / `evalTree` in `runtime.cj`, JS operators in
+  `operators.cj` (pure Cangjie, also compiled by `hosttest/run.sh`), a basic `toJSValue` in
+  `conversion.cj` (the full table is step 6). Host: 35 tests pass (11 new). Device: 64 tests
+  pass on both devices, suite run 3 times (23 new, 1 removed: `step1.evalStub`;
+  `step1.dynamicSyntaxReachesEval` now expects the "not produced by ArkTSRuntime" error).
+  Choices where the design is silent:
+  - `&&=` / `||=` short-circuit as in JS: the value is not evaluated and nothing is written.
+  - Member or index access on `undefined` / `null` → `ExternMemberAccessException` /
+    `ExternIndexedAccessException`, before the value is converted.
+  - Primitive receivers (`e.str.length`, `e.str.toUpperCase()`, `e.str[1]`) read from the
+    wrapper object, with the primitive as `this`; writes to a primitive throw (strict mode).
+  - Negative or too large integer indices become property names (`"-1"`), as in JS.
+  - Compound operators: numbers use JS ToNumber for booleans, `null`, `undefined`; bigint
+    only with bigint (else error, as in JS); string `+` with any primitive; objects
+    unsupported (`ExternCompoundAssignmentException`).
+  Mutation checks, all in one build, each caught by its own test only: method receiver
+  evaluated twice; indexed call with `this` = `undefined`; indexed write converting the value
+  before the index; `||=` evaluating the value; compound receiver evaluated twice.
 
 ## Testing strategy
 
@@ -346,7 +367,8 @@ below.
   Updates return `undefined`.
 - `call`: `ExternMemberAccess` / `ExternIndexedAccess` callee → receiver evaluated once,
   passed as `thisArg`; other callees get `undefined`. Non-function → `ExternFunctionAccessException`.
-- Indexing: `Int64` / `Int32` → `getElement` / `setElement`; `String` → property;
+- Indexing: `Int64` / `Int32` → `getElement` / `setElement` on arrays (property named after
+  the number otherwise, or when negative / too large); `String` → property;
   `Extern` → string key, symbol key, integral number → element, other number → string key;
   else `ExternIndexedAccessException`. Write order: target, index, value.
 - Compound assignment: evaluate receiver and key once, read, compute with `operators.cj`,
