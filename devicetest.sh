@@ -62,18 +62,14 @@ pick_hap() {
 }
 
 # Installs both HAPs on device $1. Returns non-zero on failure.
+# Uninstalls first: reinstalling keeps library files that the new build no longer ships, and a
+# leftover second copy of a Cangjie std library breaks runtime type checks.
 install_on() {
+    "$HDC" -t "$1" uninstall "$BUNDLE" > /dev/null || true
     for hap in "$(pick_hap entry/build/default/outputs/default/entry-default)" \
                "$(pick_hap entry/build/default/outputs/ohosTest/entry-ohosTest)"; do
         echo "== install $hap"
         out="$("$HDC" -t "$1" install -r "$hap")"
-        case "$out" in
-            *"sign info inconsistent"*)
-                # Installed copy was signed differently (e.g. unsigned build); replace it.
-                echo "   signature changed, uninstalling $BUNDLE"
-                "$HDC" -t "$1" uninstall "$BUNDLE" > /dev/null
-                out="$("$HDC" -t "$1" install -r "$hap")" ;;
-        esac
         case "$out" in
             *"install bundle successfully"*) ;;
             *) echo "$out"; return 1 ;;

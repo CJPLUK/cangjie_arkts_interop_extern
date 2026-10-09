@@ -21,8 +21,34 @@ and a step is finished only when its tests and all earlier tests pass.
 - **Package:** `ohos_app_cangjie_entry.arkts` in `entry/src/main/cangjie/arkts/`.
   `entry/src/main/cangjie/index.cj` stays the module entry point.
 - **Toolchain:** `~/.cangjie-sdk/6.1/cangjie/build-tools/bin/cjc` (has `Extern<T>` and
-  `ForeignRuntime<T>` in `std.core`). `entry/libs/arm64-v8a/libcangjie-std-core.so` ships the
-  matching standard library to the emulator and the phone.
+  `ForeignRuntime<T>` in `std.core`). The app ships the matching Cangjie runtime, see
+  "Shipped Cangjie libraries" below.
+
+## Shipped Cangjie libraries
+
+The phone's app launcher (`libcj_environment`, OpenHarmony `cj_environment.cpp`) looks for
+Cangjie libraries in two app folders before the system ones: `libs/arm64/runtime` (the
+runtime) and `libs/arm64/ohos` (checked before `/system/lib64/platformsdk/cjsdk`). A copy at
+the top of `libs/arm64` is only seen by our own library. `entry/libs/arm64-v8a` therefore
+contains:
+
+- `runtime/`: `libcangjie-runtime.so`, `libboundscheck.so` from
+  `~/.cangjie-sdk/6.1/cangjie/build-tools/runtime/lib/linux_ohos_aarch64_cjnative`.
+- `ohos/`: the std libraries our library needs (`libcangjie-std-core.so`, `-collection`,
+  `-math`, ... from the same folder, plus `libpcre2-8`), and `libohos.ark_interop.so`,
+  `libohos.ark_interop_helper.so`, `libohos.hilog.so`, `libohos.labels.so`,
+  `libohos.business_exception.so` copied from the phone
+  (`/system/lib64/platformsdk/cjsdk`): the SDK only has empty link stubs of those.
+
+Why: shipping only `libcangjie-std-core.so` at the top of `libs/arm64` loaded two std-cores
+(ours for our code, the phone's for `ark_interop` and the other system libraries). Runtime
+type checks then disagreed with the Mac: `None<T>` made in generic code was not seen as
+implementing our interface for `T = Int64` and `Bool` (but was for `Float64`, `Int32`,
+`String`). With one std-core everything matches the Mac. The SDK std libraries need the SDK
+runtime (without `runtime/`, the library fails to load). Replacing the system runtime with a
+bind mount does not work: the code-signing check refuses the file. `devicetest.sh` uninstalls
+before installing, because a reinstall keeps library files the new build no longer ships (a
+stale second std-core brought the problem back on the emulator). The libraries add 8.3 MB.
 
 ## Constraints found by compiling small probes against this cjc
 
