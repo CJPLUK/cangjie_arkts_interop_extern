@@ -381,8 +381,4 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     public static func fromExtern<R>(value: Extern<ArkTSRuntime>): R {
         run { ArkTSRuntime.fromJSValue<R>(evalTree(value)) }
     }
-
-    static func notImplemented(operation: String): ExternUnsupportedOperation {
-        ExternUnsupportedOperation("ArkTSRuntime.${operation} is not implemented yet")
-    }
 }

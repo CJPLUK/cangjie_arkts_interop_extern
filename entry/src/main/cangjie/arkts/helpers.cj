@@ -1,8 +1,98 @@
 package ohos_app_cangjie_entry.arkts
 
-/** ArkTS-specific entry points used directly by applications, outside the compiler contract. */
+import ohos.ark_interop.*
+
+/**
+ * ArkTS-specific entry points used directly by applications, outside the compiler contract.
+ * Each runs in one `run`; `Extern` operands may be unevaluated trees.
+ */
 extend ArkTSRuntime {
     public static func undefined(): Extern<ArkTSRuntime> {
-        throw notImplemented("undefined")
+        run { retain(context.undefined().toJSValue()) }
+    }
+
+    public static func null(): Extern<ArkTSRuntime> {
+        run { retain(context.null().toJSValue()) }
+    }
+
+    /** A fresh empty object. */
+    public static func object(): Extern<ArkTSRuntime> {
+        run { retain(context.object().toJSValue()) }
+    }
+
+    /** `globalThis`. */
+    public static func global(): Extern<ArkTSRuntime> {
+        run { retain(context.global.toJSValue()) }
+    }
+
+    /** A new symbol; two calls never give the same symbol. */
+    public static func symbol(description!: String = ""): Extern<ArkTSRuntime> {
+        run { retain(context.symbol(description: description).toJSValue()) }
+    }
+
+    /** JS `lhs === rhs`. */
+    public static func strictEqual(lhs: Extern<ArkTSRuntime>, rhs: Extern<ArkTSRuntime>): Bool {
+        run { evalTree(lhs).strictEqual(evalTree(rhs)) }
+    }
+
+    public static func isNull(value: Extern<ArkTSRuntime>): Bool {
+        run { evalTree(value).isNull() }
+    }
+
+    public static func isUndefined(value: Extern<ArkTSRuntime>): Bool {
+        run { evalTree(value).isUndefined() }
+    }
+
+    /** JS `key in value`: own or inherited. Throws `ExternConversionException` for non-objects. */
+    public static func objectHasProperty(value: Extern<ArkTSRuntime>, key: String): Bool {
+        run { objectOf(evalTree(value)).hasProperty(key) }
+    }
+
+    /** JS `Object.keys(value)`: own enumerable string keys. */
+    public static func objectKeys(value: Extern<ArkTSRuntime>): Array<String> {
+        run { objectOf(evalTree(value)).keys() }
+    }
+
+    /**
+     * Defines (or redefines) an own data property. As with JS `Object.defineProperty`, a refusal
+     * (frozen object, read-only non-configurable property) throws: a `ForeignRuntimeException`
+     * with "TypeError Cannot define property".
+     */
+    public static func objectDefineOwnProperty(
+        value: Extern<ArkTSRuntime>,
+        key: String,
+        propertyValue: Any,
+        isWritable!: Bool = true,
+        isEnumerable!: Bool = true,
+        isConfigurable!: Bool = true
+    ): Bool {
+        run {
+            let target = objectOf(evalTree(value))
+            target.defineOwnProperty(key, toJSValue(propertyValue), isWritable: isWritable,
+                isEnumerable: isEnumerable, isConfigurable: isConfigurable)
+        }
+    }
+
+    /**
+     * Loads an ArkTS module, e.g. `"entry/src/main/ets/Utils"` (no extension; the file must be
+     * listed in `arkOptions.runtimeOnly.sources`), `"@ohos.hilog"` or `"libfoo.so"`. Works only
+     * while ArkTS code is on the stack: from a spawned thread (the call then runs in a posted
+     * JS task) it throws `ForeignRuntimeException` ("Unable to get recordName ..."). A missing
+     * module throws `BusinessException` 34300006 from `ark_interop`.
+     */
+    public static func requireArkModule(specifier: String): Extern<ArkTSRuntime> {
+        run { retain(context.requireArkModule(specifier)) }
+    }
+
+    /** Loads a system NAPI module, e.g. `"hilog"`; `undefined` when it cannot be loaded. */
+    public static func requireSystemNativeModule(moduleName: String, prefix: ?String): Extern<ArkTSRuntime> {
+        run { retain(context.requireSystemNativeModule(moduleName, prefix: prefix)) }
+    }
+
+    private static func objectOf(value: JSValue): JSObject {
+        if (!value.isObject()) {
+            throw ExternConversionException("ArkTS value is not an object")
+        }
+        value.asObject()
     }
 }

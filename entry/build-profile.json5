@@ -9,6 +9,13 @@
     "cangjieOptions": {
       "path": "./cjpm.toml"
     },
+    "arkOptions": {
+      "runtimeOnly": {
+        "sources": [
+          "./src/main/ets/arkts/TestModule.ets"
+        ]
+      }
+    },
     "nativeLib": {
       "filter": {
         "enableOverride": true

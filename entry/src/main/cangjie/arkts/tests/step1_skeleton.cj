@@ -47,12 +47,10 @@ func dynamicSyntaxReachesEval(): String {
 }
 
 func extendHelperReachable(): String {
-    expectThrows<ExternUnsupportedOperation>("undefined()", "ArkTSRuntime.undefined",
-        { => ArkTSRuntime.undefined() })
+    expectEqual("isUndefined(undefined())", ArkTSRuntime.isUndefined(ArkTSRuntime.undefined()), true)
 }
 
 /** Tests in this subpackage rely on reaching internal members of the runtime package. */
 func internalVisibleToSubpackage(): String {
-    expectEqual("notImplemented message", ArkTSRuntime.notImplemented("x").message,
-        "ArkTSRuntime.x is not implemented yet")
+    expectEqual("handleKind", ArkTSRuntime.handleKind(payload()), "foreign payload")
 }

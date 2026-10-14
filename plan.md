@@ -173,6 +173,29 @@ stale second std-core brought the problem back on the emulator). The libraries a
   `ForeignRuntimeException(<that message>)`. Other codes (e.g. 34300005, type mismatch) and
   our own exceptions pass through unchanged; nested `run`s translate once. Mutation checks,
   each caught: no translation (3 tests fail); translating every code (`ownExceptionsNotWrapped`).
+- **Step 8 done** (2026-10-14), helpers as in section 8 of the design, each one `run`. Device:
+  87 tests pass on both devices, suite run 3 times (10 new; `step1.extendHelperReachable`
+  and `step1.internalVisibleToSubpackage` now use real helpers / `handleKind`, since
+  `notImplemented` is gone). ArkTS-side checks that strict ArkTS forbids (`globalThis`,
+  `Object.getOwnPropertyDescriptor`, `Object.freeze` of a literal) live in the plain
+  TypeScript file `ohosTest/ets/test/jsHelpers.ts`. Findings and choices:
+  - `requireArkModule` specifiers are `<module>/src/main/ets/<path>` without extension
+    (`"entry/src/main/ets/arkts/TestModule"`), and the file must be in
+    `arkOptions.runtimeOnly.sources` (entry `build-profile.json5`), since nothing imports it.
+    `"@ohos.hilog"` works too. A missing module throws `BusinessException` 34300006 from
+    `ark_interop` (passed through, like every non-JS-throw code).
+  - **Limitation:** `requireArkModule` needs ArkTS code on the stack. From a spawned thread
+    the call runs in a posted JS task and fails with `ForeignRuntimeException`
+    ("ReferenceError Unable to get recordName and fileName ..."); pinned by
+    `helpersFromOtherThread`. All other helpers work from spawned threads.
+  - `requireSystemNativeModule("hilog", None)` works; an unknown name gives `undefined`.
+  - `objectDefineOwnProperty` never returns `false` in practice: like JS
+    `Object.defineProperty`, a refusal (frozen object, read-only non-configurable property)
+    throws (`ForeignRuntimeException`, "TypeError Cannot define property").
+  - `objectHasProperty` is JS `in` (inherited `area` / `toString` included); `objectKeys` is
+    `Object.keys` (own enumerable strings, no symbols). Arrays count as objects. Primitives,
+    `undefined` and `null` throw `ExternConversionException("ArkTS value is not an object")`.
+  - `symbol()` without a description prints as `Symbol()`.
 
 ## Testing strategy
 
@@ -590,5 +613,7 @@ Done when: all tests pass; smoke page shows all PASS on the phone.
 - ~~Exact exception type thrown by `ark_interop` on a JS exception (step 7).~~ Resolved:
   `BusinessException` code 34300002, see step 7 status. To add to the design doc: the JS
   error value and stack are not available through `ark_interop`.
-- Whether `requireArkModule` paths resolve as `"entry/ets/..."` in this project layout (step 8).
+- ~~Whether `requireArkModule` paths resolve as `"entry/ets/..."` in this project layout
+  (step 8).~~ Resolved: `"entry/src/main/ets/..."`, see step 8 status. To add to the design
+  doc: `requireArkModule` fails off the JS call stack (spawned threads).
 - Compound assignment semantics in step 5 are ours; to confirm or move into the design doc.

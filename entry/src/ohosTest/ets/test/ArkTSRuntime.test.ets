@@ -2,6 +2,7 @@ import { describe, it, expect } from '@ohos/hypium';
 import { runArkTSTest, runArkTSTestOffThread, listArkTSTests } from 'libohos_app_cangjie_entry.so';
 import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
 import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog, Values, Thrower } from './fixtures';
+import { globalObject, frozenObject, describeProperty } from './jsHelpers';
 
 export default function arkTSRuntimeTest() {
   describe('Step0_Infrastructure', () => {
@@ -75,6 +76,15 @@ export default function arkTSRuntimeTest() {
         'step7.jsThrowsBecomeForeignRuntimeException',
         'step7.ownExceptionsNotWrapped',
         'step7.usableAfterJSException',
+        'step8.undefinedAndNull',
+        'step8.objectIsFresh',
+        'step8.globalIsGlobalThis',
+        'step8.symbols',
+        'step8.strictEqualTable',
+        'step8.objectProperties',
+        'step8.defineOwnProperty',
+        'step8.requireArkModule',
+        'step8.requireSystemNativeModule',
         'step3.runOffThreadReturnsValue',
         'step3.runOffThreadUsesEngine',
         'step3.runOffThreadRethrows',
@@ -84,7 +94,8 @@ export default function arkTSRuntimeTest() {
         'step4.releaseHandlesFromOtherThread',
         'step5.evalFromOtherThread',
         'step6.conversionsFromOtherThread',
-        'step7.jsExceptionFromOtherThread'
+        'step7.jsExceptionFromOtherThread',
+        'step8.helpersFromOtherThread'
       ]));
     });
 
@@ -568,6 +579,73 @@ export default function arkTSRuntimeTest() {
 
     it('jsExceptionFromOtherThread', 0, async (done: Function) => {
       expect(await runArkTSTestOffThread('step7.jsExceptionFromOtherThread')).assertEqual('');
+      done();
+    });
+  });
+
+  describe('Step8_Helpers', () => {
+    it('undefinedAndNull', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      expect(runArkTSTest('step8.undefinedAndNull', sink, new Rectangle(1, 2))).assertEqual('');
+      expect(Object.keys(sink).includes('u')).assertTrue();
+      expect(sink['u'] === undefined).assertTrue();
+      expect(sink['n'] === null).assertTrue();
+    });
+
+    it('objectIsFresh', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      expect(runArkTSTest('step8.objectIsFresh', sink)).assertEqual('');
+      expect(typeof sink['o1']).assertEqual('object');
+      expect(Object.keys(sink['o1'] as Object).length).assertEqual(0);
+      expect(sink['o1'] !== sink['o2']).assertTrue();
+    });
+
+    it('globalIsGlobalThis', 0, () => {
+      expect(runArkTSTest('step8.globalIsGlobalThis', globalObject())).assertEqual('');
+    });
+
+    it('symbols', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      expect(runArkTSTest('step8.symbols', sink)).assertEqual('');
+      expect(typeof sink['s1']).assertEqual('symbol');
+      expect(String(sink['s1'])).assertEqual('Symbol(d)');
+      expect(sink['s1'] !== sink['s2']).assertTrue();
+      expect(String(sink['plain'])).assertEqual('Symbol()');
+    });
+
+    it('strictEqualTable', 0, () => {
+      const rect = new Rectangle(1, 2);
+      const pairs: (Object | null | undefined)[][] = [
+        [rect, rect], [rect, new Rectangle(1, 2)], [1.5, 1.5], [NaN, NaN], [0, -0], ['ab', 'a'.concat('b')],
+        [1n, 1n], [1, 1n], [1, '1'], [undefined, null], [null, null], [undefined, undefined], [true, true]
+      ];
+      const expected = pairs.map((p: (Object | null | undefined)[]) => p[0] === p[1]);
+      expect(runArkTSTest('step8.strictEqualTable', pairs, expected, rect)).assertEqual('');
+    });
+
+    it('objectProperties', 0, () => {
+      expect(runArkTSTest('step8.objectProperties', new Rectangle(1, 2), [1, 2])).assertEqual('');
+    });
+
+    it('defineOwnProperty', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      expect(runArkTSTest('step8.defineOwnProperty', sink, frozenObject())).assertEqual('');
+      for (const name of ['WEC', 'WEc', 'WeC', 'Wec', 'wEC', 'wEc', 'weC', 'wec']) {
+        const value = name == 'WEC' ? 'again' : name;
+        expect(describeProperty(sink, name)).assertEqual(`${value} ${name}`);
+      }
+    });
+
+    it('requireArkModule', 0, () => {
+      expect(runArkTSTest('step8.requireArkModule')).assertEqual('');
+    });
+
+    it('requireSystemNativeModule', 0, () => {
+      expect(runArkTSTest('step8.requireSystemNativeModule')).assertEqual('');
+    });
+
+    it('helpersFromOtherThread', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step8.helpersFromOtherThread')).assertEqual('');
       done();
     });
   });
