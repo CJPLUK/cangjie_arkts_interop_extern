@@ -196,6 +196,25 @@ stale second std-core brought the problem back on the emulator). The libraries a
     `Object.keys` (own enumerable strings, no symbols). Arrays count as objects. Primitives,
     `undefined` and `null` throw `ExternConversionException("ArkTS value is not an object")`.
   - `symbol()` without a description prints as `Symbol()`.
+- **Step 9 done** (2026-10-14). Device: 90 tests pass on both devices, suite run 3 times;
+  host: 35 pass. `TestModule.ets` gained `Rectangle` / `createRectangle()` (height 5).
+  `arkts.tests/step9_end_to_end.cj` has `step9.designExample` (the design's section 1
+  example; ArkTS checks `width == 5`, `area() == 25`), `step9.mixedScenario` (1 000
+  iterations on the JS thread) and `step9.mixedScenarioOffThread` (100 iterations from a
+  spawned thread). The mixed scenario covers members, nested members, every compound
+  operator, `||` / `&&`, indexing with `Int64` / `Int32` / `Extern`, string and symbol keys,
+  free calls, `Reflect.construct`, every helper, the conversions (options, nested arrays,
+  limits, `Float16`, `BigInt`) and the four exception kinds. It does not use
+  `requireArkModule` from the spawned thread (step 8 limitation). Mutation checks, each
+  caught: `createRectangle` height 6 (`designExample`), `"?"` instead of `"!"` in the
+  scenario (both mixed tests).
+  - **Deviation:** by the user's choice, the smoke page (`pages/Index.ets`) runs only the
+    three step 9 scenarios, not the whole suite. It shows `PASS/FAIL <name> (<ms>)` lines
+    and `ALL PASS (n)` / `n FAILED`. Verified on the emulator by tapping the button with
+    `uitest`: `ALL PASS (3)`. Times: designExample 1 ms, mixedScenario ×1000 212 ms,
+    off-thread ×100 899 ms (about 9 ms per iteration, which is the cost of posting to the JS
+    thread, a target for step 10). Not checked on the phone, which was locked; that has to
+    be done by hand.
 
 ## Testing strategy
 

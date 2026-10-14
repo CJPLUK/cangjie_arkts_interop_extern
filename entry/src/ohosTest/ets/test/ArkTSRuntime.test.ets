@@ -85,6 +85,8 @@ export default function arkTSRuntimeTest() {
         'step8.defineOwnProperty',
         'step8.requireArkModule',
         'step8.requireSystemNativeModule',
+        'step9.designExample',
+        'step9.mixedScenario',
         'step3.runOffThreadReturnsValue',
         'step3.runOffThreadUsesEngine',
         'step3.runOffThreadRethrows',
@@ -95,7 +97,8 @@ export default function arkTSRuntimeTest() {
         'step5.evalFromOtherThread',
         'step6.conversionsFromOtherThread',
         'step7.jsExceptionFromOtherThread',
-        'step8.helpersFromOtherThread'
+        'step8.helpersFromOtherThread',
+        'step9.mixedScenarioOffThread'
       ]));
     });
 
@@ -646,6 +649,30 @@ export default function arkTSRuntimeTest() {
 
     it('helpersFromOtherThread', 0, async (done: Function) => {
       expect(await runArkTSTestOffThread('step8.helpersFromOtherThread')).assertEqual('');
+      done();
+    });
+  });
+
+  // The same scenarios run from the smoke page in entry/src/main/ets/pages/Index.ets.
+  describe('Step9_EndToEnd', () => {
+    it('designExample', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      expect(runArkTSTest('step9.designExample', sink)).assertEqual('');
+      const rect = sink['rect'] as Rectangle;
+      expect(rect.width).assertEqual(5);
+      expect(rect.area()).assertEqual(25);
+    });
+
+    it('mixedScenario', 0, () => {
+      const start = Date.now();
+      expect(runArkTSTest('step9.mixedScenario')).assertEqual('');
+      hilog.info(0, 'ArkTSRuntimeTest', 'mixedScenario: 1000 iterations in %{public}d ms', Date.now() - start);
+    });
+
+    it('mixedScenarioOffThread', 0, async (done: Function) => {
+      const start = Date.now();
+      expect(await runArkTSTestOffThread('step9.mixedScenarioOffThread')).assertEqual('');
+      hilog.info(0, 'ArkTSRuntimeTest', 'mixedScenarioOffThread: 100 iterations in %{public}d ms', Date.now() - start);
       done();
     });
   });
