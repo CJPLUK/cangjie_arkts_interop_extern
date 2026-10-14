@@ -351,12 +351,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         throw ExternCompoundAssignmentException("Unsupported operand for '+='")
     }
 
+    /** Converts a Cangjie value to ArkTS (type mapping in `conversion.cj`). */
     public static func toExtern<R>(value: R): Extern<ArkTSRuntime> {
-        throw notImplemented("toExtern")
+        run { ArkTSRuntime.retain(ArkTSRuntime.toJSValue(value)) }
     }
 
+    /** Evaluates `value` and reads it as `R`; wrong JS types throw `ExternConversionException`. */
     public static func fromExtern<R>(value: Extern<ArkTSRuntime>): R {
-        throw notImplemented("fromExtern")
+        run { ArkTSRuntime.fromJSValue<R>(evalTree(value)) }
     }
 
     static func notImplemented(operation: String): ExternUnsupportedOperation {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { runArkTSTest, runArkTSTestOffThread, listArkTSTests } from 'libohos_app_cangjie_entry.so';
 import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
-import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog } from './fixtures';
+import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog, Values } from './fixtures';
 
 export default function arkTSRuntimeTest() {
   describe('Step0_Infrastructure', () => {
@@ -20,9 +20,6 @@ export default function arkTSRuntimeTest() {
         'step1.notBoundExceptionNames',
         'step1.alreadyBoundExceptionNames',
         'step1.dynamicSyntaxReachesEval',
-        'step1.toExternStub',
-        'step1.implicitConversionReachesToExtern',
-        'step1.fromExternStub',
         'step1.extendHelperReachable',
         'step1.internalVisibleToSubpackage',
         'step2.runtimeIsBound',
@@ -67,6 +64,13 @@ export default function arkTSRuntimeTest() {
         'step5.evalPayloadUnchanged',
         'step5.derivedConstructor',
         'step5.longChainLoop',
+        'step6.toExternTypes',
+        'step6.fromExternTypes',
+        'step6.roundTrip',
+        'step6.largeValues',
+        'step6.externInputs',
+        'step6.conversionFailures',
+        'step6.implicitConversion',
         'step3.runOffThreadReturnsValue',
         'step3.runOffThreadUsesEngine',
         'step3.runOffThreadRethrows',
@@ -74,7 +78,8 @@ export default function arkTSRuntimeTest() {
         'step3.runFromManyThreads',
         'step4.retainedValueCrossesThreads',
         'step4.releaseHandlesFromOtherThread',
-        'step5.evalFromOtherThread'
+        'step5.evalFromOtherThread',
+        'step6.conversionsFromOtherThread'
       ]));
     });
 
@@ -126,18 +131,6 @@ export default function arkTSRuntimeTest() {
 
     it('dynamicSyntaxReachesEval', 0, () => {
       expect(runArkTSTest('step1.dynamicSyntaxReachesEval')).assertEqual('');
-    });
-
-    it('toExternStub', 0, () => {
-      expect(runArkTSTest('step1.toExternStub')).assertEqual('');
-    });
-
-    it('implicitConversionReachesToExtern', 0, () => {
-      expect(runArkTSTest('step1.implicitConversionReachesToExtern')).assertEqual('');
-    });
-
-    it('fromExternStub', 0, () => {
-      expect(runArkTSTest('step1.fromExternStub')).assertEqual('');
     });
 
     it('extendHelperReachable', 0, () => {
@@ -447,6 +440,104 @@ export default function arkTSRuntimeTest() {
 
     it('evalFromOtherThread', 0, async (done: Function) => {
       expect(await runArkTSTestOffThread('step5.evalFromOtherThread')).assertEqual('');
+      done();
+    });
+  });
+
+  describe('Step6_Conversions', () => {
+    // [field, typeof, String(value)] for each value stored by step6.toExternTypes.
+    it('toExternTypes', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      const rect = new Rectangle(1, 2);
+      expect(runArkTSTest('step6.toExternTypes', sink, rect)).assertEqual('');
+      const rows: string[][] = [
+        ['unit', 'undefined', 'undefined'],
+        ['bool', 'boolean', 'true'],
+        ['int8Min', 'number', '-128'],
+        ['int8Max', 'number', '127'],
+        ['int16', 'number', '-32768'],
+        ['int32', 'number', '2147483647'],
+        ['uint8', 'number', '255'],
+        ['uint16', 'number', '65535'],
+        ['uint32Max', 'number', '4294967295'],
+        ['int64Min', 'bigint', '-9223372036854775808'],
+        ['int64Max', 'bigint', '9223372036854775807'],
+        ['uint64Max', 'bigint', '18446744073709551615'],
+        ['float16', 'number', '0.0999755859375'],
+        ['float32', 'number', '1.100000023841858'],
+        ['float64', 'number', '0.1'],
+        ['nan', 'number', 'NaN'],
+        ['inf', 'number', 'Infinity'],
+        ['negInf', 'number', '-Infinity'],
+        ['negZero', 'number', '0'],
+        ['bigint', 'bigint', '123456789012345678901234567890'],
+        ['emptyString', 'string', ''],
+        ['text', 'string', 'héllo 日本 😀'],
+        ['some', 'number', '7'],
+        ['none', 'undefined', 'undefined'],
+        ['emptyArray', 'object', ''],
+        ['int64Array', 'object', '1,2']
+      ];
+      for (const row of rows) {
+        expect(`${row[0]}: ${typeof sink[row[0]]} ${String(sink[row[0]])}`).assertEqual(`${row[0]}: ${row[1]} ${row[2]}`);
+      }
+      expect(Object.keys(sink).includes('unit')).assertTrue();
+      expect(1 / (sink['negZero'] as number)).assertEqual(-Infinity);
+      expect(Array.isArray(sink['emptyArray'])).assertTrue();
+      expect(typeof (sink['int64Array'] as bigint[])[0]).assertEqual('bigint');
+      expect(JSON.stringify(sink['nested'])).assertEqual('[[1],[2,3]]');
+      const options = sink['optionArray'] as (number | undefined)[];
+      expect(options.length).assertEqual(2);
+      expect(options[0]).assertEqual(1.5);
+      expect(options[1] === undefined).assertTrue();
+      const mixed = sink['mixed'] as Object[];
+      expect(mixed.length).assertEqual(4);
+      expect(mixed[0] as string).assertEqual('a');
+      expect(mixed[1] === rect).assertTrue();
+      expect(mixed[2] as number).assertEqual(1.5);
+      expect(mixed[3] === undefined).assertTrue();
+    });
+
+    it('fromExternTypes', 0, () => {
+      expect(runArkTSTest('step6.fromExternTypes', new Values())).assertEqual('');
+    });
+
+    it('roundTrip', 0, () => {
+      expect(runArkTSTest('step6.roundTrip')).assertEqual('');
+    });
+
+    it('largeValues', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      expect(runArkTSTest('step6.largeValues', sink)).assertEqual('');
+      const text = sink['longString'] as string;
+      expect(text.length).assertEqual(1 << 20);
+      expect(text.charAt(12345)).assertEqual('é');
+      const numbers = sink['bigArray'] as number[];
+      expect(numbers.length).assertEqual(100000);
+      expect(numbers[99999]).assertEqual(99999);
+    });
+
+    it('externInputs', 0, () => {
+      expect(runArkTSTest('step6.externInputs', new Target())).assertEqual('');
+    });
+
+    it('conversionFailures', 0, () => {
+      expect(runArkTSTest('step6.conversionFailures', new Values())).assertEqual('');
+    });
+
+    it('implicitConversion', 0, () => {
+      const sink: Record<string, Object | null | undefined> = {};
+      expect(runArkTSTest('step6.implicitConversion', sink)).assertEqual('');
+      expect(typeof sink['implicit']).assertEqual('bigint');
+      expect(sink['implicit'] === 42n).assertTrue();
+      const items = sink['implicitArray'] as Object[];
+      expect(items.length).assertEqual(2);
+      expect(items[0] === 1n).assertTrue();
+      expect(items[1] as string).assertEqual('a');
+    });
+
+    it('conversionsFromOtherThread', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step6.conversionsFromOtherThread')).assertEqual('');
       done();
     });
   });

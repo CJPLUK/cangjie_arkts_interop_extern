@@ -73,6 +73,7 @@ stale second std-core brought the problem back on the emulator). The libraries a
 | The class body cannot call static functions added by an `extend` without qualifying them (`retain(v)` is "undeclared"); the `extend` can call class members unqualified | `runtime.cj` writes `ArkTSRuntime.retain` / `evalPayload` / `toJSValue` |
 | `JSValue.getProperty` works only on objects ("expect object, given string"); `toString()` only on strings | Members of primitives are read through `Object(value)`; other values are turned into strings through the global `String` |
 | `getElement` / `setElement` differ from JS (probed on the phone, array `[10, 20, 30]`): both work only on arrays ("expect array, given object"); `getElement` throws "index out of range" at and past `length` (JS reads `undefined`) and at -1; `setElement(-1)` throws; `setElement(4294967295)` stores the value but sets `length` to 0 while elements 0–2 remain; `setElement(≥ 2^32)` throws `OverflowException`. Appending and sparse writes up to 4294967294 behave like JS. `setProperty` / `getProperty` with the number's name (`"3"`, `"-1"`, `"4294967294"`, `"4294967295"`) match JS in every case, including `length` | Not used: every numeric index is a property name. Plain ArkTS on the phone has exactly the JS rules (`items[5]` undefined, `-1` / `4294967295` plain properties, `4294967294` the last element) |
+| `extend Extern<R> <: I` fails ("extending type 'Enum-Extern<...>' is not allowed"); conditional extensions (`extend<T> Array<T> <: I`) and `TypeTag<R>() as I` in generic code work | `conversion.cj` handles `Extern` as an explicit case; `Array` / `Option` are extended unconditionally and convert elements dynamically |
 | Cangjie has no `%` on floats; `std.math.fmod` throws for an infinite left side or a zero right side | `operators.cj` handles those cases before calling `fmod` (found by the host tests) |
 
 ## Status
@@ -140,6 +141,26 @@ stale second std-core brought the problem back on the emulator). The libraries a
   Mutation checks, all in one build, each caught by its own test only: method receiver
   evaluated twice; indexed call with `this` = `undefined`; indexed write converting the value
   before the index; `||=` evaluating the value; compound receiver evaluated twice.
+- **Step 6 done** (2026-10-14). Suite run 4 times on the phone, once on the emulator (its
+  `hdc` connection kept dropping to "Offline", once mid-install; no test failed). Every
+  mapped type implements two internal interfaces in `conversion.cj`, `ToJS` (`toJS()`) and
+  `FromJS<T>` (`static fromJS(JSValue)`), through `extend`s. `toJSValue` matches
+  `Extern` first, then `ToJS`. `fromExtern<R>` reaches `R.fromJS` through
+  `TypeTag<R>() as JSReader` (a conditional extension), with `Extern<ArkTSRuntime>` as the
+  identity case. `Array<T>` / `Option<T>` convert each element through the same two
+  functions, so nesting works to any depth. One consequence: an unsupported element type only
+  fails when an element is actually converted (an empty `Array<Rune>` becomes `[]`). Device:
+  72 tests pass on both devices (8 new; 3 step 1 stub tests removed: `toExternStub`,
+  `implicitConversionReachesToExtern`, `fromExternStub`, now covered by step 6). Choices
+  where the design is silent:
+  - Reads are strict about the JS type: `Int64` / `UInt64` accept only bigint (not number),
+    `Bool` only boolean, `String` only string; anything else gives `ExternConversionException`
+    ("Cannot convert ArkTS <type> to <Target>").
+  - Narrow integers need an integral number in range ("ArkTS number does not fit Int8");
+    `Float16` / `Float32` round like a Cangjie float conversion.
+  - `Unit` accepts any value; `Option` reads `undefined` and `null` as `None`.
+  Mutation checks, both in one build, each caught: `Int64` sent as a number (7 tests fail);
+  fractional numbers accepted as integers (`conversionFailures`).
 
 ## Testing strategy
 

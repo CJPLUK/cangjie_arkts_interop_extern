@@ -119,6 +119,33 @@ export class OrderLog {
   }
 }
 
+// One field per JS kind and boundary, read by Cangjie with `fromExtern`.
+export class Values {
+  bool: boolean = true;
+  int8Min: number = -128;
+  int8Max: number = 127;
+  uint32Max: number = 4294967295;
+  n300: number = 300;
+  int64Min: bigint = -9223372036854775808n;
+  int64Max: bigint = 9223372036854775807n;
+  uint64Max: bigint = 18446744073709551615n;
+  big: bigint = 123456789012345678901234567890n;
+  float: number = 0.1;
+  nan: number = NaN;
+  inf: number = Infinity;
+  negInf: number = -Infinity;
+  negZero: number = -0;
+  empty: string = '';
+  text: string = 'héllo 日本 😀';
+  five: string = '5';
+  undef: Object | undefined = undefined;
+  nul: Object | null = null;
+  nested: number[][] = [[1, 2], [], [3]];
+  optional: (number | undefined)[] = [1, undefined, 3];
+  mixed: (string | number | boolean | null)[] = ['a', 1.5, true, null];
+  obj: Rectangle = new Rectangle(1, 2);
+}
+
 export class Thrower {
   boom(): void {
     throw new Error('boom');
