@@ -5,6 +5,10 @@ import std.sync.Condition
 import ohos.ark_interop.JSContext
 import ohos.ark_interop.JSValue
 import ohos.ark_interop.JSKeyable
+import ohos.business_exception.BusinessException
+
+/** `BusinessException.code` of an exception thrown by JS code ("Outside error occurred"). */
+const JS_EXCEPTION_CODE: Int32 = 34300002
 
 /** Outcome of an operation run on the JS thread, carried back to the waiting thread. */
 private enum ArkTSResult<R> {
@@ -63,7 +67,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (context.isInBindThread()) {
             // (a) already on JS thread: run immediately
             return context.newScope {
-                operation()
+                translatingJSExceptions(operation)
             }
         }
 
@@ -79,7 +83,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             let completed: ArkTSResult<R> =
                 try {
                     let res = context.newScope {
-                        operation()
+                        translatingJSExceptions(operation)
                     }
                     ArkTSResult.Ok(res)
                 } catch (e: Exception) {
@@ -97,6 +101,23 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 case Ok(value) => value
                 case Err(error) => throw error
             }
+        }
+    }
+
+    /**
+     * A JS throw reaches Cangjie as a `BusinessException` with code 34300002, whose message
+     * holds the JS message and stack ("Outside error occurred, ArkTS exception, ..."); the JS
+     * value itself is not available. It becomes a `ForeignRuntimeException` with that message.
+     * Other `ark_interop` errors and our own exceptions pass through unchanged.
+     */
+    private static func translatingJSExceptions<R>(operation: () -> R): R {
+        try {
+            operation()
+        } catch (e: BusinessException) {
+            if (e.code == JS_EXCEPTION_CODE) {
+                throw ForeignRuntimeException(e.message)
+            }
+            throw e
         }
     }
 

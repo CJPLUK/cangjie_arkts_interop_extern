@@ -11,7 +11,7 @@ public type Scenario = (JSContext, Array<JSValue>) -> String
 
 func allScenarios(): Array<(String, Scenario)> {
     concat([step0Scenarios(), step1Scenarios(), step2Scenarios(), step3Scenarios(), step4Scenarios(), step5Scenarios(),
-        step6Scenarios()])
+        step6Scenarios(), step7Scenarios()])
 }
 
 func concat<T>(groups: Array<Array<T>>): Array<T> {
@@ -29,7 +29,7 @@ func concat<T>(groups: Array<Array<T>>): Array<T> {
 public type OffThreadScenario = () -> String
 
 func allOffThreadScenarios(): Array<(String, OffThreadScenario)> {
-    concat([step3OffThreadScenarios(), step4OffThreadScenarios(), step5OffThreadScenarios(), step6OffThreadScenarios()])
+    concat([step3OffThreadScenarios(), step4OffThreadScenarios(), step5OffThreadScenarios(), step6OffThreadScenarios(), step7OffThreadScenarios()])
 }
 
 /** Names of all scenarios: those run on the JS thread first, then the off-thread ones. */

@@ -161,6 +161,18 @@ stale second std-core brought the problem back on the emulator). The libraries a
   - `Unit` accepts any value; `Option` reads `undefined` and `null` as `None`.
   Mutation checks, both in one build, each caught: `Int64` sent as a number (7 tests fail);
   fractional numbers accepted as integers (`conversionFailures`).
+- **Step 7 done** (2026-10-14). Device: 77 tests pass on both devices, suite run 3 times
+  (5 new). Exploration (pinned by `step7.arkInteropJSException`, calling `ark_interop`
+  directly): every JS throw (`new Error("boom")`, a thrown string, an engine `TypeError` from
+  calling `undefined`, a throwing getter) raises `BusinessException` with `code` 34300002 and
+  the message `Outside error occurred, ArkTS exception, [code: 0, ]message: <JS text>, stack: .`
+  (`<JS text>` is e.g. `Error\nboom`, `boom string`, `TypeError\nmissing is not callable`,
+  `[[Error]]boom getter`). The stack is always empty and `getData` holds nothing, so the JS
+  error value is lost. The engine stays usable. Implementation: `run` wraps the operation in
+  `translatingJSExceptions`, which turns code 34300002 into
+  `ForeignRuntimeException(<that message>)`. Other codes (e.g. 34300005, type mismatch) and
+  our own exceptions pass through unchanged; nested `run`s translate once. Mutation checks,
+  each caught: no translation (3 tests fail); translating every code (`ownExceptionsNotWrapped`).
 
 ## Testing strategy
 
@@ -575,6 +587,8 @@ Done when: all tests pass; smoke page shows all PASS on the phone.
 
 ## Open points
 
-- Exact exception type thrown by `ark_interop` on a JS exception (step 7).
+- ~~Exact exception type thrown by `ark_interop` on a JS exception (step 7).~~ Resolved:
+  `BusinessException` code 34300002, see step 7 status. To add to the design doc: the JS
+  error value and stack are not available through `ark_interop`.
 - Whether `requireArkModule` paths resolve as `"entry/ets/..."` in this project layout (step 8).
 - Compound assignment semantics in step 5 are ours; to confirm or move into the design doc.

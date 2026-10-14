@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { runArkTSTest, runArkTSTestOffThread, listArkTSTests } from 'libohos_app_cangjie_entry.so';
 import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
-import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog, Values } from './fixtures';
+import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog, Values, Thrower } from './fixtures';
 
 export default function arkTSRuntimeTest() {
   describe('Step0_Infrastructure', () => {
@@ -71,6 +71,10 @@ export default function arkTSRuntimeTest() {
         'step6.externInputs',
         'step6.conversionFailures',
         'step6.implicitConversion',
+        'step7.arkInteropJSException',
+        'step7.jsThrowsBecomeForeignRuntimeException',
+        'step7.ownExceptionsNotWrapped',
+        'step7.usableAfterJSException',
         'step3.runOffThreadReturnsValue',
         'step3.runOffThreadUsesEngine',
         'step3.runOffThreadRethrows',
@@ -79,7 +83,8 @@ export default function arkTSRuntimeTest() {
         'step4.retainedValueCrossesThreads',
         'step4.releaseHandlesFromOtherThread',
         'step5.evalFromOtherThread',
-        'step6.conversionsFromOtherThread'
+        'step6.conversionsFromOtherThread',
+        'step7.jsExceptionFromOtherThread'
       ]));
     });
 
@@ -538,6 +543,31 @@ export default function arkTSRuntimeTest() {
 
     it('conversionsFromOtherThread', 0, async (done: Function) => {
       expect(await runArkTSTestOffThread('step6.conversionsFromOtherThread')).assertEqual('');
+      done();
+    });
+  });
+
+  describe('Step7_VMExceptions', () => {
+    it('arkInteropJSException', 0, () => {
+      expect(runArkTSTest('step7.arkInteropJSException', new Thrower())).assertEqual('');
+    });
+
+    it('jsThrowsBecomeForeignRuntimeException', 0, () => {
+      expect(runArkTSTest('step7.jsThrowsBecomeForeignRuntimeException', new Thrower())).assertEqual('');
+    });
+
+    it('ownExceptionsNotWrapped', 0, () => {
+      expect(runArkTSTest('step7.ownExceptionsNotWrapped', new Target())).assertEqual('');
+    });
+
+    it('usableAfterJSException', 0, () => {
+      const t = new Thrower();
+      expect(runArkTSTest('step7.usableAfterJSException', t)).assertEqual('');
+      expect(t.calls).assertEqual(2);
+    });
+
+    it('jsExceptionFromOtherThread', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step7.jsExceptionFromOtherThread')).assertEqual('');
       done();
     });
   });

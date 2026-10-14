@@ -146,8 +146,27 @@ export class Values {
   obj: Rectangle = new Rectangle(1, 2);
 }
 
+// Each way JS code can throw, for the step 7 scenarios.
 export class Thrower {
+  missing: Object | undefined = undefined;
+  calls: number = 0;
+
   boom(): void {
+    this.calls++;
     throw new Error('boom');
+  }
+
+  // ArkTS only allows throwing Errors; the cast is type-only, so a plain string is thrown.
+  throwString(): void {
+    throw 'boom string' as Object as Error;
+  }
+
+  // Calls `undefined`: the engine itself raises a TypeError.
+  typeError(): void {
+    (this.missing as () => void)();
+  }
+
+  get failingGetter(): number {
+    throw new Error('boom getter');
   }
 }
