@@ -1,9 +1,9 @@
-/node_modules
-/oh_modules
-/local.properties
-/.idea
+**/node_modules
+**/oh_modules
+**/local.properties
+**/.idea
 **/build
-/.hvigor
+**/.hvigor
 /.devicetest
 .cxx
 /.clangd
@@ -17,3 +17,4 @@
 **/module_**_entry.cj
 **/IDL_Dependencies_List~
 **/build-script-cache
+**/entry/libs

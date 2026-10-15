@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SDK="${CANGJIE_SDK:-$HOME/.cangjie-sdk/6.1/cangjie}"
 CJC="$SDK/build-tools/bin/cjc"
 OUT="$HERE/build"
-ARKTS="$HERE/../entry/src/main/cangjie/arkts"
+ARKTS="$HERE/../arkts_runtime/src"
 
 mkdir -p "$OUT"
 rm -f "$OUT/hosttest" "$OUT"/shared_*.cj

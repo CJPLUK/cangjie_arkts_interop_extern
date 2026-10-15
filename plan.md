@@ -18,8 +18,9 @@ and a step is finished only when its tests and all earlier tests pass.
   `isBound()`. `index.cj` binds the runtime when the module is registered
   (`if (!ArkTSRuntime.isBound()) { ArkTSRuntime.bind(runtime) }`).
 - **`Int64` / `UInt64` map to `bigint`**, as in the design's type mapping table.
-- **Package:** `ohos_app_cangjie_entry.arkts` in `entry/src/main/cangjie/arkts/`.
-  `entry/src/main/cangjie/index.cj` stays the module entry point.
+- **Package:** `arkts_runtime` in `arkts_runtime/src/` (a `cjpm` static library since step 10;
+  until step 9 it was `ohos_app_cangjie_entry.arkts` inside `entry`). Each app's
+  `entry/src/main/cangjie/index.cj` is its module entry point and binds the runtime.
 - **Toolchain:** `~/.cangjie-sdk/6.1/cangjie/build-tools/bin/cjc` (has `Extern<T>` and
   `ForeignRuntime<T>` in `std.core`). The app ships the matching Cangjie runtime, see
   "Shipped Cangjie libraries" below.
@@ -29,8 +30,9 @@ and a step is finished only when its tests and all earlier tests pass.
 The phone's app launcher (`libcj_environment`, OpenHarmony `cj_environment.cpp`) looks for
 Cangjie libraries in two app folders before the system ones: `libs/arm64/runtime` (the
 runtime) and `libs/arm64/ohos` (checked before `/system/lib64/platformsdk/cjsdk`). A copy at
-the top of `libs/arm64` is only seen by our own library. `entry/libs/arm64-v8a` therefore
-contains:
+the top of `libs/arm64` is only seen by our own library. `arkts_runtime/libs/arm64-v8a`
+(copied into each app's `entry/libs` by its `hvigorfile.ts` on every build; `entry/libs` is
+generated and ignored by git) therefore contains:
 
 - `runtime/`: `libcangjie-runtime.so`, `libboundscheck.so` from
   `~/.cangjie-sdk/6.1/cangjie/build-tools/runtime/lib/linux_ohos_aarch64_cjnative`.
@@ -50,6 +52,15 @@ bind mount does not work: the code-signing check refuses the file. `devicetest.s
 before installing, because a reinstall keeps library files the new build no longer ships (a
 stale second std-core brought the problem back on the emulator). The libraries add 8.3 MB.
 
+Apps with a Cangjie UI also ship `arkts_runtime/libs-ui/arm64-v8a/ohos` (16 MB, 106 files):
+the Cangjie UI libraries (`kit.ArkUI`, `ohos.arkui.*`, `ohos.base`, ...) that the app's
+library needs, copied from the phone's `/system/lib64/platformsdk/cjsdk` (the dependency
+closure, computed with `llvm-readelf -d`). Without them the system copies load and pull in the
+system runtime and std-core next to ours, and the app crashes at start (SIGSEGV in
+`std.core::package_global_init`). With them, the app maps a single runtime and std-core, both
+from its own `libs` (checked in `/proc/<pid>/maps`). The phone's copies also work on the
+emulator.
+
 ## Constraints found by compiling small probes against this cjc
 
 | Finding | Consequence |
@@ -60,7 +71,7 @@ stale second std-core brought the problem back on the emulator). The libraries a
 | `case x: Extern<ArkTSRuntime>` type patterns work | Used in `toJSValue` / `readIndex` |
 | `std.reflect` is not available | Not used |
 | `JSKeyable` is only `String`, `JSString`, `JSSymbol` (not `Float64`) | Numeric indices become property names (their JS string form, `"5"`) instead of `getProperty(Float64)` (deviation from the design) |
-| `--enable-extern-sequence` exists | Used to test `ExternSequence` in step 10 |
+| `--enable-extern-sequence` exists | Used to test `ExternSequence` in step 11 |
 | `std.unittest` is available for macOS | Host tests in layer 1 below |
 | Compiler bug: `let _: Extern<R> = expr` runs `expr` but skips `toExtern` (named bindings, assignments and arguments are fine) | Pinned by `wildcardBindingSkipsToExtern` in `hosttest/compiler_contract_test.cj`; flip it when cjc is fixed |
 | Without the forced cast, `R.fromExtern<U>(e.a.b)` receives the already evaluated `r1`, not the tree (the argument is desugared like any call argument) | `fromExtern` cannot avoid retaining the result until `(U)e` is supported; pinned by `explicitFromExternReceivesEvaluatedValue` |
@@ -213,8 +224,60 @@ stale second std-core brought the problem back on the emulator). The libraries a
     and `ALL PASS (n)` / `n FAILED`. Verified on the emulator by tapping the button with
     `uitest`: `ALL PASS (3)`. Times: designExample 1 ms, mixedScenario ×1000 212 ms,
     off-thread ×100 899 ms (about 9 ms per iteration, which is the cost of posting to the JS
-    thread, a target for step 10). Not checked on the phone, which was locked; that has to
+    thread, a target for step 11). Not checked on the phone, which was locked; that has to
     be done by hand.
+
+- **Step 10 done** (2026-10-14). The runtime is the `cjpm` static library `arkts_runtime/`
+  (package `arkts_runtime`, scenarios in `arkts_runtime.tests`); today's project moved to
+  `testapp/` and has no runtime code left; `demos/hello` and `demos/rectangle` are separate
+  DevEco projects. Device: 93 tests pass on both devices, suite run 3 times (3 new in
+  `Step10_Function`); host: 35 pass. Both demos and the smoke page (`ALL PASS (3)`, which
+  also completes the phone check left open in step 9) checked with `uitest` on the emulator
+  and the phone, with all three apps installed at once. `./demo.sh demos/<name>` builds,
+  installs and starts a demo.
+  - Probe 1: `cjpm` accepts `arkts_runtime = { path = "../../arkts_runtime" }` outside the
+    project root. The app's `[profile.build.combined]` must go: it merges the library's
+    packages and reports a cycle (`arkts_runtime` / `arkts_runtime.tests`).
+  - Probe 2: hvigor does not package a symlinked `entry/libs`; a real copy works. Each app's
+    `entry/hvigorfile.ts` copies `arkts_runtime/libs` (and `libs-ui` for Cangjie UI apps)
+    into `entry/libs` at every build, so DevEco builds work too. Cangjie UI apps need
+    `libs-ui`, see "Shipped Cangjie libraries".
+  - Probe 3 not needed: each library package is its own static archive
+    (`libarkts_runtime.a`, `libarkts_runtime.tests.a`) and only referenced packages are
+    linked; the demos contain no scenario code (no `arkts_runtime.tests` symbols or strings).
+    No `@When` flag.
+  - Probe 5: a Cangjie exception thrown in an `ark_interop` function callback reaches ArkTS
+    as an `Error` ("IllegalStateException: cangjie boom" plus the Cangjie stack), which
+    ArkTS can catch; `ark_interop` has no API to throw a JS error itself.
+  - `ArkTSRuntime.function(body)` added (`helpers.cj`). Mutation check, caught: arguments in
+    reverse order (`functionCalls`: `b|a`).
+  - `testapp`'s `index.cj` calling `handleKind` fails to build ("no matching function
+    declaration"), as in step 1.
+  - Demo details: Cangjie UI attributes need their imports (`kit.ArkUI.LengthProp` for
+    `20.vp`); the `hello` button uses `.enabled(!running)`.
+  - Size: the library's shipped files are 8.3 MB (`libs`) and 16 MB (`libs-ui`) in git.
+  - Probe 4 (emulator and phone, in `demos/hello`):
+  - **Pure CangjieUI app (wizard template): not usable.** hvigor refuses `.ets` files in a
+    module with a Cangjie entry ("If the module contains the ArkTS code, the ArkTS code must
+    be used as the entry"); outside `src/main/ets` they are silently not compiled. The only
+    context available is a new engine from `JSRuntime()` (works on the UI thread: `Math`,
+    `requireSystemNativeModule("hilog")`), but it has no `setTimeout` / `setInterval`, and
+    `requireArkModule` fails there ("Unable to get recordName", no ArkTS on the stack).
+  - **Mixed app (user's choice): works.** ArkTS `EntryAbility` and page; the page embeds the
+    Cangjie view with `CJHybridComponent({ library: 'ohos_app_cangjie_entry', component:
+    'HelloView' })` from ohpm `@cangjie/cjhybridcomponent` 1.0.0, and the view is a Cangjie
+    `@HybridComponentEntry @Component` class. Importing our library from the page runs
+    `JSModule.registerModule` (real context, timers available). `sayHello` with a Cangjie
+    `ctx.function` callback drives the Cangjie `@State` once per second, and the screen
+    follows (checked with `uitest` during and after the count).
+  - **`requireArkModule` timing:** fails during `registerModule` (`BusinessException`
+    34300007, "Cannot requireArkModule during initializing cangjie module") and from a
+    Cangjie UI event handler ("Unable to get recordName"); works inside a call from ArkTS
+    into Cangjie. So the page calls an exported Cangjie `init()` once (`aboutToAppear`),
+    which loads and keeps the module; the view uses it later.
+  - Also found: a lambda passed to a function cannot capture a mutable local (`var`) inside
+    a `@HybridComponentEntry` class ("lambda capturing mutable variables needs to be called
+    directly").
 
 ## Testing strategy
 
@@ -249,26 +312,26 @@ compiling the same source files (they must not import `ohos.*`).
 
 ### Layer 2: device tests (emulator and phone, real ArkTS VM)
 
-Instrumented tests in `entry/src/ohosTest` with `@ohos/hypium`, which import
+Instrumented tests in `testapp/entry/src/ohosTest` with `@ohos/hypium`, which import
 `libohos_app_cangjie_entry.so` and call Cangjie test entry points.
 
-- **Cangjie side:** `entry/src/main/cangjie/arkts/tests/` (package
-  `ohos_app_cangjie_entry.arkts.tests`, a subpackage so it can reach internal members) holds
+- **Cangjie side:** `arkts_runtime/src/tests/` (package `arkts_runtime.tests`, a subpackage
+  so it can reach internal members; apps that do not reference it do not link it) holds
   one function per scenario, one file per step, registered in `registry.cj`. Each scenario returns
   `""` on success or a failure message (expected vs actual, or the exception class and
-  message). `index.cj` exports them through `JSModule.registerModule`.
-- **ArkTS side:** `entry/src/ohosTest/ets/test/ArkTSRuntime.test.ets` with one `describe` per
+  message). `testapp`'s `index.cj` exports them through `JSModule.registerModule`.
+- **ArkTS side:** `testapp/entry/src/ohosTest/ets/test/ArkTSRuntime.test.ets` with one `describe` per
   step and one `it` per scenario, asserting `expect(result).assertEqual("")`.
 - **Checks from both sides.** Scenarios receive ArkTS fixture objects as arguments. When
   Cangjie changes a JS value, the ArkTS test checks the effect with plain ArkTS code
   (`expect(rect.width).assertEqual(5)`), independently of our `fromExtern`. When ArkTS
   produces a value, Cangjie checks it after conversion.
-- Fixtures in `entry/src/ohosTest/ets/test/fixtures.ets`: `Rectangle` class (`width`,
+- Fixtures in `testapp/entry/src/ohosTest/ets/test/fixtures.ets`: `Rectangle` class (`width`,
   `height`, `area()`), `calculator` object, functions that record their `this`, arrays, an
   object with a symbol key, a function that throws, a getter with a call counter.
 
 Build and run with `./devicetest.sh` (`DEVICE=<id>` to pick a target, `--all` for every
-connected device; extra arguments go to `aa test`, e.g. `-s class Step0_Infrastructure`). It builds `entry@default` and
+connected device; extra arguments go to `aa test`, e.g. `-s class Step0_Infrastructure`). It builds `testapp`'s `entry@default` and
 `entry@ohosTest` with DevEco's `hvigorw`, installs both HAPs with `hdc`, runs
 `aa test -b com.example.externwithenum -m entry_test -s unittest OpenHarmonyTestRunner`, prints
 one line per test, and exits non-zero on failure. Full runner output is in
@@ -297,8 +360,10 @@ prove the collection ran. The ArkTS test must not hold the object in a local acr
 
 ### Layer 3: manual smoke check
 
-A button in `Index.ets` that runs the whole device suite and shows the report on screen, for
-quick checks on the phone without the test runner.
+A button in `testapp`'s `Index.ets` that runs the step 9 scenarios (by the user's choice,
+not the whole suite) and shows the report on screen, for quick checks on the phone without
+the test runner. The demos (`./demo.sh demos/<name>`) are checked by hand the same way; with
+`uitest` the screen can be read from the Mac (`uitest dumpLayout`, `uitest uiInput click`).
 
 ### Test conventions
 
@@ -315,21 +380,30 @@ quick checks on the phone without the test runner.
 ## Files
 
 ```
-entry/src/main/cangjie/arkts/
-├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
-├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index, compound assignment
-├── handle.cj       ArkTSHandle (Imm / Ref), retain, evalPayload
-├── conversion.cj   toJSValue, toExtern, fromExtern, array helpers
-├── operators.cj    pure compound-assignment arithmetic (no ohos imports; also compiled by hosttest)
-└── helpers.cj      undefined, null, object, global, symbol, strictEqual, isNull, isUndefined,
-                    objectHasProperty, objectKeys, objectDefineOwnProperty,
-                    requireArkModule, requireSystemNativeModule
-entry/src/main/cangjie/arkts/tests/   device scenarios, one file per step
-entry/src/ohosTest/ets/test/          hypium suites and fixtures
+arkts_runtime/
+├── cjpm.toml       static library "arkts_runtime"
+├── README.md       for apps using the library
+├── libs/           shipped Cangjie libraries (every app); libs-ui/: Cangjie UI apps only
+└── src/
+    ├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
+    ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index, compound assignment
+    ├── handle.cj       ArkTSHandle (Imm / Ref), retain, evalPayload
+    ├── conversion.cj   toJSValue, toExtern, fromExtern, array helpers
+    ├── operators.cj    pure compound-assignment arithmetic (no ohos imports; also compiled by hosttest)
+    ├── helpers.cj      undefined, null, object, global, symbol, strictEqual, isNull, isUndefined,
+    │                   objectHasProperty, objectKeys, objectDefineOwnProperty,
+    │                   requireArkModule, requireSystemNativeModule, function
+    └── tests/          device scenarios, one file per step
+testapp/            DevEco project of the test app (com.example.externwithenum)
+├── entry/src/main/cangjie/index.cj   binds the runtime, exports the scenario entry points
+├── entry/src/main/ets/               smoke page, arkts/TestModule.ets
+└── entry/src/ohosTest/ets/test/      hypium suites and fixtures
+demos/hello, demos/rectangle          one DevEco project each (mixed apps, Cangjie UI)
 hosttest/                             host tests and run.sh
+devicetest.sh, demo.sh                build, install and run
 ```
 
-All runtime files declare `package ohos_app_cangjie_entry.arkts`. The class body lives in
+All runtime files declare `package arkts_runtime`. The class body lives in
 `runtime.cj`. Members shared across files (`context`, `run`, `evalTree`, `retain`,
 `toJSValue`) use the default `internal` visibility. Public helpers in `helpers.cj` are added
 with `extend ArkTSRuntime { public static func ... }`. Both points are verified in step 1.
@@ -602,7 +676,155 @@ Tests (device):
 
 Done when: all tests pass; smoke page shows all PASS on the phone.
 
-### 10. Optimizations (each behind its own tests)
+### 10. Library and separate apps
+
+Code: move the runtime out of `entry` into a library folder that several apps use. Today's
+project becomes the test app, and each demo is its own small DevEco project (own
+`AppScope`, own bundle name, own signing), built, installed and run separately. Apps depend
+on the library by relative path and use only its public API (except the test app's
+scenarios, which live in the library).
+
+```
+ExternWithEnum/                    plain folder (no longer a DevEco project)
+├── arkts_runtime/                 the library
+│   ├── cjpm.toml                  name = "arkts_runtime", output-type = "static"
+│   ├── README.md                  for consumers (see Docs)
+│   ├── libs/arm64-v8a/            runtime/ + ohos/ (moved from entry), copied into every app
+│   ├── libs-ui/arm64-v8a/         Cangjie UI libraries, copied into Cangjie UI apps
+│   └── src/
+│       ├── runtime.cj, handle.cj, conversion.cj, operators.cj, helpers.cj, exceptions.cj
+│       │                          package arkts_runtime
+│       └── tests/                 package arkts_runtime.tests (device scenarios)
+├── testapp/                       today's project, moved: com.example.externwithenum
+│   └── entry/
+│       ├── cjpm.toml              [dependencies] arkts_runtime = { path = "../../arkts_runtime" }
+│       ├── src/main/cangjie/index.cj   binds the runtime, exports the test entry points
+│       ├── src/main/ets/          smoke page, TestModule.ets
+│       └── src/ohosTest/          hypium suite, fixtures
+├── demos/
+│   ├── rectangle/                 com.example.arkts.rectangle
+│   └── hello/                     com.example.arkts.hello
+├── hosttest/                      compiles arkts_runtime/src/operators.cj
+├── devicetest.sh                  runs testapp (as today)
+└── demo.sh                        demo.sh <folder>: build, install and start one demo
+```
+
+Each app ships its own copy of the Cangjie libraries, so there is exactly one std-core per
+app, and each app has exactly one `ArkTSRuntime`, bound once in its `registerModule`.
+
+Agreed with the user:
+- Today's project moves into `testapp/`; the user reopens it from there in DevEco.
+- The user creates both demo projects with DevEco's wizard (CangjieUI template) in
+  `demos/rectangle` and `demos/hello`, with their bundle names, and signs them; we fill them
+  in.
+- Both demos have their UI in Cangjie; ArkTS only for the code they call (`Rectangle`,
+  `sayHello`).
+- Probe 4 runs first. If it fails, stop and report before doing the rest of the step.
+- After probe 4 (pure CangjieUI cannot load ArkTS code, see status): both demos are **mixed
+  apps**. ArkTS boilerplate is limited to `EntryAbility.ets` and a page that embeds the
+  Cangjie view with `CJHybridComponent` and calls the exported Cangjie `init()` once; the
+  wizard's Cangjie ability / stage files are removed.
+
+Demos (no automated suite; checked by hand on the phone, and on the emulator with `uitest`
+as in step 9):
+- **`rectangle`**: a Cangjie view running the design's section 1 example. `Rectangle` /
+  `createRectangle` are in an ArkTS module; a button runs the example from Cangjie, and the
+  page shows the width and area read back from ArkTS (5 and 25) and the width as seen by an
+  ArkTS function `describe(rect)` (`"5 x 5 = 25"`), so ArkTS confirms the update.
+- **`hello`**: the whole visible UI in Cangjie (a `@HybridComponentEntry` view). Besides the
+  boilerplate, the only ArkTS code is `sayHello(onTick)` in `entry/src/main/ets/Hello.ets`,
+  loaded with `requireArkModule` in `init()`. The view has one button; pressing it calls
+  `sayHello` with a Cangjie callback
+  (`ArkTSRuntime.function`, below). `sayHello` calls `onTick("Hello world", 0)` at once, then
+  `onTick("Hello world", n)` for n = 1 to 5, one per second (`setTimeout`, so the UI keeps
+  running), then `onTick("", -1)`. The callback updates the page's state: it shows the text
+  and the counter, and returns to the initial screen on -1. The button is disabled while
+  the counter runs.
+
+Library addition: **Cangjie functions as ArkTS functions.** `toJSValue` only converts values
+and `Extern`, so a Cangjie lambda cannot be passed to ArkTS today. New public helper:
+
+```cangjie
+public static func function(body: (Array<Extern<ArkTSRuntime>>) -> Extern<ArkTSRuntime>): Extern<ArkTSRuntime>
+```
+
+It wraps `body` in an `ark_interop` function (`context.function`). When ArkTS calls it, the
+arguments are retained as `Extern` values, `body` runs on the JS thread, and its result is
+converted back (`toJSValue`, so implicit conversions such as `return 3` work). `this` is not
+passed (left for later). An exception thrown by `body` must reach ArkTS as a JS error with
+its message, not crash the app; how `ark_interop` does that is a probe (5).
+- Device scenarios in `arkts.tests` (step 10 group): ArkTS calls the function with numbers,
+  strings and objects and checks the result; `Array.prototype.map` with a Cangjie callback;
+  a Cangjie function stored on an object and called later from a timer; an exception in
+  `body` caught by an ArkTS `try` with the message; the function can be called after the
+  creating `run` returned, and the closure's captured state is kept between calls;
+  creating it from a spawned thread works (the call itself always runs on the JS thread).
+
+Probes first (each a throwaway project, results recorded under Constraints):
+1. hvigor and `cjpm` accept a path dependency outside the project root
+   (`../../arkts_runtime`). Fallback: list `arkts_runtime` as a module in each app's
+   `build-profile.json5` with `srcPath: "../../arkts_runtime"`.
+2. The shipped libraries can live in the library and end up in each app (exactly one
+   `libcangjie-std-core.so` in the installed app, checked with `hdc shell ls`). Fallback:
+   `demo.sh` / `devicetest.sh` copy them into each app's `entry/libs` before building.
+3. `@When[...]` with a `--cfg` from the consumer's build can leave out the whole
+   `arkts_runtime.tests` package, so the demos do not contain the scenarios.
+4. A CangjieUI app can bind the runtime and load an ArkTS module. Two risks: binding needs
+   a `JSContext`, which today comes from `JSModule.registerModule` when ArkTS loads the
+   library (a CangjieUI app may never do that); and `requireArkModule` failed off the JS call
+   stack in step 8, which a button handler in a CangjieUI app may also be. The UI in Cangjie
+   is a requirement, so a failure here is reported to the user, not worked around with an
+   ArkTS page.
+5. How an exception thrown inside an `ark_interop` function callback reaches JS (a JS error
+   with the message, or a crash), and how to throw a JS error from Cangjie if it does not.
+
+Decisions (defaults, changed only if a probe fails):
+- **Package name** `arkts_runtime`; every `ohos_app_cangjie_entry.arkts` reference is renamed.
+- **Tests stay in the library** as `arkts_runtime.tests`, since seven of the ten scenario
+  files use internal members (`retain`, `evalTree`, `handleKind`, `run`, ...), which are not
+  visible outside the package tree. They are compiled only with the test flag (probe 3); if
+  that cannot work, they ship, and this is noted as a known cost.
+- **Static linking.** `ArkTSRuntime` keeps its state in static members, so every `.so` that
+  links the library statically has its own copy (own binding; `Extern` values cannot cross
+  copies). Each app has one such `.so`, so this is fine.
+- **Separate projects, not one project with several products or feature modules:** no
+  shared install folder, so no risk of a second std-core, and a demo can be removed without
+  touching the others. Cost: each project repeats about ten small hvigor files and needs its
+  own signing setup.
+- **`hello` and threads.** The waiting is an ArkTS timer and the callback runs on the JS
+  thread, which is also the UI thread, so no Cangjie thread is spawned and the page state is
+  updated directly.
+- **Binding stays with the app:** the library cannot register an ArkTS module, so the
+  consumer's `JSModule.registerModule` calls `ArkTSRuntime.bind` (as `index.cj` does now).
+- Publishing (HAR on ohpm, or binary `cjpm` dependency with `.cjo`) is out of scope.
+  Consumers need the same `cjc` (`Extern` lives in its `std.core`), and a `.cjo` works only
+  with the compiler that built it.
+
+Docs: a short `arkts_runtime/README.md` for consumers covering the toolchain, binding in
+`registerModule`, the shipped libraries (one std-core per app), `requireArkModule`
+specifiers (`<module>/src/main/ets/<path>`, plus `arkOptions.runtimeOnly.sources`) and its
+off-thread limitation.
+
+Tests:
+- Host: 35 tests pass with `hosttest/run.sh` reading from the library.
+- Device: the whole suite (90 tests) passes unchanged from `testapp`, 3 times on emulator and
+  phone; the smoke page shows all PASS.
+- `testapp`'s `index.cj` still cannot use internal members (deliberate failing build, as in
+  step 1).
+- The demos build without the test flag, and their library output contains no
+  `arkts_runtime.tests` symbols.
+- The `ArkTSRuntime.function` scenarios pass, with a mutation check (arguments passed in the
+  wrong order).
+- `rectangle` shows width 5 and area 25. `hello` shows "Hello world" and the counter 1 to 5,
+  returns to the initial screen after about 5 seconds, and ignores presses while counting.
+  Both checked with `uitest` on the emulator (screen text read with `dumpLayout`, `hello`
+  sampled during and after the count) and by hand on the phone.
+- All three apps installed at the same time on one device run independently.
+
+Done when: the probes are recorded, all tests pass from `testapp`, both demos work on the
+emulator and the phone, and no app contains runtime code.
+
+### 11. Optimizations (each behind its own tests)
 
 1. `ExternSequence` handled in `eval` / `evalTree`.
    - Host: with `--enable-extern-sequence`, `RecordingRuntime` sees `ExternSequence` for two

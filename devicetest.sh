@@ -1,5 +1,5 @@
 #!/bin/sh
-# Device tests: builds the entry and ohosTest HAPs, installs them, runs the hypium suite.
+# Device tests: builds testapp's entry and ohosTest HAPs, installs them, runs the hypium suite.
 #
 #   ./devicetest.sh                 # first connected device
 #   DEVICE=127.0.0.1:5555 ./devicetest.sh
@@ -47,7 +47,7 @@ if [ -z "$DEVICES" ]; then
     exit 1
 fi
 
-cd "$ROOT"
+cd "$ROOT/testapp"
 for target in default ohosTest; do
     echo "== build entry@$target"
     if ! "$HVIGORW" --mode module -p module=entry@$target -p product=default \
