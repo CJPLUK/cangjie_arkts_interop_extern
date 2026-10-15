@@ -1,13 +1,9 @@
 import { CJHybridComponent } from '@cangjie/cjhybridcomponent';
-import { init } from 'libohos_app_cangjie_entry.so';
+import '../Hello';
 
 @Entry
 @Component
 struct Index {
-  aboutToAppear(): void {
-    init();
-  }
-
   build() {
     Column() {
       CJHybridComponent({

@@ -2,8 +2,6 @@ import { describe, it, expect } from '@ohos/hypium';
 import { runArkTSTest, runArkTSTestOffThread, listArkTSTests } from 'libohos_app_cangjie_entry.so';
 import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
 import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog, Values, Thrower } from './fixtures';
-import { globalObject, frozenObject, describeProperty } from './jsHelpers';
-
 export default function arkTSRuntimeTest() {
   describe('Step0_Infrastructure', () => {
     it('trivialScenarioPasses', 0, () => {
@@ -566,7 +564,7 @@ export default function arkTSRuntimeTest() {
     });
 
     it('globalIsGlobalThis', 0, () => {
-      expect(runArkTSTest('step8.globalIsGlobalThis', globalObject())).assertEqual('');
+      expect(runArkTSTest('step8.globalIsGlobalThis', Math)).assertEqual('');
     });
 
     it('symbols', 0, () => {
@@ -594,11 +592,11 @@ export default function arkTSRuntimeTest() {
 
     it('defineOwnProperty', 0, () => {
       const sink: Record<string, Object | null | undefined> = {};
-      expect(runArkTSTest('step8.defineOwnProperty', sink, frozenObject())).assertEqual('');
+      expect(runArkTSTest('step8.defineOwnProperty', sink)).assertEqual('');
       for (const name of ['WEC', 'WEc', 'WeC', 'Wec', 'wEC', 'wEc', 'weC', 'wec']) {
-        const value = name == 'WEC' ? 'again' : name;
-        expect(describeProperty(sink, name)).assertEqual(`${value} ${name}`);
+        expect(sink[name]).assertEqual(name == 'WEC' ? 'again' : name);
       }
+      expect(Object.keys(sink).sort().join(',')).assertEqual('WEC,WEc,wEC,wEc');
     });
 
     it('requireArkModule', 0, () => {

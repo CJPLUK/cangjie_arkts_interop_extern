@@ -30,7 +30,7 @@ Compound assignment (`blob.width += 2.0`, `e[i] &&= v`, ...) is not supported: i
 
    ```toml
    [dependencies]
-     arkts_runtime = { path = "../../arkts_runtime" }
+     arkts_runtime = { path = "<path to arkts_runtime>" }
    ```
 
 2. Bind the runtime when ArkTS loads the app's Cangjie library:
@@ -47,7 +47,16 @@ Compound assignment (`blob.width += 2.0`, `e[i] &&= v`, ...) is not supported: i
 
 3. `entry/hvigorfile.ts`: copy `dependencies_libs/base` (and `dependencies_libs/ui` for a
    Cangjie UI) from the repository root into `entry/libs` on every build (hvigor does not
-   package a symlinked folder). See `demos/hello/entry/hvigorfile.ts`.
+   package a symlinked folder), before the `export default`:
+
+   ```ts
+   import * as fs from 'fs';
+   import * as path from 'path';
+
+   const libs = path.resolve(__dirname, 'libs');
+   fs.rmSync(libs, { recursive: true, force: true });
+   fs.cpSync(path.resolve(__dirname, '<repository root>/dependencies_libs/base'), libs, { recursive: true });
+   ```
 
 ## Shipped libraries
 
@@ -76,15 +85,38 @@ The libraries are in `dependencies_libs/` at the repository root:
 - Specifiers are `<module>/src/main/ets/<path>` without extension. A file nothing imports must
   be listed in `arkOptions.runtimeOnly.sources` of `entry/build-profile.json5`.
 - `requireArkModule` works only while ArkTS is calling into Cangjie. It fails during
-  `registerModule`, from Cangjie UI events and from spawned threads. Load modules in a Cangjie
-  function the ArkTS page calls once (`init()` in the demos) and keep the result.
+  `registerModule`, from Cangjie UI events, from microtasks and from spawned threads. Load
+  modules in a Cangjie function the ArkTS page calls once and keep the result.
+- Alternative without `requireArkModule`: the ArkTS file publishes its exports on the global
+  object, the page imports it for that side effect, and Cangjie reads them through
+  `ArkTSRuntime.global()` whenever it needs them, including from UI events. The ArkTS
+  compiler reports `arkts-no-globalthis` as a warning, not an error.
+
+  ```ts
+  // entry/src/main/ets/Hello.ets
+  export function sayHello(onTick: (text: string, n: number) => void): void { ... }
+  globalThis.Hello = { sayHello };
+
+  // entry/src/main/ets/pages/Index.ets
+  import '../Hello';
+  ```
+
+  ```cangjie
+  ArkTSRuntime.global().Hello.sayHello(callback)
+  ```
+
+  A `CJHybridComponent` loads the Cangjie library and runs `registerModule` by itself, so a
+  page that embeds one needs no import of the `.so`.
 
 ## Cangjie UI
 
 A pure CangjieUI app (Cangjie ability) cannot load ArkTS code. Use a mixed app: an ArkTS
 ability and page that embeds the Cangjie view with `CJHybridComponent` (ohpm
-`@cangjie/cjhybridcomponent`); the view is a `@HybridComponentEntry @Component` class. See
-`demos/hello` and `demos/rectangle`.
+`@cangjie/cjhybridcomponent`); the view is a `@HybridComponentEntry @Component` class:
+
+```ts
+CJHybridComponent({ library: 'ohos_app_cangjie_entry', component: 'HelloView' })
+```
 
 ## Cangjie functions in ArkTS
 

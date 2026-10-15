@@ -4,13 +4,6 @@
     "cangjieOptions": {
       "path": "./cjpm.toml"
     },
-    "arkOptions": {
-      "runtimeOnly": {
-        "sources": [
-          "./src/main/ets/Hello.ets"
-        ]
-      }
-    },
     "nativeLib": {
       "filter": {
         "enableOverride": true

@@ -11,3 +11,6 @@ export function sayHello(onTick: (text: string, n: number) => void): void {
     }
   }, 1000);
 }
+
+// Read from Cangjie with ArkTSRuntime.global().Hello.
+globalThis.Hello = { sayHello };

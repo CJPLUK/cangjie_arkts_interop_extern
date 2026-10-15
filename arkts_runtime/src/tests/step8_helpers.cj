@@ -85,12 +85,12 @@ func objectIsFresh(fixtures: Array<JSValue>): String {
     ])
 }
 
-/** fixtures: globalThis. */
+/** fixtures: ArkTS's `Math`, reached from the page's global object. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func globalIsGlobalThis(fixtures: Array<JSValue>): String {
     let g = ArkTSRuntime.global()
     firstFailure([
-        expectEqual("global() === globalThis", ArkTSRuntime.strictEqual(g, ext(fixtures, 0)), true),
+        expectEqual("global().Math === Math", ArkTSRuntime.strictEqual(g.Math, ext(fixtures, 0)), true),
         expectEqual("global().JSON.stringify(1.5)", from<String>(g.JSON.stringify(1.5)), "1.5")
     ])
 }
@@ -166,14 +166,17 @@ func objectProperties(fixtures: Array<JSValue>): String {
 }
 
 /**
- * fixtures: sink, frozen object. Defines one property per flag combination (named by its
- * flags, e.g. "wEc" = writable, not enumerable, configurable); ArkTS checks each descriptor.
+ * fixtures: sink. Defines one property per flag combination (named by its flags, e.g. "wEc" =
+ * writable, not enumerable, configurable) and reads each descriptor back with JS's own
+ * `Object.getOwnPropertyDescriptor`; ArkTS checks the values and which keys are enumerable.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func defineOwnProperty(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
-    let frozen = ext(fixtures, 1)
+    let jsObject = ArkTSRuntime.global().Object
+    let frozen = jsObject.freeze(ArkTSRuntime.object())
     let results = ArrayList<String>()
+    let flags = ArrayList<(String, Bool, Bool, Bool)>()
     for (w in [true, false]) {
         for (e in [true, false]) {
             for (c in [true, false]) {
@@ -181,8 +184,14 @@ func defineOwnProperty(fixtures: Array<JSValue>): String {
                 let ok = ArkTSRuntime.objectDefineOwnProperty(sink, name, name, isWritable: w, isEnumerable: e,
                     isConfigurable: c)
                 results.add(expectEqual("define ${name}", ok, true))
+                flags.add((name, w, e, c))
             }
         }
+    }
+    for ((name, w, e, c) in flags) {
+        let d = jsObject.getOwnPropertyDescriptor(sink, name)
+        let actual = "${from<Bool>(d.writable)} ${from<Bool>(d.enumerable)} ${from<Bool>(d.configurable)}"
+        results.add(expectEqual("${name} flags (writable enumerable configurable)", actual, "${w} ${e} ${c}"))
     }
     firstFailure([
         firstFailure(results.toArray()),

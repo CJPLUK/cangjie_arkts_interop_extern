@@ -193,8 +193,8 @@ emulator.
   87 tests pass on both devices, suite run 3 times (10 new; `step1.extendHelperReachable`
   and `step1.internalVisibleToSubpackage` now use real helpers / `handleKind`, since
   `notImplemented` is gone). ArkTS-side checks that strict ArkTS forbids (`globalThis`,
-  `Object.getOwnPropertyDescriptor`, `Object.freeze` of a literal) live in the plain
-  TypeScript file `ohosTest/ets/test/jsHelpers.ts`. Findings and choices:
+  `Object.getOwnPropertyDescriptor`, `Object.freeze` of a literal) lived in a TypeScript
+  file, later removed (see "No TypeScript in testapp"). Findings and choices:
   - `requireArkModule` specifiers are `<module>/src/main/ets/<path>` without extension
     (`"entry/src/main/ets/arkts/TestModule"`), and the file must be in
     `arkOptions.runtimeOnly.sources` (entry `build-profile.json5`), since nothing imports it.
@@ -319,6 +319,23 @@ emulator.
   `demos/dependencies_libs` is `dependencies_libs/ui` (Cangjie UI apps). The library build
   never used them. testapp copies `base`, the demos copy both. Clean builds: 88 tests pass
   on both devices; both demos run.
+- **`hello` loads its ArkTS code without `init()`** (2026-10-15), by the user's choice.
+  `requireArkModule` also fails from a microtask queued in `registerModule` ("Unable to get
+  recordName"). Instead `Hello.ets` ends with `globalThis.Hello = { sayHello }` (the ArkTS
+  compiler only warns, `arkts-no-globalthis`); the page only
+  does `import '../Hello'`, and `sayHello` in Cangjie calls
+  `ArkTSRuntime.global().Hello.sayHello(...)` from the button handler. The page no longer
+  imports `libohos_app_cangjie_entry.so`: `CJHybridComponent` loading the library runs
+  `registerModule`, which binds the runtime. `runtimeOnly.sources` is gone. Checked on the
+  emulator (countdown runs, button re-enabled); `rectangle` still uses `init()`.
+- **No TypeScript in testapp** (2026-10-15), by the user's choice: `jsHelpers.ts` is gone.
+  In `.ets`, `globalThis` is only a warning but `Object.freeze` and
+  `Object.getOwnPropertyDescriptor` are errors (`arkts-limited-stdlib`). So
+  `globalIsGlobalThis` gets ArkTS's `Math` and checks `global().Math === Math`;
+  `defineOwnProperty` freezes its own object and reads each descriptor with JS's
+  `Object.getOwnPropertyDescriptor` from Cangjie, and ArkTS checks the values and the
+  enumerable keys (`Object.keys`). 88 tests pass on both devices.
+  `arkts_runtime/README.md` no longer mentions the demos.
 
 ## Testing strategy
 
@@ -772,8 +789,9 @@ as in step 9):
   page shows the width and area read back from ArkTS (5 and 25) and the width as seen by an
   ArkTS function `describe(rect)` (`"5 x 5 = 25"`), so ArkTS confirms the update.
 - **`hello`**: the whole visible UI in Cangjie (a `@HybridComponentEntry` view). Besides the
-  boilerplate, the only ArkTS code is `sayHello(onTick)` in `entry/src/main/ets/Hello.ets`,
-  loaded with `requireArkModule` in `init()`. The view has one button; pressing it calls
+  boilerplate, the only ArkTS-side code is `sayHello(onTick)` in `entry/src/main/ets/Hello.ets`,
+  which publishes itself as `globalThis.Hello`; the page imports it, and the view reads
+  `ArkTSRuntime.global().Hello` (no `init()`, see status). The view has one button; pressing it calls
   `sayHello` with a Cangjie callback
   (`ArkTSRuntime.function`, below). `sayHello` calls `onTick("Hello world", 0)` at once, then
   `onTick("Hello world", n)` for n = 1 to 5, one per second (`setTimeout`, so the UI keeps
