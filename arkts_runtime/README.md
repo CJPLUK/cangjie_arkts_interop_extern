@@ -45,19 +45,31 @@ Compound assignment (`blob.width += 2.0`, `e[i] &&= v`, ...) is not supported: i
    }
    ```
 
-3. `entry/hvigorfile.ts`: copy the shipped libraries into `entry/libs` on every build (hvigor
-   does not package a symlinked folder). See `demos/hello/entry/hvigorfile.ts`.
+3. `entry/hvigorfile.ts`: copy `dependencies_libs/base` (and `dependencies_libs/ui` for a
+   Cangjie UI) from the repository root into `entry/libs` on every build (hvigor does not
+   package a symlinked folder). See `demos/hello/entry/hvigorfile.ts`.
 
 ## Shipped libraries
 
 The app must load exactly one Cangjie runtime and one `std-core`: with two, runtime type
 checks disagree or the app crashes at start.
 
-- `libs/arm64-v8a`: the SDK runtime and std libraries, plus `ark_interop`, `hilog`, `labels`
+Why not use the phone's own libraries: the library is compiled with the Cangjie 6.1 SDK, whose
+`std-core` defines `Extern<T>` and `ForeignRuntime<T>`. The phone's `std-core`
+(`/system/lib64/platformsdk/cjsdk`) is an older build without them (no `Extern` or
+`ForeignRuntime` symbols), so the app must ship the SDK runtime and `std-core`. A Cangjie
+library loaded from the system folder resolves its own dependencies there and brings the
+system `std-core` next to ours. So every Cangjie library the app uses is shipped too (copied
+from the phone, they run on our `std-core`): the launcher looks in the app's
+`libs/arm64/runtime` and `libs/arm64/ohos` before the system folder.
+
+The libraries are in `dependencies_libs/` at the repository root:
+
+- `base/arm64-v8a`: the SDK runtime and std libraries, plus `ark_interop`, `hilog`, `labels`
   and `business_exception` copied from the phone. Every app needs it.
-- `libs-ui/arm64-v8a`: the Cangjie UI libraries (`kit.ArkUI`, `ohos.arkui.*`, ...) copied from
-  the phone (system 6.1). Only apps with a Cangjie UI need it; without it they load the
-  system runtime and `std-core` next to ours and crash.
+- `ui/arm64-v8a`: the Cangjie UI libraries (`kit.ArkUI`, `ohos.arkui.*`, ...) copied from the
+  phone (system 6.1). Only apps with a Cangjie UI need it; without it they load the system
+  runtime and `std-core` next to ours and crash.
 
 ## Loading ArkTS modules
 

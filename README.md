@@ -23,6 +23,7 @@ it in use. The design it implements is `docs/arkts_runtime_design.md` in
 arkts_runtime/      the library, with its device tests
 demos/hello         demo app: Cangjie UI calling an ArkTS function with a Cangjie callback
 demos/rectangle     demo app: the design's example, with a Cangjie UI
+dependencies_libs/  Cangjie libraries apps ship: base/ (every app), ui/ (Cangjie UI apps)
 hosttest/           host tests (macOS, no ArkTS VM): compiler contract
 demo.sh             builds, installs and starts one demo app
 plan.md             implementation plan, status and findings of every step
@@ -35,14 +36,27 @@ cjpm.toml           static library "arkts_runtime" (sources in src/ only)
 README.md           how an app uses the library (setup, shipped libraries, limitations)
 src/                package arkts_runtime: runtime, handles, conversions, helpers
 src/tests/          package arkts_runtime.tests: device test scenarios (compiled for testapp only)
-libs/               Cangjie runtime and std libraries every app using the library must ship
-libs-ui/            additional Cangjie UI libraries, for apps with a Cangjie UI only
 testapp/            test app (DevEco project): runs the device test suite and a smoke page
 devicetest.sh       builds testapp and runs the device suite on connected devices
 ```
 
-Apps depend on it by path in their `entry/cjpm.toml` and copy `libs` (and `libs-ui`) into
-their `entry/libs` from `entry/hvigorfile.ts`. See `arkts_runtime/README.md`.
+Apps depend on it by path in their `entry/cjpm.toml` and copy `dependencies_libs/base` into
+their `entry/libs` from `entry/hvigorfile.ts`; the demos also copy `dependencies_libs/ui`. See
+`arkts_runtime/README.md`.
+
+### Why apps ship Cangjie libraries
+
+The phone's own Cangjie libraries cannot be used:
+
+- The library is compiled with the Cangjie 6.1 SDK, whose `std-core` defines `Extern<T>` and
+  `ForeignRuntime<T>`. The phone's `std-core` (`/system/lib64/platformsdk/cjsdk`) is an older
+  build without them, so apps ship the SDK runtime and `std-core` (`dependencies_libs/base`).
+- An app must load exactly one runtime and one `std-core`; with two, runtime type checks
+  disagree or the app crashes at start. A Cangjie library loaded from the system folder brings
+  the system `std-core` next to ours, so every Cangjie library an app uses is shipped too,
+  copied from the phone: `ark_interop`, `hilog` and a few others in `dependencies_libs/base`,
+  and the Cangjie UI libraries in `dependencies_libs/ui` for apps with a Cangjie UI. The app's
+  launcher looks in the app's own library folders before the system one.
 
 ### Tests and demos
 

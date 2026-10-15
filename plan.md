@@ -30,7 +30,7 @@ and a step is finished only when its tests and all earlier tests pass.
 The phone's app launcher (`libcj_environment`, OpenHarmony `cj_environment.cpp`) looks for
 Cangjie libraries in two app folders before the system ones: `libs/arm64/runtime` (the
 runtime) and `libs/arm64/ohos` (checked before `/system/lib64/platformsdk/cjsdk`). A copy at
-the top of `libs/arm64` is only seen by our own library. `arkts_runtime/libs/arm64-v8a`
+the top of `libs/arm64` is only seen by our own library. `dependencies_libs/base/arm64-v8a`
 (copied into each app's `entry/libs` by its `hvigorfile.ts` on every build; `entry/libs` is
 generated and ignored by git) therefore contains:
 
@@ -42,7 +42,14 @@ generated and ignored by git) therefore contains:
   `libohos.business_exception.so` copied from the phone
   (`/system/lib64/platformsdk/cjsdk`): the SDK only has empty link stubs of those.
 
-Why: shipping only `libcangjie-std-core.so` at the top of `libs/arm64` loaded two std-cores
+Why not the system libraries: our code needs the SDK's `std-core`, which defines `Extern<T>`
+and `ForeignRuntime<T>` (43 such dynamic symbols). The phone's
+`/system/lib64/platformsdk/cjsdk/libcangjie-std-core.so` has none (checked with `llvm-nm -D`
+on 2026-10-15). A Cangjie library loaded from the system folder resolves its own dependencies
+there and brings the system `std-core` next to ours, so every one the app uses is shipped
+(copied from the phone; shipped, they run on our `std-core`).
+
+Why the whole set: shipping only `libcangjie-std-core.so` at the top of `libs/arm64` loaded two std-cores
 (ours for our code, the phone's for `ark_interop` and the other system libraries). Runtime
 type checks then disagreed with the Mac: `None<T>` made in generic code was not seen as
 implementing our interface for `T = Int64` and `Bool` (but was for `Float64`, `Int32`,
@@ -52,7 +59,7 @@ bind mount does not work: the code-signing check refuses the file. `devicetest.s
 before installing, because a reinstall keeps library files the new build no longer ships (a
 stale second std-core brought the problem back on the emulator). The libraries add 8.3 MB.
 
-Apps with a Cangjie UI also ship `arkts_runtime/libs-ui/arm64-v8a/ohos` (16 MB, 106 files):
+Apps with a Cangjie UI also ship `dependencies_libs/ui/arm64-v8a/ohos` (16 MB, 106 files):
 the Cangjie UI libraries (`kit.ArkUI`, `ohos.arkui.*`, `ohos.base`, ...) that the app's
 library needs, copied from the phone's `/system/lib64/platformsdk/cjsdk` (the dependency
 closure, computed with `llvm-readelf -d`). Without them the system copies load and pull in the
@@ -303,7 +310,15 @@ emulator.
   (experimental), `--no-tests` (only `check`/`tree`), `*_test.cj` files (never compiled for
   a dependency), and a testapp product name (hvigor requires `default`). Clean builds: 88
   tests pass on both devices; in the `hello` demo the tests archive has no scenario symbols
-  (134 KB vs 3 MB in testapp).
+  (134 KB vs 3 MB in testapp). testapp's bundle name is now `com.example.testArkTSForeignRuntime`.
+- **Cangjie UI libraries moved to the demos** (2026-10-15), by the user's choice:
+  `arkts_runtime/libs-ui` is now `demos/dependencies_libs`, since the library itself does not
+  need them. The demos' `entry/hvigorfile.ts` copy `../../dependencies_libs`.
+- **All shipped libraries in the root `dependencies_libs/`** (2026-10-15), by the user's
+  choice: `arkts_runtime/libs` is now `dependencies_libs/base` (every app) and
+  `demos/dependencies_libs` is `dependencies_libs/ui` (Cangjie UI apps). The library build
+  never used them. testapp copies `base`, the demos copy both. Clean builds: 88 tests pass
+  on both devices; both demos run.
 
 ## Testing strategy
 
@@ -406,7 +421,6 @@ the test runner. The demos (`./demo.sh demos/<name>`) are checked by hand the sa
 arkts_runtime/
 ├── cjpm.toml       static library "arkts_runtime" (src-dir ./src)
 ├── README.md       for apps using the library
-├── libs/           shipped Cangjie libraries (every app); libs-ui/: Cangjie UI apps only
 ├── src/
 │   ├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
 │   ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index
@@ -423,6 +437,8 @@ arkts_runtime/
 │   └── entry/src/ohosTest/ets/test/      hypium suites and fixtures
 └── devicetest.sh   builds testapp, installs it and runs the suite
 demos/hello, demos/rectangle          one DevEco project each (mixed apps, Cangjie UI)
+dependencies_libs/base/arm64-v8a/     shipped Cangjie libraries, copied into every app
+dependencies_libs/ui/arm64-v8a/       Cangjie UI libraries, copied into Cangjie UI apps
 hosttest/                             host tests and run.sh
 demo.sh                               build, install and start one demo
 ```
