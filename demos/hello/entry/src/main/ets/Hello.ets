@@ -1,14 +1,13 @@
 export function sayHello(onTick: (text: string, n: number) => void): void {
-  onTick('Hello world', 0);
-  let n = 0;
+  let n = 5;
   const id = setInterval(() => {
-    n++;
-    if (n <= 5) {
+    if (n > 0) {
       onTick('Hello world', n);
     } else {
       clearInterval(id);
       onTick('', -1);
     }
+    n--;
   }, 1000);
 }
 
