@@ -11,6 +11,7 @@ import kit.ArkUI.ViewStackProcessor
 import kit.ArkUI.CJPageEntry
 import kit.ArkUI.HybridComponentBase
 import kit.ArkUI.FontWeight
+import kit.ArkUI.FlexAlign
 import kit.ArkUI.LengthProp
 import ohos.arkui.state_macro_manage.State
 import ohos.arkui.state_macro_manage.Component
@@ -65,6 +66,6 @@ class RectangleView {
             Text(result).fontSize(40).fontWeight(FontWeight.Bold)
             Text(arkTSView).fontSize(30)
             Button("Run example").margin(top: 20.vp).onClick({ _ => runExample() })
-        }
+        }.width(100.percent).height(100.percent).justifyContent(FlexAlign.Center)
     }
 }
