@@ -81,5 +81,9 @@ exception thrown in it reaches ArkTS as an `Error` with the exception's text.
 
 ## Tests
 
-`arkts_runtime.tests` holds the device scenarios (run by `testapp`). Only packages an app
-references are linked, so apps do not contain them.
+`arkts_runtime.tests` holds the device scenarios, run by `testapp/` through `./devicetest.sh`.
+They are compiled only when testapp builds the library. `cjpm.toml` passes the app's bundle
+name as `--cfg` key `bundle`, and every top-level declaration in `src/tests` carries
+`@When[bundle == "com.example.testArkTSForeignRuntime"]`, testapp's bundle name. Other apps get an empty
+package. New declarations in `src/tests` need the same annotation. `testapp/` and
+`devicetest.sh` are not part of the library build (`src-dir` is `./src`).

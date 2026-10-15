@@ -9,7 +9,7 @@
   version = "1.0.0"
 
 [dependencies]
-  arkts_runtime = { path = "../../arkts_runtime" }
+  arkts_runtime = { path = "../.." }
 
 [profile]
   [profile.build]

@@ -287,8 +287,23 @@ emulator.
   `stringConversions` kept only its index-key checks, as `numberKeys`; new
   `compoundAssignmentUnsupported`. Step 9 and the rectangle demo write
   `blob.width = fromExtern<Float64>(blob.width) + 2.0`, and the mixed scenario uses plain
-  assignments. The compiler-contract host tests still pin the `ExternCompoundAssignment`
+  assignments.   The compiler-contract host tests still pin the `ExternCompoundAssignment`
   shape the compiler produces.
+- **Device tests moved into the library folder** (2026-10-15), by the user's choice:
+  `testapp/` and `devicetest.sh` are now in `arkts_runtime/`, next to the scenarios in
+  `src/tests` (which must stay a subpackage to reach internal members). `testapp` depends on
+  the library with `path = "../.."` and copies `../../libs`; the library build is unaffected
+  (`src-dir` is `./src`). Device-suite logs are in `arkts_runtime/.devicetest/`. Clean build:
+  88 tests pass on both devices; the `hello` demo still builds against the library.
+- **Test scenarios compiled only for testapp** (2026-10-15), by the user's choice. The
+  library's `compile-option` is now `--dy-std --cfg="${COMPILE_CONDITION_ENTRY},bundle=${bundleName}"`
+  (both variables are set by hvigor), and every top-level declaration in `src/tests` carries
+  `@When[bundle == "com.example.testArkTSForeignRuntime"]`. Other apps compile an empty
+  `arkts_runtime.tests`. Alternatives that did not fit: cjpm features/source sets
+  (experimental), `--no-tests` (only `check`/`tree`), `*_test.cj` files (never compiled for
+  a dependency), and a testapp product name (hvigor requires `default`). Clean builds: 88
+  tests pass on both devices; in the `hello` demo the tests archive has no scenario symbols
+  (134 KB vs 3 MB in testapp).
 
 ## Testing strategy
 
@@ -320,30 +335,30 @@ wrapped in `hosttest/run.sh`.
 
 ### Layer 2: device tests (emulator and phone, real ArkTS VM)
 
-Instrumented tests in `testapp/entry/src/ohosTest` with `@ohos/hypium`, which import
+Instrumented tests in `arkts_runtime/testapp/entry/src/ohosTest` with `@ohos/hypium`, which import
 `libohos_app_cangjie_entry.so` and call Cangjie test entry points.
 
 - **Cangjie side:** `arkts_runtime/src/tests/` (package `arkts_runtime.tests`, a subpackage
-  so it can reach internal members; apps that do not reference it do not link it) holds
+  so it can reach internal members; compiled only for testapp's bundle name via `@When`) holds
   one function per scenario, one file per step, registered in `registry.cj`. Each scenario returns
   `""` on success or a failure message (expected vs actual, or the exception class and
   message). `testapp`'s `index.cj` exports them through `JSModule.registerModule`.
-- **ArkTS side:** `testapp/entry/src/ohosTest/ets/test/ArkTSRuntime.test.ets` with one `describe` per
+- **ArkTS side:** `arkts_runtime/testapp/entry/src/ohosTest/ets/test/ArkTSRuntime.test.ets` with one `describe` per
   step and one `it` per scenario, asserting `expect(result).assertEqual("")`.
 - **Checks from both sides.** Scenarios receive ArkTS fixture objects as arguments. When
   Cangjie changes a JS value, the ArkTS test checks the effect with plain ArkTS code
   (`expect(rect.width).assertEqual(5)`), independently of our `fromExtern`. When ArkTS
   produces a value, Cangjie checks it after conversion.
-- Fixtures in `testapp/entry/src/ohosTest/ets/test/fixtures.ets`: `Rectangle` class (`width`,
+- Fixtures in `arkts_runtime/testapp/entry/src/ohosTest/ets/test/fixtures.ets`: `Rectangle` class (`width`,
   `height`, `area()`), `calculator` object, functions that record their `this`, arrays, an
   object with a symbol key, a function that throws, a getter with a call counter.
 
-Build and run with `./devicetest.sh` (`DEVICE=<id>` to pick a target, `--all` for every
+Build and run with `./arkts_runtime/devicetest.sh` (`DEVICE=<id>` to pick a target, `--all` for every
 connected device; extra arguments go to `aa test`, e.g. `-s class Step0_Infrastructure`). It builds `testapp`'s `entry@default` and
 `entry@ohosTest` with DevEco's `hvigorw`, installs both HAPs with `hdc`, runs
-`aa test -b com.example.externwithenum -m entry_test -s unittest OpenHarmonyTestRunner`, prints
+`aa test -b com.example.testArkTSForeignRuntime -m entry_test -s unittest OpenHarmonyTestRunner`, prints
 one line per test, and exits non-zero on failure. Full runner output is in
-`.devicetest/last-<device>.log`, build logs in `.devicetest/build-*.log`.
+`arkts_runtime/.devicetest/last-<device>.log`, build logs in `arkts_runtime/.devicetest/build-*.log`.
 
 Outside the IDE, hvigor only accepts `cangjieOptions` when `DEVECO_CANGJIE_PLUGIN_ENABLED=true`
 and `DEVECO_CANGJIE_PATH` are set and `@ohos/cangjie-build-support` (from the Cangjie SDK) is on
@@ -389,25 +404,27 @@ the test runner. The demos (`./demo.sh demos/<name>`) are checked by hand the sa
 
 ```
 arkts_runtime/
-├── cjpm.toml       static library "arkts_runtime"
+├── cjpm.toml       static library "arkts_runtime" (src-dir ./src)
 ├── README.md       for apps using the library
 ├── libs/           shipped Cangjie libraries (every app); libs-ui/: Cangjie UI apps only
-└── src/
-    ├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
-    ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index
-    ├── handle.cj       ArkTSHandle (Imm / Ref), retain, evalPayload
-    ├── conversion.cj   toJSValue, toExtern, fromExtern, array helpers
-    ├── helpers.cj      undefined, null, object, global, symbol, strictEqual, isNull, isUndefined,
-    │                   objectHasProperty, objectKeys, objectDefineOwnProperty,
-    │                   requireArkModule, requireSystemNativeModule, function
-    └── tests/          device scenarios, one file per step
-testapp/            DevEco project of the test app (com.example.externwithenum)
-├── entry/src/main/cangjie/index.cj   binds the runtime, exports the scenario entry points
-├── entry/src/main/ets/               smoke page, arkts/TestModule.ets
-└── entry/src/ohosTest/ets/test/      hypium suites and fixtures
+├── src/
+│   ├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
+│   ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index
+│   ├── handle.cj       ArkTSHandle (Imm / Ref), retain, evalPayload
+│   ├── conversion.cj   toJSValue, toExtern, fromExtern, array helpers
+│   ├── helpers.cj      undefined, null, object, global, symbol, strictEqual, isNull, isUndefined,
+│   │                   objectHasProperty, objectKeys, objectDefineOwnProperty,
+│   │                   requireArkModule, requireSystemNativeModule, function
+│   └── tests/          device scenarios, one file per step
+├── testapp/        DevEco project of the test app (com.example.testArkTSForeignRuntime)
+│   ├── entry/cjpm.toml                   arkts_runtime = { path = "../.." }
+│   ├── entry/src/main/cangjie/index.cj   binds the runtime, exports the scenario entry points
+│   ├── entry/src/main/ets/               smoke page, arkts/TestModule.ets
+│   └── entry/src/ohosTest/ets/test/      hypium suites and fixtures
+└── devicetest.sh   builds testapp, installs it and runs the suite
 demos/hello, demos/rectangle          one DevEco project each (mixed apps, Cangjie UI)
 hosttest/                             host tests and run.sh
-devicetest.sh, demo.sh                build, install and run
+demo.sh                               build, install and start one demo
 ```
 
 All runtime files declare `package arkts_runtime`. The class body lives in
@@ -702,7 +719,7 @@ ExternWithEnum/                    plain folder (no longer a DevEco project)
 │       ├── runtime.cj, handle.cj, conversion.cj, helpers.cj, exceptions.cj
 │       │                          package arkts_runtime
 │       └── tests/                 package arkts_runtime.tests (device scenarios)
-├── testapp/                       today's project, moved: com.example.externwithenum
+├── testapp/                       today's project, moved: com.example.testArkTSForeignRuntime
 │   └── entry/
 │       ├── cjpm.toml              [dependencies] arkts_runtime = { path = "../../arkts_runtime" }
 │       ├── src/main/cangjie/index.cj   binds the runtime, exports the test entry points

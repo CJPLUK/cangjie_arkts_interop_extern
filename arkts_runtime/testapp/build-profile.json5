@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "/Users/claudio/.ohos/config/default_ExternWithEnum_84CNh0VIZlU553XxvT9E5LrqJV_LG3fpmbVyfenpSVs=.cer",
+          "certpath": "/Users/claudio/.ohos/config/default_testapp_04AQFnMhe9ig6dRmcG2MbiDOzdo78wD0zaRrkiS6fEk=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "000000189EBC08780AF381AC332D61DE2D92E9119B9D7A5430DBE48ACD0971F8825ED62472A73991",
-          "profile": "/Users/claudio/.ohos/config/default_ExternWithEnum_84CNh0VIZlU553XxvT9E5LrqJV_LG3fpmbVyfenpSVs=.p7b",
+          "keyPassword": "0000001BB825969B4AE65F6686069548DEE9CCAFF4543DA9BCADB07481B962D4D418640DB6E755A145B4D2",
+          "profile": "/Users/claudio/.ohos/config/default_testapp_04AQFnMhe9ig6dRmcG2MbiDOzdo78wD0zaRrkiS6fEk=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "/Users/claudio/.ohos/config/default_ExternWithEnum_84CNh0VIZlU553XxvT9E5LrqJV_LG3fpmbVyfenpSVs=.p12",
-          "storePassword": "0000001811D0E175EC3BD803FF264FED7C928725CB42773FABF7E368854CEC2E6B29A2492600BFCA"
+          "storeFile": "/Users/claudio/.ohos/config/default_testapp_04AQFnMhe9ig6dRmcG2MbiDOzdo78wD0zaRrkiS6fEk=.p12",
+          "storePassword": "0000001BF8CEE174FDD012D9336D781E4361870E20DA61D2B54F29884AE1512B15CD6E95CF9265A594239C"
         }
       }
     ],

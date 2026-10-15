@@ -4,6 +4,7 @@ import std.sync.AtomicInt64
 import ohos.ark_interop.*
 import arkts_runtime.*
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step10Scenarios(): Array<(String, Scenario)> {
     [
         ("step10.functionCalls", { _, f => functionCalls(f) }),
@@ -11,10 +12,12 @@ func step10Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step10OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [("step10.functionFromOtherThread", functionFromOtherThread)]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 class Counter {
     var count = 0.0
 }
@@ -23,6 +26,7 @@ class Counter {
  * fixtures: sink. Stores Cangjie functions on the sink; ArkTS calls them (directly, through
  * `Array.prototype.map` and from a timer) and checks the results.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func functionCalls(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     sink.concat = ArkTSRuntime.function { args => to(from<String>(args[0]) + "|" + from<String>(args[1])) }
@@ -47,6 +51,7 @@ func functionCalls(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: sink. `fails` throws a Cangjie exception; ArkTS records what it sees. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func functionThrows(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     sink.fails = ArkTSRuntime.function { _ => throw IllegalStateException("cangjie boom") }
@@ -57,6 +62,7 @@ func functionThrows(fixtures: Array<JSValue>): String {
  * A function created from a spawned thread and called from it: the body runs on the JS thread
  * (not the calling one) and the result comes back.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func functionFromOtherThread(): String {
     let callers = AtomicInt64(0)
     let thisThread = Thread.currentThread.id

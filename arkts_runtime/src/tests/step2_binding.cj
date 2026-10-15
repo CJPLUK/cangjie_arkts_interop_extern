@@ -7,6 +7,7 @@ import arkts_runtime.*
 
 // The runtime is bound when the module is registered, before any test runs, and binding is
 // permanent: the unbound state cannot be observed here.
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step2Scenarios(): Array<(String, Scenario)> {
     [
         ("step2.runtimeIsBound", { _, _ => runtimeIsBound() }),
@@ -16,14 +17,17 @@ func step2Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 const ALREADY_BOUND = "ArkTS runtime is already associated with a host JSContext"
 
 /** index.cj binds the runtime when the module is registered. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runtimeIsBound(): String {
     expectEqual("ArkTSRuntime.isBound()", ArkTSRuntime.isBound(), true)
 }
 
 /** The bound context is the engine this test is running in. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runtimeBoundToCallerContext(context: JSContext, _: Array<JSValue>): String {
     let bound = ArkTSRuntime.context
     firstFailure([
@@ -32,6 +36,7 @@ func runtimeBoundToCallerContext(context: JSContext, _: Array<JSValue>): String 
     ])
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runtimeRebindThrows(context: JSContext, _: Array<JSValue>): String {
     let before = ArkTSRuntime.context
     firstFailure([
@@ -43,6 +48,7 @@ func runtimeRebindThrows(context: JSContext, _: Array<JSValue>): String {
 }
 
 /** 8 threads released together try to rebind; every one throws and the context is unchanged. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func concurrentRebindAllThrow(context: JSContext, _: Array<JSValue>): String {
     let threads = 8
     let before = ArkTSRuntime.context

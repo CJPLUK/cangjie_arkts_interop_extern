@@ -6,6 +6,7 @@ import arkts_runtime.*
 
 // The step 9 scenarios need no test-package fixtures beyond a plain sink object, so the smoke
 // page in Index.ets runs them too.
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step9Scenarios(): Array<(String, Scenario)> {
     [
         ("step9.designExample", { _, f => designExample(f) }),
@@ -13,6 +14,7 @@ func step9Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step9OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [("step9.mixedScenarioOffThread", { => mixedScenario(100) })]
 }
@@ -22,6 +24,7 @@ func step9OffThreadScenarios(): Array<(String, OffThreadScenario)> {
  * the forced cast parses) and `blob.width += 2.0` (compound assignment is not supported). Stores
  * the rectangle as sink.rect; the caller checks from ArkTS that width == 5 and area() == 25.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func designExample(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
 
@@ -39,6 +42,7 @@ func designExample(fixtures: Array<JSValue>): String {
 }
 
 /** Runs `mixedOnce` `iterations` times; stops at the first failure. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func mixedScenario(iterations: Int64): String {
     for (i in 0..iterations) {
         let failure = mixedOnce(i)
@@ -50,6 +54,7 @@ func mixedScenario(iterations: Int64): String {
 }
 
 /** Every runtime feature once, on objects made from JS built-ins (so it also runs off-thread). */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func mixedOnce(i: Int64): String {
     let g = ArkTSRuntime.global()
 

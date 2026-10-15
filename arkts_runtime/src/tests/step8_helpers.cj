@@ -5,6 +5,7 @@ import ohos.ark_interop.*
 import ohos.business_exception.BusinessException
 import arkts_runtime.*
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step8Scenarios(): Array<(String, Scenario)> {
     [
         ("step8.undefinedAndNull", { c, f => undefinedAndNull(c, f) }),
@@ -19,12 +20,15 @@ func step8Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step8OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [("step8.helpersFromOtherThread", helpersFromOtherThread)]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 const TEST_MODULE = "entry/src/main/ets/arkts/TestModule"
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func foreignPayloadFails(what: String, block: () -> Any): String {
     expectThrows<ExternConversionException>(what, "Extern payload was not produced by ArkTSRuntime", block)
 }
@@ -33,6 +37,7 @@ func foreignPayloadFails(what: String, block: () -> Any): String {
  * fixtures: sink, Rectangle. Stores undefined() and null(); ArkTS checks them. isUndefined /
  * isNull are true only for their own kind.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func undefinedAndNull(context: JSContext, fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     sink.u = ArkTSRuntime.undefined()
@@ -67,6 +72,7 @@ func undefinedAndNull(context: JSContext, fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: sink. ArkTS checks o1 and o2 are distinct empty objects. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func objectIsFresh(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     let o1 = ArkTSRuntime.object()
@@ -80,6 +86,7 @@ func objectIsFresh(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: globalThis. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func globalIsGlobalThis(fixtures: Array<JSValue>): String {
     let g = ArkTSRuntime.global()
     firstFailure([
@@ -89,6 +96,7 @@ func globalIsGlobalThis(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: sink. ArkTS checks s1.description === "d", s1 !== s2, and the default description. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func symbols(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     let s1 = ArkTSRuntime.symbol(description: "d")
@@ -107,6 +115,7 @@ func symbols(fixtures: Array<JSValue>): String {
  * fixtures: pairs (array of [a, b]), expected (ArkTS `a === b` for each pair), Rectangle.
  * Then pairs made in Cangjie, and trees as operands.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func strictEqualTable(fixtures: Array<JSValue>): String {
     let pairs = from<Array<Array<E>>>(ext(fixtures, 0))
     let expected = from<Array<Bool>>(ext(fixtures, 1))
@@ -126,6 +135,7 @@ func strictEqualTable(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: Rectangle, [1, 2]. `objectHasProperty` follows JS `in`; `objectKeys` is `Object.keys`. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func objectProperties(fixtures: Array<JSValue>): String {
     let rect = ext(fixtures, 0)
     let items = ext(fixtures, 1)
@@ -159,6 +169,7 @@ func objectProperties(fixtures: Array<JSValue>): String {
  * fixtures: sink, frozen object. Defines one property per flag combination (named by its
  * flags, e.g. "wEc" = writable, not enumerable, configurable); ArkTS checks each descriptor.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func defineOwnProperty(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     let frozen = ext(fixtures, 1)
@@ -183,6 +194,7 @@ func defineOwnProperty(fixtures: Array<JSValue>): String {
     ])
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func requireArkModule(): String {
     let m = ArkTSRuntime.requireArkModule(TEST_MODULE)
     let hilog = ArkTSRuntime.requireArkModule("@ohos.hilog")
@@ -200,6 +212,7 @@ func requireArkModule(): String {
     ])
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func requireSystemNativeModule(): String {
     let hilog = ArkTSRuntime.requireSystemNativeModule("hilog", None)
     firstFailure([
@@ -213,6 +226,7 @@ func requireSystemNativeModule(): String {
  * Every helper from a spawned thread. `requireArkModule` is the exception: without ArkTS code on
  * the stack the engine cannot resolve the specifier (known limitation).
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func helpersFromOtherThread(): String {
     let o = ArkTSRuntime.object()
     let s = ArkTSRuntime.symbol(description: "t")

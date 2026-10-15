@@ -1,6 +1,6 @@
 [package]
   cjc-version = "0.0.1"
-  compile-option = "--dy-std --cfg=\"${COMPILE_CONDITION_ENTRY}\""
+  compile-option = "--dy-std --cfg=\"${COMPILE_CONDITION_ENTRY},bundle=${bundleName}\""
   description = "ArkTS runtime for Extern<ArkTSRuntime>"
   name = "arkts_runtime"
   output-type = "static"

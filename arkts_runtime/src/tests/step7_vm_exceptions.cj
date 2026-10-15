@@ -4,6 +4,7 @@ import ohos.ark_interop.*
 import ohos.business_exception.BusinessException
 import arkts_runtime.*
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step7Scenarios(): Array<(String, Scenario)> {
     [
         ("step7.arkInteropJSException", { _, f => arkInteropJSException(f) }),
@@ -13,6 +14,7 @@ func step7Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step7OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [("step7.jsExceptionFromOtherThread", jsExceptionFromOtherThread)]
 }
@@ -21,6 +23,7 @@ func step7OffThreadScenarios(): Array<(String, OffThreadScenario)> {
  * fixtures: Thrower. Pins what `ark_interop` itself throws for a JS throw, called directly
  * (without `run`): a `BusinessException` with code 34300002 whose message contains the JS text.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func arkInteropJSException(fixtures: Array<JSValue>): String {
     let thrower = fixture(fixtures, 0)
     func raw(what: String, fragment: String, block: () -> JSValue): String {
@@ -46,6 +49,7 @@ func arkInteropJSException(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: Thrower. Every public entry point turns a JS throw into a ForeignRuntimeException. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func jsThrowsBecomeForeignRuntimeException(fixtures: Array<JSValue>): String {
     let t = ext(fixtures, 0)
     func fails(what: String, fragment: String, block: () -> Any): String {
@@ -65,6 +69,7 @@ func jsThrowsBecomeForeignRuntimeException(fixtures: Array<JSValue>): String {
  * fixtures: Target. Our exceptions, and `ark_interop` errors that are not JS throws (type
  * mismatch, 34300005), keep their type.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func ownExceptionsNotWrapped(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
     let mismatch = try {
@@ -85,6 +90,7 @@ func ownExceptionsNotWrapped(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: Thrower. ArkTS checks calls == 2: the second call after a JS exception ran too. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func usableAfterJSException(fixtures: Array<JSValue>): String {
     let t = ext(fixtures, 0)
     let first = expectThrows<ForeignRuntimeException>("first call", "boom", { => t.boom() })
@@ -98,6 +104,7 @@ func usableAfterJSException(fixtures: Array<JSValue>): String {
 }
 
 /** `JSON.parse("{")` from a spawned thread: the SyntaxError is rethrown on this thread. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func jsExceptionFromOtherThread(): String {
     let json = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.context.global.getProperty("JSON")) }
     firstFailure([

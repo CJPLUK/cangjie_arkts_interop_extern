@@ -5,6 +5,7 @@ import std.sync.*
 import ohos.ark_interop.*
 import arkts_runtime.*
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step3Scenarios(): Array<(String, Scenario)> {
     [
         ("step3.runOnJSThreadReturnsValue", { _, _ => runReturnsValue() }),
@@ -15,6 +16,7 @@ func step3Scenarios(): Array<(String, Scenario)> {
 }
 
 // Each of these also runs on the JS thread above; here the caller is a spawned thread.
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step3OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [
         ("step3.runOffThreadReturnsValue", runReturnsValue),
@@ -26,6 +28,7 @@ func step3OffThreadScenarios(): Array<(String, OffThreadScenario)> {
 }
 
 /** The value comes back, and the operation itself ran on the bind thread. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runReturnsValue(): String {
     let callerOnBindThread = ArkTSRuntime.context.isInBindThread()
     let (insideOnBindThread, value) = ArkTSRuntime.run {
@@ -40,6 +43,7 @@ func runReturnsValue(): String {
 }
 
 /** Engine calls inside the operation work; they throw "Thread mismatch" off the JS thread. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runUsesEngine(): String {
     let text = ArkTSRuntime.run {
         let context = ArkTSRuntime.context
@@ -51,6 +55,7 @@ func runUsesEngine(): String {
 }
 
 /** The exact exception object thrown by the operation reaches the caller. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runPropagatesException(): String {
     let thrown = IllegalStateException("thrown inside run")
     try {
@@ -69,6 +74,7 @@ func runPropagatesException(): String {
 }
 
 /** An operation that calls `run` again completes; the inner call is already on the bind thread. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runNested(): String {
     let value = ArkTSRuntime.run {
         ArkTSRuntime.run {
@@ -85,6 +91,7 @@ func runNested(): String {
  * 16 threads call `run` 100 times each, returning their own id. Every result must match, and
  * operations must never overlap, since they all execute on the single JS thread.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func runFromManyThreads(): String {
     let threads = 16
     let callsPerThread = 100

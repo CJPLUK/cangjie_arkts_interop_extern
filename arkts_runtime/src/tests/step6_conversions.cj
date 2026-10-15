@@ -4,6 +4,7 @@ import std.math.numeric.BigInt
 import ohos.ark_interop.*
 import arkts_runtime.*
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step6Scenarios(): Array<(String, Scenario)> {
     [
         ("step6.toExternTypes", { _, f => toExternTypes(f) }),
@@ -16,14 +17,17 @@ func step6Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step6OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [("step6.conversionsFromOtherThread", conversionsFromOtherThread)]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func from<T>(e: E): T {
     ArkTSRuntime.fromExtern<T>(e)
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func to<T>(value: T): E {
     ArkTSRuntime.toExtern(value)
 }
@@ -32,6 +36,7 @@ func to<T>(value: T): E {
  * fixtures: sink object, Rectangle. Stores one converted value per mapping row in the sink;
  * ArkTS checks the `typeof` and value of each.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func toExternTypes(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     let rect = ext(fixtures, 1)
@@ -73,6 +78,7 @@ func toExternTypes(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: Values. Each field read as its Cangjie type. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func fromExternTypes(fixtures: Array<JSValue>): String {
     let v = ext(fixtures, 0)
     let negZero = from<Float64>(v.negZero)
@@ -113,10 +119,12 @@ func fromExternTypes(fixtures: Array<JSValue>): String {
     ])
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func roundTrip<T>(value: T): String where T <: Equatable<T> & ToString {
     expectEqual("round trip of ${value}", from<T>(to(value)), value)
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func roundTrips(): String {
     let negZero = from<Float64>(to(-0.0))
     firstFailure([
@@ -150,6 +158,7 @@ func roundTrips(): String {
 }
 
 /** fixtures: sink. A 1 MB string and a 100 000-element array; ArkTS checks the stored ones. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func largeValues(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     let text = String(Array<Rune>(1 << 20, repeat: r'é'))
@@ -166,6 +175,7 @@ func largeValues(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: Target. An unevaluated tree is evaluated by `toExtern` and `fromExtern`. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func externInputs(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
     let tree = member(member(member(e, "a"), "b"), "c")
@@ -178,6 +188,7 @@ func externInputs(fixtures: Array<JSValue>): String {
 }
 
 /** fixtures: Values. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func conversionFailures(fixtures: Array<JSValue>): String {
     let v = ext(fixtures, 0)
     func fails(what: String, fragment: String, block: () -> Any): String {
@@ -210,6 +221,7 @@ func conversionFailures(fixtures: Array<JSValue>): String {
  * fixtures: sink. Through the compiler: a Cangjie value where an `Extern` is expected becomes
  * `toExtern`. ArkTS checks implicit === 42n and implicitArray is [1n, "a"].
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func implicitConversion(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
     let v: E = 42
@@ -220,6 +232,7 @@ func implicitConversion(fixtures: Array<JSValue>): String {
 }
 
 /** `toExtern` and `fromExtern` from a spawned thread. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func conversionsFromOtherThread(): String {
     let numbers = to([1.5, 2.5])
     firstFailure([

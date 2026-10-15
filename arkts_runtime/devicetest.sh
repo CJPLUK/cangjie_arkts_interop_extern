@@ -15,7 +15,7 @@ DEVECO="${DEVECO_HOME:-/Applications/DevEco-Studio.app/Contents}"
 CANGJIE_SDK="${CANGJIE_SDK:-$HOME/.cangjie-sdk/6.1/cangjie}"
 HDC="$DEVECO/sdk/default/openharmony/toolchains/hdc"
 HVIGORW="$DEVECO/tools/hvigor/bin/hvigorw"
-BUNDLE=com.example.externwithenum
+BUNDLE=com.example.testArkTSForeignRuntime
 WORK="$ROOT/.devicetest"
 
 ALL=false

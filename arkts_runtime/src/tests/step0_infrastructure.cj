@@ -2,6 +2,7 @@ package arkts_runtime.tests
 
 import ohos.ark_interop.*
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step0Scenarios(): Array<(String, Scenario)> {
     [
         ("step0.trivial", { _, _ => "" }),
@@ -14,6 +15,7 @@ func step0Scenarios(): Array<(String, Scenario)> {
 }
 
 /** `expectThrows` must accept the right exception and report every other outcome. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func expectThrowsHelper(): String {
     firstFailure([
         expectEqual("matching exception",
@@ -30,6 +32,7 @@ func expectThrowsHelper(): String {
 }
 
 /** fixtures[0] is a Rectangle(3, 4); reads it with plain ark_interop. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func readFixture(_: JSContext, fixtures: Array<JSValue>): String {
     let rect = fixture(fixtures, 0).asObject()
     firstFailure([
@@ -39,6 +42,7 @@ func readFixture(_: JSContext, fixtures: Array<JSValue>): String {
 }
 
 /** fixtures[0] is a Rectangle; sets width = 5 with plain ark_interop. ArkTS checks the effect. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func writeFixture(context: JSContext, fixtures: Array<JSValue>): String {
     fixture(fixtures, 0).asObject()["width"] = context.number(5.0).toJSValue()
     ""

@@ -4,6 +4,7 @@ import std.runtime.gc
 import ohos.ark_interop.*
 import arkts_runtime.*
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step4Scenarios(): Array<(String, Scenario)> {
     [
         ("step4.retainClassifiesEachKind", retainClassifiesEachKind),
@@ -17,9 +18,11 @@ func step4Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 const FOREIGN_PAYLOAD = "Extern payload was not produced by ArkTSRuntime"
 
 /** The JSValue held by an evaluated Extern, valid in the current scope. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func unwrap(value: Extern<ArkTSRuntime>): JSValue {
     match (value) {
         case ExternPayload(handle) => ArkTSRuntime.evalPayload(handle)
@@ -31,6 +34,7 @@ func unwrap(value: Extern<ArkTSRuntime>): JSValue {
  * One value of every JS kind, with the handle variant `retain` must pick. fixtures[0] is a
  * Rectangle created by ArkTS.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func valuesOfEachKind(context: JSContext, fixtures: Array<JSValue>): Array<(String, JSValue, String)> {
     [
         ("undefined", context.undefined().toJSValue(), "Imm"),
@@ -47,6 +51,7 @@ func valuesOfEachKind(context: JSContext, fixtures: Array<JSValue>): Array<(Stri
     ]
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func retainClassifiesEachKind(context: JSContext, fixtures: Array<JSValue>): String {
     firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
         let (name, value, kind) = entry
@@ -55,6 +60,7 @@ func retainClassifiesEachKind(context: JSContext, fixtures: Array<JSValue>): Str
 }
 
 /** `evalPayload(retain(v))` is `v` itself (JS `===`). */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func payloadRoundTrip(context: JSContext, fixtures: Array<JSValue>): String {
     firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
         let (name, value, _) = entry
@@ -63,6 +69,7 @@ func payloadRoundTrip(context: JSContext, fixtures: Array<JSValue>): String {
 }
 
 /** Values retained inside a scope stay usable after it closes and many others come and go. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func retainedValueOutlivesScope(context: JSContext): String {
     let (keptObject, keptString) = context.newScope {
         let o = context.object()
@@ -82,6 +89,7 @@ func retainedValueOutlivesScope(context: JSContext): String {
 }
 
 /** Payloads not made by `retain` are rejected, including a bare JSValue. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func rejectsForeignPayload(context: JSContext): String {
     let notOurs = Extern<ArkTSRuntime>.ExternPayload(42)
     firstFailure([
@@ -101,8 +109,10 @@ func rejectsForeignPayload(context: JSContext): String {
  * The only strong reference to an ArkTS object between `step4.keepObject` and
  * `step4.dropKeptObject`; ArkTS holds just a `WeakRef`. Only touched on the JS thread.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 var keptObject: ?Extern<ArkTSRuntime> = None
 /** fixtures[0] is a Rectangle that ArkTS will stop referring to. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func keepObject(_: JSContext, fixtures: Array<JSValue>): String {
     keptObject = ArkTSRuntime.retain(fixture(fixtures, 0))
     ""
@@ -112,6 +122,7 @@ func keepObject(_: JSContext, fixtures: Array<JSValue>): String {
  * fixtures[0] is the Rectangle read back from the `WeakRef` after collections: the kept
  * Extern must be that very object. Sets its width to 7 so ArkTS can check the effect.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func checkKeptObject(context: JSContext, fixtures: Array<JSValue>): String {
     let kept = keptObject ?? return "step4.keepObject has not run"
     let result = expectEqual("kept === object behind the WeakRef", unwrap(kept).strictEqual(fixture(fixtures, 0)), true)
@@ -120,12 +131,14 @@ func checkKeptObject(context: JSContext, fixtures: Array<JSValue>): String {
 }
 
 /** Drops the kept Extern and runs the Cangjie GC, so its global handle gets released. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func dropKeptObject(): String {
     keptObject = None
     gc(heavy: true)
     ""
 }
 
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func step4OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [
         ("step4.retainedValueCrossesThreads", retainedValueCrossesThreads),
@@ -134,6 +147,7 @@ func step4OffThreadScenarios(): Array<(String, OffThreadScenario)> {
 }
 
 /** A value retained in one `run` is held by a spawned thread and used in a later `run`. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func retainedValueCrossesThreads(): String {
     let kept = ArkTSRuntime.run {
         let context = ArkTSRuntime.context
@@ -151,6 +165,7 @@ func retainedValueCrossesThreads(): String {
  * 10 000 handles retained on the JS thread are dropped on a spawned thread, so their
  * finalizers do not run on the JS thread; the engine keeps working afterwards.
  */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func releaseHandlesFromOtherThread(): String {
     for (i in 0..10000) {
         let kept = ArkTSRuntime.run {
@@ -168,6 +183,7 @@ func releaseHandlesFromOtherThread(): String {
 }
 
 /** Retains and drops 100 000 objects, each created in its own scope, then runs the Cangjie GC. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
 func releaseManyHandles(context: JSContext): String {
     for (i in 0..100000) {
         let kept = context.newScope {
