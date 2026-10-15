@@ -11,6 +11,7 @@ import kit.ArkUI.ViewStackProcessor
 import kit.ArkUI.CJPageEntry
 import kit.ArkUI.HybridComponentBase
 import kit.ArkUI.FontWeight
+import kit.ArkUI.FlexAlign
 import kit.ArkUI.LengthProp
 import ohos.arkui.state_macro_manage.State
 import ohos.arkui.state_macro_manage.Component
@@ -21,14 +22,14 @@ import ohos.ark_interop.JSCallInfo
 import ohos.ark_interop.JSValue
 import arkts_runtime.ArkTSRuntime
 
-var hello: ?Extern<ArkTSRuntime> = None
+var arkTSModule: ?Extern<ArkTSRuntime> = None
 
 /**
  * init(): called once by the ArkTS page. `requireArkModule` only works while ArkTS is calling
  * into Cangjie (not while the module registers, nor from a Cangjie UI event).
  */
 func initHello(runtime: JSContext, _: JSCallInfo): JSValue {
-    hello = ArkTSRuntime.requireArkModule("entry/src/main/ets/Hello")
+    arkTSModule = ArkTSRuntime.requireArkModule("entry/src/main/ets/Hello")
     runtime.undefined().toJSValue()
 }
 
@@ -52,7 +53,7 @@ class HelloView {
 
     func sayHello(): Unit {
         running = true
-        hello.getOrThrow().sayHello(ArkTSRuntime.function { args =>
+        arkTSModule.getOrThrow().sayHello(ArkTSRuntime.function { args =>
             let n = ArkTSRuntime.fromExtern<Float64>(args[1])
             if (n < 0.0) {
                 text = ""
@@ -71,6 +72,6 @@ class HelloView {
             Text(text).fontSize(40).fontWeight(FontWeight.Bold)
             Text(counter).fontSize(60)
             Button("Say hello").enabled(!running).margin(top: 20.vp).onClick({ _ => sayHello() })
-        }
+        }.width(100.percent).height(100.percent).justifyContent(FlexAlign.Center)
     }
 }
