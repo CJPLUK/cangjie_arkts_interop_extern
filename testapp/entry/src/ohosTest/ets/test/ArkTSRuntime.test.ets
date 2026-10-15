@@ -54,13 +54,8 @@ export default function arkTSRuntimeTest() {
         'step5.nonArrayIndexing',
         'step5.unsupportedIndex',
         'step5.indexWriteOrder',
-        'step5.compoundAssignmentOrder',
-        'step5.compoundOperators',
-        'step5.stringConversions',
-        'step5.compoundThroughSyntax',
-        'step5.logicalAssignment',
-        'step5.compoundReceiverOnce',
-        'step5.compoundErrors',
+        'step5.numberKeys',
+        'step5.compoundAssignmentUnsupported',
         'step5.variableCompoundIsMethodCall',
         'step5.evalPayloadUnchanged',
         'step5.derivedConstructor',
@@ -394,51 +389,15 @@ export default function arkTSRuntimeTest() {
       expect(log.stored[1]).assertEqual(5);
     });
 
-    it('compoundAssignmentOrder', 0, () => {
-      const log = new OrderLog();
-      expect(runArkTSTest('step5.compoundAssignmentOrder', log)).assertEqual('');
-      expect(JSON.stringify(log.order)).assertEqual(JSON.stringify(['target', 'index', 'value']));
-      expect(log.stored[1]).assertEqual(5);
+    it('numberKeys', 0, () => {
+      expect(runArkTSTest('step5.numberKeys', new Target())).assertEqual('');
     });
 
-    it('compoundOperators', 0, () => {
+    it('compoundAssignmentUnsupported', 0, () => {
       const t = new Target();
-      expect(runArkTSTest('step5.compoundOperators', t)).assertEqual('');
-      expect(t.big).assertEqual(225n);
-      expect(t.str).assertEqual('a1.52');
-    });
-
-    it('stringConversions', 0, () => {
-      expect(runArkTSTest('step5.stringConversions', new Target())).assertEqual('');
-    });
-
-    it('compoundThroughSyntax', 0, () => {
-      const t = new Target();
-      expect(runArkTSTest('step5.compoundThroughSyntax', t)).assertEqual('');
-      expect(t.num).assertEqual(2.5);
-      expect(t.items[0]).assertEqual(11);
-    });
-
-    it('logicalAssignment', 0, () => {
-      const t = new Target();
-      const log = new OrderLog();
-      expect(runArkTSTest('step5.logicalAssignment', t, log)).assertEqual('');
-      expect(t.flag as Object).assertEqual('yes');
-      expect(t.zero).assertEqual(5);
+      expect(runArkTSTest('step5.compoundAssignmentUnsupported', t)).assertEqual('');
       expect(t.num).assertEqual(1.5);
-      expect(JSON.stringify(log.order)).assertEqual(JSON.stringify(['value']));
-    });
-
-    it('compoundReceiverOnce', 0, () => {
-      const t = new Target();
-      const holder = new CountingHolder(t);
-      expect(runArkTSTest('step5.compoundReceiverOnce', holder)).assertEqual('');
-      expect(holder.reads).assertEqual(1);
-      expect(t.num).assertEqual(2.5);
-    });
-
-    it('compoundErrors', 0, () => {
-      expect(runArkTSTest('step5.compoundErrors', new Target())).assertEqual('');
+      expect(t.flag as Object).assertEqual(true);
     });
 
     it('variableCompoundIsMethodCall', 0, () => {

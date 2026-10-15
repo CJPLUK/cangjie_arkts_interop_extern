@@ -53,7 +53,7 @@ class RectangleView {
         let api = api.getOrThrow()
         let blob = api.createRectangle()
         blob.width = 3.0
-        blob.width += 2.0
+        blob.width = ArkTSRuntime.fromExtern<Float64>(blob.width) + 2.0
         let width: Float64 = ArkTSRuntime.fromExtern<Float64>(blob.width)
         let area: Float64 = ArkTSRuntime.fromExtern<Float64>(blob.area())
         result = "width ${Int64(width)}, area ${Int64(area)}"

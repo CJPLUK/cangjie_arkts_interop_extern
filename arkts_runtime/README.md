@@ -1,7 +1,7 @@
 # arkts_runtime
 
 `ArkTSRuntime`, the runtime behind `Extern<ArkTSRuntime>`: Cangjie code reads and writes
-ArkTS values with ordinary syntax (`blob.width += 2.0`, `api.createRectangle()`).
+ArkTS values with ordinary syntax (`blob.width = 3.0`, `api.createRectangle()`).
 
 ```cangjie
 import arkts_runtime.ArkTSRuntime
@@ -9,9 +9,13 @@ import arkts_runtime.ArkTSRuntime
 let api: Extern<ArkTSRuntime> = ArkTSRuntime.requireArkModule("entry/src/main/ets/Rectangle")
 let blob = api.createRectangle()
 blob.width = 3.0
-blob.width += 2.0
+let width = ArkTSRuntime.fromExtern<Float64>(blob.width)
+blob.width = width + 2.0
 let area: Float64 = ArkTSRuntime.fromExtern<Float64>(blob.area())
 ```
+
+Compound assignment (`blob.width += 2.0`, `e[i] &&= v`, ...) is not supported: it throws
+`ExternCompoundAssignmentException`.
 
 ## Requirements
 

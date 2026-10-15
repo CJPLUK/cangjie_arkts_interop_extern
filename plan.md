@@ -85,8 +85,6 @@ emulator.
 | `JSValue.getProperty` works only on objects ("expect object, given string"); `toString()` only on strings | Members of primitives are read through `Object(value)`; other values are turned into strings through the global `String` |
 | `getElement` / `setElement` differ from JS (probed on the phone, array `[10, 20, 30]`): both work only on arrays ("expect array, given object"); `getElement` throws "index out of range" at and past `length` (JS reads `undefined`) and at -1; `setElement(-1)` throws; `setElement(4294967295)` stores the value but sets `length` to 0 while elements 0–2 remain; `setElement(≥ 2^32)` throws `OverflowException`. Appending and sparse writes up to 4294967294 behave like JS. `setProperty` / `getProperty` with the number's name (`"3"`, `"-1"`, `"4294967294"`, `"4294967295"`) match JS in every case, including `length` | Not used: every numeric index is a property name. Plain ArkTS on the phone has exactly the JS rules (`items[5]` undefined, `-1` / `4294967295` plain properties, `4294967294` the last element) |
 | `extend Extern<R> <: I` fails ("extending type 'Enum-Extern<...>' is not allowed"); conditional extensions (`extend<T> Array<T> <: I`) and `TypeTag<R>() as I` in generic code work | `conversion.cj` handles `Extern` as an explicit case; `Array` / `Option` are extended unconditionally and convert elements dynamically |
-| Cangjie has no `%` on floats; `std.math.fmod` throws for an infinite left side or a zero right side | `operators.cj` handles those cases before calling `fmod` (found by the host tests) |
-
 ## Status
 
 - **Step 0 done** (2026-10-08). Host: 24 compiler-contract tests pass. Device: 9 tests pass on
@@ -279,6 +277,19 @@ emulator.
     a `@HybridComponentEntry` class ("lambda capturing mutable variables needs to be called
     directly").
 
+- **Compound assignment removed** (2026-10-15), by the user's decision: ArkTS will not
+  support it. `ark_interop` has no operator API, so step 5 computed `op=` in Cangjie
+  (`operators.cj`) with hand-copied JS semantics. Now every `ExternCompoundAssignment` throws
+  `ExternCompoundAssignmentException("ArkTS compound assignment needs a member or index
+  target")` without evaluating anything. Removed: `operators.cj` and its host tests, the
+  step 5 compound scenarios (`compoundAssignmentOrder`, `compoundOperators`,
+  `compoundThroughSyntax`, `logicalAssignment`, `compoundReceiverOnce`, `compoundErrors`);
+  `stringConversions` kept only its index-key checks, as `numberKeys`; new
+  `compoundAssignmentUnsupported`. Step 9 and the rectangle demo write
+  `blob.width = fromExtern<Float64>(blob.width) + 2.0`, and the mixed scenario uses plain
+  assignments. The compiler-contract host tests still pin the `ExternCompoundAssignment`
+  shape the compiler produces.
+
 ## Testing strategy
 
 Three layers. Layers 1 and 2 are automated and run at every step; layer 3 is a manual smoke
@@ -294,8 +305,6 @@ check.
   evaluator relies on (receiver shape for `this`, compound-assignment shape, `Int64` literals
   as leaves, one `eval` per chain) and catches compiler changes before they show up as device
   failures.
-- **Pure logic** factored out of the runtime into functions over Cangjie values, e.g. the
-  compound-assignment arithmetic on `Float64` / `BigInt` / `String` and JS truthiness.
 
 Location: `hosttest/` at the project root (outside the DevEco build), one `*_test.cj` per
 topic, `@Test` classes from `std.unittest`. Run with:
@@ -307,8 +316,7 @@ DYLD_LIBRARY_PATH=~/.cangjie-sdk/6.1/cangjie/build-tools/runtime/lib/darwin_aarc
     hosttest/run
 ```
 
-wrapped in `hosttest/run.sh`. Pure logic files are shared with the runtime package by
-compiling the same source files (they must not import `ohos.*`).
+wrapped in `hosttest/run.sh`.
 
 ### Layer 2: device tests (emulator and phone, real ArkTS VM)
 
@@ -386,10 +394,9 @@ arkts_runtime/
 ├── libs/           shipped Cangjie libraries (every app); libs-ui/: Cangjie UI apps only
 └── src/
     ├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
-    ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index, compound assignment
+    ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index
     ├── handle.cj       ArkTSHandle (Imm / Ref), retain, evalPayload
     ├── conversion.cj   toJSValue, toExtern, fromExtern, array helpers
-    ├── operators.cj    pure compound-assignment arithmetic (no ohos imports; also compiled by hosttest)
     ├── helpers.cj      undefined, null, object, global, symbol, strictEqual, isNull, isUndefined,
     │                   objectHasProperty, objectKeys, objectDefineOwnProperty,
     │                   requireArkModule, requireSystemNativeModule, function
@@ -692,7 +699,7 @@ ExternWithEnum/                    plain folder (no longer a DevEco project)
 │   ├── libs/arm64-v8a/            runtime/ + ohos/ (moved from entry), copied into every app
 │   ├── libs-ui/arm64-v8a/         Cangjie UI libraries, copied into Cangjie UI apps
 │   └── src/
-│       ├── runtime.cj, handle.cj, conversion.cj, operators.cj, helpers.cj, exceptions.cj
+│       ├── runtime.cj, handle.cj, conversion.cj, helpers.cj, exceptions.cj
 │       │                          package arkts_runtime
 │       └── tests/                 package arkts_runtime.tests (device scenarios)
 ├── testapp/                       today's project, moved: com.example.externwithenum
@@ -704,7 +711,7 @@ ExternWithEnum/                    plain folder (no longer a DevEco project)
 ├── demos/
 │   ├── rectangle/                 com.example.arkts.rectangle
 │   └── hello/                     com.example.arkts.hello
-├── hosttest/                      compiles arkts_runtime/src/operators.cj
+├── hosttest/                      compiler contract
 ├── devicetest.sh                  runs testapp (as today)
 └── demo.sh                        demo.sh <folder>: build, install and start one demo
 ```
@@ -857,4 +864,6 @@ emulator and the phone, and no app contains runtime code.
 - ~~Whether `requireArkModule` paths resolve as `"entry/ets/..."` in this project layout
   (step 8).~~ Resolved: `"entry/src/main/ets/..."`, see step 8 status. To add to the design
   doc: `requireArkModule` fails off the JS call stack (spawned threads).
-- Compound assignment semantics in step 5 are ours; to confirm or move into the design doc.
+- ~~Compound assignment semantics in step 5 are ours; to confirm or move into the design
+  doc.~~ Resolved: compound assignment is not supported (see "Compound assignment removed").
+  To add to the design doc.

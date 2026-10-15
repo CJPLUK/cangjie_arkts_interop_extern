@@ -22,13 +22,8 @@ func step5Scenarios(): Array<(String, Scenario)> {
         ("step5.nonArrayIndexing", { _, f => nonArrayIndexing(f) }),
         ("step5.unsupportedIndex", { _, f => unsupportedIndex(f) }),
         ("step5.indexWriteOrder", { _, f => indexWriteOrder(f) }),
-        ("step5.compoundAssignmentOrder", { _, f => compoundAssignmentOrder(f) }),
-        ("step5.compoundOperators", { _, f => compoundOperators(f) }),
-        ("step5.stringConversions", { c, f => stringConversions(c, f) }),
-        ("step5.compoundThroughSyntax", { _, f => compoundThroughSyntax(f) }),
-        ("step5.logicalAssignment", { _, f => logicalAssignment(f) }),
-        ("step5.compoundReceiverOnce", { _, f => compoundReceiverOnce(f) }),
-        ("step5.compoundErrors", { _, f => compoundErrors(f) }),
+        ("step5.numberKeys", { c, f => numberKeys(c, f) }),
+        ("step5.compoundAssignmentUnsupported", { _, f => compoundAssignmentUnsupported(f) }),
         ("step5.variableCompoundIsMethodCall", { _, f => variableCompoundIsMethodCall(f) }),
         ("step5.evalPayloadUnchanged", { _, f => evalPayloadUnchanged(f) }),
         ("step5.derivedConstructor", { _, f => derivedConstructor(f) }),
@@ -50,10 +45,6 @@ func ext(fixtures: Array<JSValue>, index: Int64): E {
 func number(e: E): Float64 { unwrap(e).toNumber() }
 
 func text(e: E): String { unwrap(e).toString() }
-
-func compound(target: E, op: String, value: Any): E {
-    ArkTSRuntime.eval(E.ExternCompoundAssignment(target, op, value))
-}
 
 func member(target: E, field: String): E {
     E.ExternMemberAccess(target, field)
@@ -85,9 +76,7 @@ func primitiveReceivers(fixtures: Array<JSValue>): String {
         expectThrows<ExternMemberAccessException>("e.str.x = 1", "Cannot set property 'x' of a primitive string",
             { => e.str.x = 1.0 }),
         expectThrows<ExternIndexedAccessException>("e.str[0] = \"x\"", "Cannot index-assign a primitive string",
-            { => e.str[0] = "x" }),
-        expectThrows<ExternMemberAccessException>("e.num.x += 1", "Cannot set property 'x' of a primitive number",
-            { => compound(member(member(e, "num"), "x"), "+", 1.0) })
+            { => e.str[0] = "x" })
     ])
 }
 
@@ -301,143 +290,32 @@ func indexWriteOrder(fixtures: Array<JSValue>): String {
     ""
 }
 
-/** fixtures: OrderLog. ArkTS checks the getter order target, index, value and stored[1] == 5. */
-func compoundAssignmentOrder(fixtures: Array<JSValue>): String {
-    let l = ext(fixtures, 0)
-    expectEqual("result", number(compound(E.ExternIndexedAccess(member(l, "target"), member(l, "index")), "+",
-        member(l, "value"))), 5.0)
-}
-
-/** fixtures: Target. Each row sets e.num, applies `op=` and checks the result and the stored value. */
-func compoundOperators(fixtures: Array<JSValue>): String {
-    let e = ext(fixtures, 0)
-    let numbers: Array<(String, Float64, Float64, Float64)> = [
-        ("+", 1.5, 1.0, 2.5),
-        ("-", 5.0, 7.5, -2.5),
-        ("*", 3.0, 4.0, 12.0),
-        ("/", 1.0, 4.0, 0.25),
-        ("%", -5.5, 2.0, -1.5),
-        ("**", 2.0, 10.0, 1024.0),
-        ("&", 5.0, 3.0, 1.0),
-        ("|", 4.0, 1.0, 5.0),
-        ("^", 5.0, 1.0, 4.0),
-        ("<<", 1.0, 31.0, -2147483648.0),
-        (">>", -8.0, 1.0, -4.0)
-    ]
-    let results = numbers.map({ row =>
-        let (op, start, operand, expected) = row
-        e.num = start
-        let result = compound(member(e, "num"), op, operand)
-        firstFailure([
-            expectEqual("${start} ${op}= ${operand} result", number(result), expected),
-            expectEqual("${start} ${op}= ${operand} stored", number(e.num), expected)
-        ])
-    })
-    e.big = BigInt(10)
-    let bigPlus = unwrap(compound(member(e, "big"), "+", 5)).toBigInt()
-    let bigPow = unwrap(compound(member(e, "big"), "**", 2)).toBigInt()
-    e.str = "a"
-    let strNumber = text(compound(member(e, "str"), "+", 1.5))
-    let strBigInt = text(compound(member(e, "str"), "+", 2))
-    e.num = 1.5
-    let numberStr = text(compound(member(e, "num"), "+", "x"))
-    let undefinedStr = text(compound(member(e, "nothing"), "+", "s"))
-    e.num = 0.1
-    let fraction = number(compound(member(e, "num"), "+", 0.2))
-    firstFailure([
-        firstFailure(results),
-        expectEqual("10n += 5 (Int64 is bigint)", bigPlus, BigInt(15)),
-        expectEqual("15n **= 2", bigPow, BigInt(225)),
-        expectEqual("\"a\" += 1.5", strNumber, "a1.5"),
-        expectEqual("\"a1.5\" += 2 (bigint)", strBigInt, "a1.52"),
-        expectEqual("1.5 += \"x\"", numberStr, "1.5x"),
-        expectEqual("undefined += \"s\"", undefinedStr, "undefineds"),
-        expectEqual("0.1 += 0.2", fraction, 0.30000000000000004)
-    ])
-}
-
 /**
- * fixtures: Target. Values become text with JS `String(...)` rules, not Cangjie's ("1.500000"):
- * in string `+=` and for number index keys. As in JS, a symbol cannot be added to a string.
+ * fixtures: Target. Number index keys are the number's JS `String(...)` form, not Cangjie's
+ * ("1.500000").
  */
-func stringConversions(context: JSContext, fixtures: Array<JSValue>): String {
+func numberKeys(context: JSContext, fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
     func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
-    let symbol = ArkTSRuntime.retain(context.symbol(description: "k").toJSValue())
-    func appended(operand: Any): String {
-        e.str = ""
-        text(compound(member(e, "str"), "+", operand))
-    }
     e[num(1e21)] = "huge"
     e[num(-0.0)] = "zero"
     firstFailure([
-        expectEqual("\"\" += true", appended(true), "true"),
-        expectEqual("\"\" += null", appended(e.nul), "null"),
-        expectEqual("\"\" += NaN", appended(Float64.NaN), "NaN"),
-        expectEqual("\"\" += -0", appended(-0.0), "0"),
-        expectEqual("\"\" += 1e21", appended(1e21), "1e+21"),
-        expectEqual("\"\" += 0.1 + 0.2", appended(0.30000000000000004), "0.30000000000000004"),
-        expectEqual("\"\" += 123456789012 (bigint)", appended(123456789012), "123456789012"),
-        expectThrows<ExternCompoundAssignmentException>("\"\" += symbol", "Unsupported operand for '+='",
-            { => appended(symbol) }),
         expectEqual("key for Extern 1e21", fixture(fixtures, 0).getProperty("1e+21").toString(), "huge"),
         expectEqual("key for Extern -0", fixture(fixtures, 0).getProperty("0").toString(), "zero")
     ])
 }
 
-/** fixtures: Target. Through the compiler; ArkTS checks num == 2.5 and items[0] == 11. */
-func compoundThroughSyntax(fixtures: Array<JSValue>): String {
+/** fixtures: Target. Every compound assignment throws without touching the target. */
+func compoundAssignmentUnsupported(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
-    e.num += 1.0
-    e.items[0] += 1.0
+    let message = "Compound assignment not supported"
     firstFailure([
-        expectEqual("e.num", number(e.num), 2.5),
-        expectEqual("e.items[0]", number(e.items[0]), 11.0)
-    ])
-}
-
-/**
- * fixtures: Target, OrderLog. `&&=` / `||=` assign only when JS would; when they
- * short-circuit, the value (a getter on the OrderLog) is not evaluated. ArkTS checks
- * flag == "yes", zero == 5, num == 1.5 and that the OrderLog was read once.
- */
-func logicalAssignment(fixtures: Array<JSValue>): String {
-    let e = ext(fixtures, 0)
-    let l = ext(fixtures, 1)
-    let yes = text(compound(member(e, "flag"), "&&", "yes"))
-    let five = number(compound(member(e, "zero"), "||", member(l, "value")))
-    let keptNum = number(compound(member(e, "num"), "||", member(l, "value")))
-    e.nothing = 0.0
-    let keptZero = number(compound(member(e, "nothing"), "&&", member(l, "value")))
-    firstFailure([
-        expectEqual("true &&= \"yes\"", yes, "yes"),
-        expectEqual("0 ||= 5", five, 5.0),
-        expectEqual("1.5 ||= ... keeps 1.5", keptNum, 1.5),
-        expectEqual("0 &&= ... keeps 0", keptZero, 0.0)
-    ])
-}
-
-/** fixtures: CountingHolder around a Target. ArkTS checks reads == 1 and target.num == 2.5. */
-func compoundReceiverOnce(fixtures: Array<JSValue>): String {
-    let h = ext(fixtures, 0)
-    h.target.num += 1.0
-    ""
-}
-
-/** fixtures: Target. */
-func compoundErrors(fixtures: Array<JSValue>): String {
-    let e = ext(fixtures, 0)
-    firstFailure([
-        expectThrows<ExternCompoundAssignmentException>("bigint += number", "Cannot mix BigInt and other types",
-            { => compound(member(e, "big"), "+", 1.0) }),
-        expectThrows<ExternCompoundAssignmentException>("object += 1", "Unsupported operand for '+='",
-            { => compound(member(e, "a"), "+", 1.0) }),
-        expectThrows<ExternCompoundAssignmentException>("string -= 1", "Unsupported operand for '-='",
-            { => compound(member(e, "str"), "-", 1.0) }),
-        expectThrows<ExternCompoundAssignmentException>("target is a payload", "needs a member or index target",
-            { => compound(e, "+", 1.0) }),
-        expectThrows<ExternMemberAccessException>("e.nothing.x += 1", "Cannot read property 'x' of undefined",
-            { => compound(member(member(e, "nothing"), "x"), "+", 1.0) })
+        expectThrows<ExternCompoundAssignmentException>("e.num += 1", message, { => e.num += 1.0 }),
+        expectThrows<ExternCompoundAssignmentException>("e.items[0] += 1", message, { => e.items[0] += 1.0 }),
+        expectThrows<ExternCompoundAssignmentException>("e.flag &&= \"yes\"", message,
+            { => ArkTSRuntime.eval(E.ExternCompoundAssignment(member(e, "flag"), "&&", "yes")) }),
+        expectEqual("e.num unchanged", number(e.num), 1.5),
+        expectEqual("e.items[0] unchanged", number(e.items[0]), 10.0)
     ])
 }
 
@@ -487,9 +365,13 @@ func longChainLoop(fixtures: Array<JSValue>): String {
 func evalFromOtherThread(): String {
     let o = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.context.object().toJSValue()) }
     o.x = 1.5
-    o.x += 1.0
-    o.s = "a"
-    o.s += 2.5
-    let (x, s) = ArkTSRuntime.run { (number(o.x), text(o.s)) }
-    expectEqual("x and s", "${x} ${s}", "2.500000 a2.5")
+    o.items = [1.0, 2.0]
+    o.items[1] = 2.5
+    let (x, item) = ArkTSRuntime.run { (number(o.x), number(o.items[1])) }
+    firstFailure([
+        expectEqual("o.x", x, 1.5),
+        expectEqual("o.items[1]", item, 2.5),
+        expectThrows<ExternCompoundAssignmentException>("o.x += 1", "Compound assignment not supported",
+            { => o.x += 1.0 })
+    ])
 }

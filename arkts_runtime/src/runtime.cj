@@ -139,8 +139,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 run { ArkTSRuntime.retain(evalIndexedUpdate(target, index, value)) }
             case ExternFunctionCall(callee, arguments) =>
                 run { ArkTSRuntime.retain(call(callee, arguments)) }
-            case ExternCompoundAssignment(target, op, value) =>
-                run { ArkTSRuntime.retain(evalCompoundAssignment(target, op, value)) }
+            case ExternCompoundAssignment(_, _, _) => evalCompoundAssignment()
             case _ => Extern<ArkTSRuntime>.evalDerived(tree)
         }
     }
@@ -159,8 +158,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 evalIndexedUpdate(target, index, value)
             case ExternFunctionCall(callee, arguments) =>
                 call(callee, arguments)
-            case ExternCompoundAssignment(target, op, value) =>
-                evalCompoundAssignment(target, op, value)
+            case ExternCompoundAssignment(_, _, _) => evalCompoundAssignment()
             case _ =>
                 evalTree(Extern<ArkTSRuntime>.evalDerived(tree))
         }
@@ -304,72 +302,9 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         function.asFunction().call(converted, thisArg: thisArg)
     }
 
-    /**
-     * `target op= value` with JS semantics: the receiver and key are evaluated once, the current
-     * value is read, combined with `value` and written back; returns the new value. `&&=` and
-     * `||=` short-circuit like JS: when they do, `value` is not evaluated and nothing is written.
-     */
-    private static func evalCompoundAssignment(target: Extern<ArkTSRuntime>, op: String, value: Any): JSValue {
-        match (target) {
-            case ExternMemberAccess(receiverTree, field) =>
-                let receiver = evalTree(receiverTree)
-                let current = readMember(receiver, field)
-                match (combine(current, op, value)) {
-                    case Some(result) =>
-                        writeMember(receiver, field, result)
-                        result
-                    case None => current
-                }
-            case ExternIndexedAccess(receiverTree, index) =>
-                let receiver = evalTree(receiverTree)
-                let key = toIndexKey(index)
-                let current = readKey(receiver, key)
-                match (combine(current, op, value)) {
-                    case Some(result) =>
-                        writeKey(receiver, key, result)
-                        result
-                    case None => current
-                }
-            case _ => throw ExternCompoundAssignmentException(
-                "ArkTS compound assignment needs a member or index target")
-        }
-    }
-
-    /** The value to store, or `None` when `&&=` / `||=` short-circuits. */
-    private static func combine(current: JSValue, op: String, value: Any): ?JSValue {
-        match (op) {
-            case "&&" => if (isTruthy(operand(current))) { Some(ArkTSRuntime.toJSValue(value)) } else { None }
-            case "||" => if (isTruthy(operand(current))) { None } else { Some(ArkTSRuntime.toJSValue(value)) }
-            case _ =>
-                let right = ArkTSRuntime.toJSValue(value)
-                if (op == "+" && (current.isString() || right.isString())) {
-                    return Some(context.string(stringForm(current) + stringForm(right)).toJSValue())
-                }
-                match (applyOperator(op, operand(current), operand(right))) {
-                    case Number(n) => Some(context.number(n).toJSValue())
-                    case Big(n) => Some(context.bigint(n).toJSValue())
-                    case _ => throw ExternCompoundAssignmentException("Unexpected result of '${op}='")
-                }
-        }
-    }
-
-    private static func operand(value: JSValue): JSOperand {
-        if (value.isNumber()) { return Number(value.toNumber()) }
-        if (value.isBigInt()) { return Big(value.toBigInt()) }
-        if (value.isBoolean()) { return Boolean(value.toBoolean()) }
-        if (value.isString()) { return Text(value.toString()) }
-        if (value.isUndefined()) { return Undefined }
-        if (value.isNull()) { return Null }
-        Reference
-    }
-
-    /** JS ToString of a primitive, from the engine (number formatting differs from Cangjie). */
-    private static func stringForm(value: JSValue): String {
-        if (value.isString() || value.isNumber() || value.isBoolean() || value.isBigInt() || value.isUndefined() ||
-            value.isNull()) {
-            return jsString(value)
-        }
-        throw ExternCompoundAssignmentException("Unsupported operand for '+='")
+    /** ArkTS does not support compound assignment (`e.f += 1`, `e[i] &&= v`, ...). */
+    private static func evalCompoundAssignment(): Nothing {
+        throw ExternCompoundAssignmentException("Compound assignment not supported in ArkTS foreign runtime!")
     }
 
     /** Converts a Cangjie value to ArkTS (type mapping in `conversion.cj`). */

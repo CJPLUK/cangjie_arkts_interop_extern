@@ -70,7 +70,7 @@ export class Branch {
   b: Leaf = new Leaf();
 }
 
-// Fields of every kind for member, index and compound-assignment scenarios.
+// Fields of every kind for member and index scenarios.
 export class Target {
   num: number = 1.5;
   str: string = 'héllo';
