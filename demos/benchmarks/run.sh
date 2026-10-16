@@ -135,6 +135,59 @@ write_code() {
     } > "$CODE/shared.html"
 }
 
+# Prints an SVG line chart of arkts_runtime ns/op (logarithmic axis) across the given .csv files,
+# oldest first: one line per benchmark, one point per file. Then a legend.
+write_chart() {
+    awk -F, '
+        function label(k,    unit) {
+            unit = k < 3 ? "ns" : k < 6 ? "µs" : k < 9 ? "ms" : "s"
+            return (10 ^ (k % 3)) " " unit
+        }
+        function x(r) { return L + (runs == 1 ? PW / 2 : (r - 1) * PW / (runs - 1)) }
+        function y(l) { return T + (hi - l) * PH / (hi - lo) }
+        FNR == 1 { runs++; next }
+        {
+            stamp[runs] = $1; v = $7 + 0
+            if (!($4 in idx)) { idx[$4] = ++nb; names[nb] = $4 }
+            if (v <= 0) next
+            val[idx[$4], runs] = $7
+            l = log(v) / log(10)
+            if (!seen || l < lo) lo = l
+            if (!seen || l > hi) hi = l
+            seen = 1
+        }
+        END {
+            if (!seen) exit
+            L = 70; T = 15; PW = 1000; PH = 460; W = L + PW + 20; H = T + PH + 80
+            lo = int(lo); hi = (hi > int(hi)) ? int(hi) + 1 : int(hi); if (hi == lo) hi = lo + 1
+            printf "<svg class=\"history\" viewBox=\"0 0 %d %d\" width=\"%d\" height=\"%d\">\n", W, H, W, H
+            for (k = lo; k <= hi; k++) {
+                printf "<line class=\"grid\" x1=\"%d\" x2=\"%d\" y1=\"%.1f\" y2=\"%.1f\"/>", L, L + PW, y(k), y(k)
+                printf "<text class=\"axis\" x=\"%d\" y=\"%.1f\" text-anchor=\"end\">%s</text>\n", L - 6, y(k) + 4, label(k)
+                if (k < hi) for (m = 2; m <= 5; m += 3)
+                    printf "<line class=\"minor\" x1=\"%d\" x2=\"%d\" y1=\"%.1f\" y2=\"%.1f\"/>\n", L, L + PW, y(k + log(m) / log(10)), y(k + log(m) / log(10))
+            }
+            for (r = 1; r <= runs; r++) {
+                s = stamp[r]
+                printf "<text class=\"axis\" transform=\"translate(%.1f %d) rotate(-40)\" text-anchor=\"end\">%s</text>\n", x(r), T + PH + 16, substr(s, 6, 5) " " substr(s, 12, 2) ":" substr(s, 14, 2)
+            }
+            for (b = 1; b <= nb; b++) {
+                color[b] = sprintf("hsl(%d, 70%%, %d%%)", (b * 137.5) % 360, b % 2 ? 38 : 52)
+                printf "<g class=\"series\"><title>%s</title><polyline stroke=\"%s\" points=\"", names[b], color[b]
+                for (r = 1; r <= runs; r++) if ((b, r) in val) printf "%.1f,%.1f ", x(r), y(log(val[b, r]) / log(10))
+                printf "\"/>"
+                for (r = 1; r <= runs; r++) if ((b, r) in val)
+                    printf "<circle fill=\"%s\" r=\"3\" cx=\"%.1f\" cy=\"%.1f\"><title>%s, %s: %s ns</title></circle>", color[b], x(r), y(log(val[b, r]) / log(10)), names[b], stamp[r], val[b, r]
+                printf "</g>\n"
+            }
+            print "</svg>"
+            printf "<div class=\"legend\">"
+            for (b = 1; b <= nb; b++) printf "<span><i style=\"background: %s\"></i>%s</span>", color[b], names[b]
+            print "</div>"
+        }
+    ' "$@"
+}
+
 # Writes the .csv and .html for one device from the RESULT lines in $1.
 write_results() {
     lines="$1" device="$2" stamp="$3" base="$4"
@@ -160,6 +213,15 @@ tr.code > td { background: #fafafa; }
 .variants { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
 h3 { margin: 0.8em 0 0.3em; font-size: 1em; }
 pre { margin: 0; padding: 8px; background: #fff; border: 1px solid #ddd; overflow-x: auto; font-size: 12px; }
+svg.history { font-size: 11px; }
+svg.history .grid { stroke: #ccc; }
+svg.history .minor { stroke: #eee; }
+svg.history .axis { fill: #555; }
+svg.history .series polyline { fill: none; stroke-width: 1.5; }
+svg.history:has(.series:hover) .series:not(:hover) { opacity: 0.15; }
+svg.history .series:hover polyline { stroke-width: 3; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; max-width: 1090px; font-size: 12px; }
+.legend i { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -1px; }
 </style></head><body>
 <h1>arkts_runtime against ark_interop</h1>
 <p>Date: $stamp<br>Device: $device<br>Build: $BUILD_MODE<br>
@@ -177,6 +239,10 @@ EOF
             echo "</td></tr>"
         done < "$lines"
         echo "</table>"
+        echo "<h2>arkts_runtime across runs</h2>"
+        echo "<p>Every result file of $device in results/, oldest first: arkts_runtime ns/op on a"
+        echo "logarithmic axis. Point at a line to highlight it, at a point for its value.</p>"
+        write_chart "$RESULTS/$device"-*.csv
         echo "<h2 id=\"shared\">Fixtures and helpers</h2>"
         cat "$CODE/shared.html"
         cat <<'EOF'
