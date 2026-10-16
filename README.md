@@ -23,6 +23,7 @@ it in use. The design it implements is `docs/arkts_runtime_design.md` in
 arkts_runtime/      the library, with its device tests
 demos/hello         demo app: Cangjie UI calling an ArkTS function with a Cangjie callback
 demos/rectangle     demo app: the design's example, with a Cangjie UI
+demos/benchmarks    benchmarks app: arkts_runtime against ark_interop (run.sh writes results/)
 dependencies_libs/  Cangjie libraries apps ship: base/ (every app), ui/ (Cangjie UI apps)
 hosttest/           host tests (macOS, no ArkTS VM): compiler contract
 demo.sh             builds, installs and starts one demo app
@@ -68,7 +69,8 @@ The phone's own Cangjie libraries cannot be used:
   `devicetest.sh` builds `testapp`, installs it and runs the suite.
 - `demos/` are separate apps that use only the library's public API, each with its own
   bundle name. They are mixed apps: a minimal ArkTS ability and page that embed a Cangjie view
-  (`CJHybridComponent`).
+  (`CJHybridComponent`). `demos/benchmarks` is the exception: an ArkTS page that runs Cangjie
+  benchmarks and shows the results.
 - `hosttest/` checks what the compiler generates for dynamic `Extern` syntax.
 
 ## Requirements
@@ -86,6 +88,7 @@ The phone's own Cangjie libraries cannot be used:
 ./arkts_runtime/devicetest.sh --all                # ... on every connected device
 DEVICE=127.0.0.1:5555 ./arkts_runtime/devicetest.sh -s class Step10_Function   # one test class
 ./demo.sh demos/hello                              # build, install and start a demo
+./demos/benchmarks/run.sh --all                    # benchmarks on every connected device
 ```
 
 Logs go to `.devicetest/` next to the script that wrote them: `arkts_runtime/.devicetest/`

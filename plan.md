@@ -336,6 +336,27 @@ emulator.
   `Object.getOwnPropertyDescriptor` from Cangjie, and ArkTS checks the values and the
   enumerable keys (`Object.keys`). 88 tests pass on both devices.
   `arkts_runtime/README.md` no longer mentions the demos.
+- **Step 11 done** (2026-10-16). `demos/benchmarks`, 25 benchmarks in the 10 groups; baseline
+  `results/ohos-2026-10-16-1126.*` (phone) and `results/emulator-2026-10-16-1127.*`. A run
+  takes about 50 s on the phone, 25 s on the emulator. Ratio `arkts_runtime / ark_interop` on
+  the phone: property access 1.6–6.0, calls 3.3–4.5, arrays 8.1–8.6, strings 1.8–6.9,
+  conversions 2.4–5.4, consecutive statements 4.2–4.3, callbacks 4.5, handles 2.8, exceptions
+  1.6; from another thread 0.36 (`run` waits on a condition, the `ark_interop` variant posts
+  and waits per operation). In the `.html`, clicking a benchmark shows its two variants,
+  copied from the sources by `run.sh` at the time of the run; `Bench.ets`, the conversions'
+  shared values and the helpers from `harness.cj` are below the table. Heap growth after `handles.createAndDrop`: within ±2 KB for both
+  variants, so dropped handles are released. Phone numbers repeat within about 10% between
+  runs. Findings:
+  - hilog's per-process quota drops the app's lines (the Cangjie GC logs a lot): `run.sh`
+    turns it off (`hilog -Q pidoff`, `domainoff`) for the run, back on after, and streams the
+    tag to a file instead of reading the ring buffer. The phone logs every line twice;
+    duplicates are dropped.
+  - The phone turns the screen off after 30 s even with `power-shell timeout -o`, and the lock
+    screen sends the app to the background, where it is frozen. The app keeps the screen on
+    (`setWindowKeepScreenOn`).
+  - Yielding with `setTimeout(0)` between runs starved the main thread's event queue and the
+    watchdog killed the app (`THREAD_BLOCK_6S`); runs are separated by 20 ms. After the pause
+    the CPU is slower, so every timed run is preceded by an untimed one.
 
 ## Testing strategy
 
@@ -889,11 +910,16 @@ A demo app that times the same operations written twice: with typical `ark_inter
 hand-made caches) and with `Extern<ArkTSRuntime>` syntax. The ratio is the cost of the
 runtime. The same set is rerun after each optimization in step 12 to measure what it gains.
 
-App: `demos/benchmarks` (`com.example.arkts.benchmarks`), a mixed app like the other demos.
-The ArkTS fixtures are in `entry/src/main/ets/Bench.ets`, published with
-`globalThis.Bench = { ... }` and imported by the page (no `requireArkModule`). The benchmarks
-are Cangjie, one file per group, each with an `arkInterop` and an `arktsRuntime` variant of
-the same operation.
+App: `demos/benchmarks` (`com.example.arkts.benchmarks`). Unlike the other demos it has no
+Cangjie UI (so it ships only `dependencies_libs/base`): an ArkTS page drives the runs and calls
+three functions the Cangjie module exports from `registerModule`: `benchmarkNames()`,
+`iterations(name)` and `runBenchmark(name, variant, done)`, which times one run of N
+iterations in Cangjie (`MonoTime`) and reports the nanoseconds to `done`. The ArkTS fixtures
+are in `entry/src/main/ets/Bench.ets`, published with `globalThis.Bench = { ... }` and imported
+by the page (no `requireArkModule`). The benchmarks are Cangjie, one file per group
+(`cangjie/b01_property.cj` … `b10_exceptions.cj`, harness in `harness.cj`), each with an
+`arkInterop` and an `arktsRuntime` variant of the same operation. A run of the `ark_interop`
+variant is inside one `newScope`, as a user would write a loop.
 
 Benchmarks (each group: both variants, same fixture, same result checked once so neither
 variant can skip work):
@@ -907,30 +933,37 @@ variant can skip work):
 6. Consecutive statements: two and three property writes in a row.
 7. Callbacks: ArkTS calls a Cangjie function made with `ArkTSRuntime.function`, against one
    made with `JSContext.function`.
-8. Handles: create and drop 100 000 `Extern` objects; time, and ArkTS heap growth after
-   forced full collections (as in step 4).
+8. Handles: create and drop `Extern` objects; time, and ArkTS heap growth
+   (`hidebug.getAppVMObjectUsedSize`) after forced full collections (`hidebug.dumpJsHeapData`,
+   as in step 4).
 9. Other threads: benchmark 1's read from a spawned thread (every operation goes through
    `postJSTask`).
 10. Exceptions: a JS `throw` caught in Cangjie.
 
 Method:
 - Release build (`-O2`, as `profile.customized-option.release`).
-- Per benchmark: one warm-up run, then R = 5 runs of N iterations (N chosen per benchmark so a
-  run takes about 100 ms on the phone). Reported: median ns per operation for each variant,
-  and the ratio `arkts_runtime / ark_interop`.
+- Per benchmark and variant: R = 5 timed runs of N iterations, each right after an untimed
+  run, with 20 ms between runs (N chosen per benchmark so a run of the slower variant takes
+  about 100 ms on the phone). Reported: median ns per operation for each variant, and the
+  ratio `arkts_runtime / ark_interop`.
 - No pass / fail thresholds: numbers are recorded and compared between runs.
 - Phone and emulator; the phone's numbers are the reference.
 
 Running: `demos/benchmarks/run.sh [--all]` builds the app, installs it, starts it and waits for
 the end. The app runs every benchmark once at start and logs one line per benchmark to
-hilog (fixed tag); the script collects those lines into two files with the same table
-(benchmark, N, `ark_interop` ns/op, `arkts_runtime` ns/op, ratio):
+hilog (tag `ArkTSBench`); the script collects those lines into two files with the same table
+(benchmark, N, `ark_interop` ns/op, `arkts_runtime` ns/op, ratio, heap growth in KB):
 - `demos/benchmarks/results/<device>-<date>.csv`: one header row, then one row per
   benchmark; the date, device and build mode are columns, so files can be concatenated.
 - `demos/benchmarks/results/<device>-<date>.html`: a self-contained page (no external files)
-  with the date, device and build mode above the table, to open in a browser.
+  with the date, device and build mode above the table, to open in a browser. Clicking a
+  benchmark name shows the code of its two variants (the `{ ... }` arguments of
+  `Benchmark(...)`, copied from the sources at the time of the run, so each file records
+  what it measured); `Bench.ets` and the shared helpers are below the table.
 
-The page shows the same table. The script only writes the results files; it never runs git.
+The page shows the same table. The script only writes the results files (and its logs in
+`.devicetest/`); it never runs git. On the device it only turns hilog's flow control off for
+the run and back on after.
 Results files are not ignored, so they stay next to the app and runs before and after an
 optimization can be compared.
 
