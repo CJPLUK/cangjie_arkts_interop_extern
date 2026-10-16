@@ -191,6 +191,9 @@ func externInputs(fixtures: Array<JSValue>): String {
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func conversionFailures(fixtures: Array<JSValue>): String {
     let v = ext(fixtures, 0)
+    let external = ArkTSRuntime.run {
+        ArkTSRuntime.retain(ArkTSRuntime.context.external(ExternalProbe()).toJSValue())
+    }
     func fails(what: String, fragment: String, block: () -> Any): String {
         expectThrows<ExternConversionException>(what, fragment, block)
     }
@@ -211,6 +214,7 @@ func conversionFailures(fixtures: Array<JSValue>): String {
         fails("UInt64.Max as Int64", "ArkTS bigint does not fit Int64", { => from<Int64>(v.uint64Max) }),
         fails("Int64.Min as UInt64", "ArkTS bigint does not fit UInt64", { => from<UInt64>(v.int64Min) }),
         fails("object as Array", "Cannot convert ArkTS object to Array", { => from<Array<Float64>>(v.obj) }),
+        fails("external as String", "Cannot convert ArkTS external to String", { => from<String>(external) }),
         fails("mixed as Array<Float64>", "Cannot convert ArkTS string to Float64",
             { => from<Array<Float64>>(v.mixed) }),
         fails("foreign payload", "Extern payload was not produced by ArkTSRuntime", { => from<Int64>(payload()) })

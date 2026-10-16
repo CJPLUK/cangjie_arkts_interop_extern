@@ -47,9 +47,14 @@ func valuesOfEachKind(context: JSContext, fixtures: Array<JSValue>): Array<(Stri
         ("object", context.object().toJSValue(), "Ref"),
         ("array", context.array([context.number(1.0).toJSValue()]).toJSValue(), "Ref"),
         ("function", context.function({ ctx, _ => ctx.undefined().toJSValue() }).toJSValue(), "Ref"),
-        ("ArkTS class instance", fixture(fixtures, 0), "Ref")
+        ("ArkTS class instance", fixture(fixtures, 0), "Ref"),
+        ("external", context.external(ExternalProbe()).toJSValue(), "Ref")
     ]
 }
+
+/** The Cangjie object behind the external value in `valuesOfEachKind`. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
+class ExternalProbe <: SharedObject {}
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func retainClassifiesEachKind(context: JSContext, fixtures: Array<JSValue>): String {
@@ -71,10 +76,12 @@ func payloadRoundTrip(context: JSContext, fixtures: Array<JSValue>): String {
 /** Values retained inside a scope stay usable after it closes and many others come and go. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func retainedValueOutlivesScope(context: JSContext): String {
-    let (keptObject, keptString) = context.newScope {
+    let probe = ExternalProbe()
+    let (keptObject, keptString, keptExternal) = context.newScope {
         let o = context.object()
         o["marker"] = context.string("kept").toJSValue()
-        (ArkTSRuntime.retain(o.toJSValue()), ArkTSRuntime.retain(context.string("héllo 🦀").toJSValue()))
+        (ArkTSRuntime.retain(o.toJSValue()), ArkTSRuntime.retain(context.string("héllo 🦀").toJSValue()),
+            ArkTSRuntime.retain(context.external(probe).toJSValue()))
     }
     for (_ in 0..10000) {
         context.newScope {
@@ -84,7 +91,8 @@ func retainedValueOutlivesScope(context: JSContext): String {
     gc(heavy: true)
     firstFailure([
         expectEqual("object marker", unwrap(keptObject).asObject()["marker"].toString(), "kept"),
-        expectEqual("string", unwrap(keptString).toString(), "héllo 🦀")
+        expectEqual("string", unwrap(keptString).toString(), "héllo 🦀"),
+        expectEqual("external", refEq(unwrap(keptExternal).asExternal().getData(), probe), true)
     ])
 }
 

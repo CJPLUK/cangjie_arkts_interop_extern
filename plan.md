@@ -429,6 +429,21 @@ emulator.
   change; `thread.readNumber`, the only off-thread one, 0.98 / 1.02 of `*-1437`.
   `string.readLong` on the phone jumps between about 9 and 15 µs from run to run (runs on the
   JS thread, so not affected).
+- **External values are retained as `Ref`** (2026-10-16). `isObject()` is false for an
+  `ark_interop` external (`context.external(SharedObject)`, `JSType.EXTERNAL`), so `retain`
+  held it as `Imm`: a JSValue valid only in its scope. `retain` now checks `isExternal()` after
+  `isObject()` and keeps a `JSExternal`; `jsTypeName` says "external". Tests:
+  `step4.retainClassifiesEachKind` and `payloadRoundTrip` include an external (the first
+  failed with "expected Ref, got Imm" before the fix); `retainedValueOutlivesScope` reads the
+  external's `SharedObject` back after 10000 scopes and a heavy GC (it passed even before the
+  fix, so a stale scope value is not reliably caught); `step6.conversionFailures` expects
+  "Cannot convert ArkTS external to String". 24 host and 89 device tests pass on both.
+  Benchmarks `*-2026-10-16-1529`: no change; `convert.bool`, whose boolean now also goes
+  through `isExternal()` in `retain`, 1.03 (phone) / 0.97 (emulator) of `*-1523`.
+- **Benchmark history chart** (2026-10-16): each generated `.html` has a line chart below the
+  table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
+  oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline
+  SVG (hover highlights a line and shows a point's value). First in `*-2026-10-16-1523.html`.
 
 ## Testing strategy
 

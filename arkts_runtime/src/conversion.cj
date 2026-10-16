@@ -94,7 +94,7 @@ private func jsTypeName(value: JSValue): String {
         "string"
     } else if (value.isSymbol()) { "symbol" } else if (value.isFunction()) { "function" } else if (value.isArray()) {
         "array"
-    } else { "object" }
+    } else if (value.isExternal()) { "external" } else { "object" }
 }
 
 private func readNumber(value: JSValue, target: String): Float64 {

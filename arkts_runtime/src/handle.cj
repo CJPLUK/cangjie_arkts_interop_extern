@@ -5,7 +5,7 @@ import ohos.ark_interop.*
 /** What an evaluated `Extern<ArkTSRuntime>` holds inside its `ExternPayload`. */
 private enum ArkTSHandle {
     | Imm(JSValue)      // undefined / null / boolean / number
-    | Ref(JSHeapObject) // string / bigint / symbol / object / array / function / ...
+    | Ref(JSHeapObject) // string / bigint / symbol / object / array / function / external
 }
 
 extend ArkTSRuntime {
@@ -22,6 +22,7 @@ extend ArkTSRuntime {
         if (value.isString())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asString())) }
         if (value.isBigInt())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asBigInt())) }
         if (value.isObject())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asObject())) }
+        if (value.isExternal()) { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asExternal())) }
         Extern<ArkTSRuntime>.ExternPayload(Imm(value))     // undefined / null / boolean / number: engine immediates
     }
 
