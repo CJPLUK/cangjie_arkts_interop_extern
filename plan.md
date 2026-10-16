@@ -467,6 +467,17 @@ emulator.
   116 / 425. In `ark_interop` a number key costs about 100 ns (phone) more than `getElement`;
   in `arkts_runtime` the three are within noise of each other. 24 host and 89 device tests pass
   on both.
+- **An `Extern` converted to an `Extern` keeps its handle** (2026-10-16). `toExtern` of an
+  `Extern` and `fromExtern<Extern<ArkTSRuntime>>` return `eval(value)`: an evaluated value as
+  is (no `run`, no second global handle), an unevaluated tree evaluated as before. The compiler
+  never generates these calls; code that writes them explicitly (`fromExtern<E>(o.nested)` in
+  step 9) benefits. `fromExtern` checks for the `Extern` target after the immediate shortcut, so
+  number / boolean reads do not pay for it. Test hook `sameHandle(a, b)` in `handle.cj`;
+  `step6.externInputs` checks `to(a)` and `from<E>(a)` keep `a`'s handle, a second `retain`
+  does not, and `from<E>` of a tree is a `Ref` payload. 24 host and 89 device tests pass on
+  both. Benchmarks `*-2026-10-16-1635` and `ohos-…-1636` / `emulator-…-1637`: no measurable
+  change; `string.length` (a non-immediate `fromExtern`) 3915 → 4464 → 4111 ns on the phone,
+  897 → 1146 → 953 on the emulator.
 - **Benchmark history chart** (2026-10-16): each generated `.html` has a line chart below the
   table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
   oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline

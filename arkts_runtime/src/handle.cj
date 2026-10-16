@@ -50,6 +50,17 @@ extend ArkTSRuntime {
         }
     }
 
+    /** Test hook: whether `a` and `b` are `Ref` payloads holding the same engine handle. */
+    static func sameHandle(a: Extern<ArkTSRuntime>, b: Extern<ArkTSRuntime>): Bool {
+        match ((a, b)) {
+            case (ExternPayload(x), ExternPayload(y)) => match ((x as ArkTSHandle, y as ArkTSHandle)) {
+                case (Some(Ref(p)), Some(Ref(q))) => refEq(p, q)
+                case _ => false
+            }
+            case _ => false
+        }
+    }
+
     /** Test hook: "Imm" or "Ref" for a payload made by `retain`, otherwise a description. */
     static func handleKind(value: Extern<ArkTSRuntime>): String {
         match (value) {

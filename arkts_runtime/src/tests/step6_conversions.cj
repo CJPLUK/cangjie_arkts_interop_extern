@@ -174,15 +174,23 @@ func largeValues(fixtures: Array<JSValue>): String {
     ])
 }
 
-/** fixtures: Target. An unevaluated tree is evaluated by `toExtern` and `fromExtern`. */
+/**
+ * fixtures: Target. An unevaluated tree is evaluated by `toExtern` and `fromExtern`; an evaluated
+ * `Extern` converted to an `Extern` is returned with its own handle.
+ */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func externInputs(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
     let tree = member(member(member(e, "a"), "b"), "c")
+    let a = ArkTSRuntime.eval(member(e, "a"))
     firstFailure([
         expectEqual("fromExtern of a tree", from<Float64>(tree), 42.0),
         expectEqual("toExtern of a tree", from<Float64>(to(tree)), 42.0),
         expectEqual("toExtern of a tree is a payload", ArkTSRuntime.handleKind(to(tree)), "Imm"),
+        expectEqual("fromExtern<E> of a tree is a payload", ArkTSRuntime.handleKind(from<E>(member(e, "a"))), "Ref"),
+        expectEqual("toExtern(a) keeps a's handle", ArkTSRuntime.sameHandle(to(a), a), true),
+        expectEqual("fromExtern<E>(a) keeps a's handle", ArkTSRuntime.sameHandle(from<E>(a), a), true),
+        expectEqual("a retained again is a new handle", ArkTSRuntime.sameHandle(ArkTSRuntime.retain(unwrap(a)), a), false),
         expectEqual("tree inside an array", from<Array<Float64>>(to([tree, member(e, "num")])), [42.0, 1.5])
     ])
 }

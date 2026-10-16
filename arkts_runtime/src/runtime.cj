@@ -303,8 +303,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         throw ExternCompoundAssignmentException("Compound assignment not supported in ArkTS foreign runtime!")
     }
 
-    /** Converts a Cangjie value to ArkTS (type mapping in `conversion.cj`). */
+    /**
+     * Converts a Cangjie value to ArkTS (type mapping in `conversion.cj`). An `Extern` is
+     * evaluated with `eval`, so an evaluated one is returned as is.
+     */
     public static func toExtern<R>(value: R): Extern<ArkTSRuntime> {
+        if (let Some(external) <- (value as Extern<ArkTSRuntime>)) {
+            return eval(external)
+        }
         run { ArkTSRuntime.retain(ArkTSRuntime.toJSValue(value)) }
     }
 
@@ -312,13 +318,18 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      * Evaluates `value` and reads it as `R`; wrong JS types throw `ExternConversionException`.
      * The compiler passes dynamic expressions already evaluated, so a number, boolean,
      * `undefined` or `null` arrives as an immediate: on the bind thread it is read without
-     * `run`, since reading it creates no engine handle and runs no JS code.
+     * `run`, since reading it creates no engine handle and runs no JS code. Read as an `Extern`,
+     * `value` goes through `eval`, so an evaluated one is returned as is.
      */
     public static func fromExtern<R>(value: Extern<ArkTSRuntime>): R {
         if (let Some(immediate) <- ArkTSRuntime.immediateOf(value)) {
             if (context.isInBindThread()) {
                 return ArkTSRuntime.fromJSValue<R>(immediate)
             }
+        }
+        match (None<R>) {
+            case _: Option<Extern<ArkTSRuntime>> => return (eval(value) as R).getOrThrow()
+            case _ => ()
         }
         run { ArkTSRuntime.fromJSValue<R>(evalTree(value)) }
     }
