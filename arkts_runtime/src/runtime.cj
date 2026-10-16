@@ -5,6 +5,7 @@ import std.sync.Condition
 import ohos.ark_interop.JSContext
 import ohos.ark_interop.JSValue
 import ohos.ark_interop.JSKeyable
+import ohos.ark_interop.JSType
 import ohos.ark_interop.Utf16String
 import ohos.business_exception.BusinessException
 
@@ -268,10 +269,13 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             case name: Utf16String => Key(name)
             case external: Extern<ArkTSRuntime> =>
                 let value = evalTree(external)
-                if (value.isNumber()) { return Key(value.toNumber()) }
-                if (value.isString()) { return Key(value.asString()) }
-                if (value.isSymbol()) { return Key(value.asSymbol()) }
-                throw ExternIndexedAccessException("Unsupported ArkTS index type")
+                let t = value.typeof()
+                match {
+                    case t == JSType.NUMBER => Key(value.toNumber())
+                    case t == JSType.STRING => Key(value.asString())
+                    case t == JSType.SYMBOL => Key(value.asSymbol())
+                    case _ => throw ExternIndexedAccessException("Unsupported ArkTS index type")
+                }
             case _ => throw ExternIndexedAccessException("Unsupported ArkTS index type")
         }
     }

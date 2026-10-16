@@ -5,7 +5,7 @@ import ohos.ark_interop.*
 /** What an evaluated `Extern<ArkTSRuntime>` holds inside its `ExternPayload`. */
 private enum ArkTSHandle {
     | Imm(JSValue)      // undefined / null / boolean / number
-    | Ref(JSHeapObject) // string / bigint / symbol / object / array / function / external
+    | Ref(JSHeapObject) // string / bigint / symbol / object (arrays too) / function / external
 }
 
 extend ArkTSRuntime {
@@ -14,16 +14,19 @@ extend ArkTSRuntime {
      * engine-global handles, so the result outlives the current scope. Bind thread only.
      */
     static func retain(value: JSValue): Extern<ArkTSRuntime> {
-        // The most frequent results first: numbers, and `undefined` from every update.
-        if (value.isNumber() || value.isUndefined()) { return Extern<ArkTSRuntime>.ExternPayload(Imm(value)) }
-        if (value.isFunction()) { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asFunction())) }
-        if (value.isArray())    { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asArray())) }
-        if (value.isSymbol())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asSymbol())) }
-        if (value.isString())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asString())) }
-        if (value.isBigInt())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asBigInt())) }
-        if (value.isObject())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asObject())) }
-        if (value.isExternal()) { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asExternal())) }
-        Extern<ArkTSRuntime>.ExternPayload(Imm(value))     // undefined / null / boolean / number: engine immediates
+        // `JSType` constants are not patterns, hence `match` without a selector.
+        let t = value.typeof()
+        let handle = match {
+            case t == JSType.NUMBER || t == JSType.UNDEFINED || t == JSType.NULL || t == JSType.BOOLEAN => Imm(value)
+            case t == JSType.STRING => Ref(value.asString())
+            case t == JSType.OBJECT => Ref(value.asObject())
+            case t == JSType.FUNCTION => Ref(value.asFunction())
+            case t == JSType.SYMBOL => Ref(value.asSymbol())
+            case t == JSType.BIGINT => Ref(value.asBigInt())
+            case t == JSType.EXTERNAL => Ref(value.asExternal())
+            case _ => throw ExternConversionException("Unknown ArkTS value type ${t.toString()}")
+        }
+        Extern<ArkTSRuntime>.ExternPayload(handle)
     }
 
     /**

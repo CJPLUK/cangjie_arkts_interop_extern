@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>arkts_runtime benchmarks: ohos 2026-10-16-1732</title>
+<style>
+body { font-family: -apple-system, sans-serif; margin: 2em; }
+table { border-collapse: collapse; }
+th, td { border: 1px solid #ccc; padding: 4px 10px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th { background: #f2f2f2; }
+td.name { cursor: pointer; color: #0645ad; }
+td.name:hover { text-decoration: underline; }
+tr.code > td { background: #fafafa; }
+.variants { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
+h3 { margin: 0.8em 0 0.3em; font-size: 1em; }
+pre { margin: 0; padding: 8px; background: #fff; border: 1px solid #ddd; overflow-x: auto; font-size: 12px; }
+svg.history { font-size: 11px; }
+svg.history .grid { stroke: #ccc; }
+svg.history .minor { stroke: #eee; }
+svg.history .axis { fill: #555; }
+svg.history .series polyline { fill: none; stroke-width: 1.5; }
+svg.history:has(.series:hover) .series:not(:hover) { opacity: 0.15; }
+svg.history .series:hover polyline { stroke-width: 3; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; max-width: 1090px; font-size: 12px; }
+.legend i { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -1px; }
+</style></head><body>
+<h1>arkts_runtime against ark_interop</h1>
+<p>Date: 2026-10-16-1732<br>Device: ohos<br>Build: release<br>
+Median of 5 runs, nanoseconds per operation. Ratio = arkts_runtime / ark_interop.</p>
+<p>Click a benchmark to see its code. In each variant the outer block is the setup (not timed)
+and the inner <code>{ n: Int64 =&gt; ... }</code> block is the timed run, with n = N.
+The fixtures and helpers it uses are <a href="#shared">below the table</a>.</p>
+<table>
+<tr><th>Benchmark</th><th>N</th><th>ark_interop ns/op</th><th>arkts_runtime ns/op</th><th>Ratio</th><th>ark_interop heap KB</th><th>arkts_runtime heap KB</th></tr>
+<tr><td class="name">property.readNumber</td><td class="num">30000</td><td class="num">513.2</td><td class="num">1878.7</td><td class="num">3.66</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += t.getProperty("num").toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.num) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">property.writeNumber</td><td class="num">50000</td><td class="num">466.1</td><td class="num">1633.9</td><td class="num">3.51</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { t.setProperty("num", context.number(1.5).toJSValue()) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { t.num = 1.5 } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">property.readChain</td><td class="num">15000</td><td class="num">4173.4</td><td class="num">3870.3</td><td class="num">0.93</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            sink += t.getProperty("a").asObject().getProperty("b").asObject().getProperty("c").asObject()
+                .getProperty("d").toNumber()
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.a.b.c.d) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.method0</td><td class="num">20000</td><td class="num">1550.5</td><td class="num">4450.8</td><td class="num">2.87</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += t.callMethod("m0", []).toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.m0()) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.method1</td><td class="num">15000</td><td class="num">1685.3</td><td class="num">4261.9</td><td class="num">2.53</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) { sink += t.callMethod("m1", [context.number(1.0).toJSValue()]).toNumber() }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.m1(1.0)) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.method3</td><td class="num">15000</td><td class="num">1890.0</td><td class="num">4990.7</td><td class="num">2.64</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let args = [context.number(1.0).toJSValue(), context.number(2.0).toJSValue(),
+                context.number(3.0).toJSValue()]
+            sink += t.callMethod("m3", args).toNumber()
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.m3(1.0, 2.0, 3.0)) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.function1</td><td class="num">25000</td><td class="num">925.8</td><td class="num">3266.3</td><td class="num">3.53</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let f = interopBench(context).getProperty("f1").asFunction()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += f.call([context.number(1.0).toJSValue()]).toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let f = ArkTSRuntime.eval(runtimeBench().f1)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(f(1.0)) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.readElement</td><td class="num">30000</td><td class="num">306.8</td><td class="num">1693.8</td><td class="num">5.52</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items").asArray()
+    { n: Int64 =&gt; for (i in 0..n) { sink += items[i % 1000].toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    { n: Int64 =&gt; for (i in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(items[i % 1000]) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.readFloat64Index</td><td class="num">30000</td><td class="num">432.5</td><td class="num">1620.9</td><td class="num">3.75</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items")
+    { n: Int64 =&gt; for (i in 0..n) { sink += items.getProperty(Float64(i % 1000)).toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    { n: Int64 =&gt; for (i in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(items[Float64(i % 1000)]) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.readExternIndex</td><td class="num">30000</td><td class="num">454.3</td><td class="num">1704.6</td><td class="num">3.75</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items")
+    let keys = Array&lt;JSValue&gt;(1000) { k =&gt; context.number(Float64(k)).toJSValue() }
+    { n: Int64 =&gt; for (i in 0..n) { sink += items.getProperty(keys[i % 1000].toNumber()).toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    let keys = Array&lt;Extern&lt;ArkTSRuntime&gt;&gt;(1000) { k =&gt; ArkTSRuntime.toExtern(Float64(k)) }
+    { n: Int64 =&gt; for (i in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(items[keys[i % 1000]]) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.writeElement</td><td class="num">50000</td><td class="num">215.1</td><td class="num">1249.6</td><td class="num">5.81</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items").asArray()
+    { n: Int64 =&gt;
+        for (i in 0..n) { items[i % 1000] = context.number(Float64(i % 1000) * 0.5).toJSValue() }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    { n: Int64 =&gt; for (i in 0..n) { items[i % 1000] = Float64(i % 1000) * 0.5 } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.loop1000</td><td class="num">30</td><td class="num">363993.1</td><td class="num">1510295.1</td><td class="num">4.15</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items").asArray()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            for (j in 0..1000) { sink += items[j].toNumber() }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            for (j in 0..1000) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(items[j]) }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">string.length</td><td class="num">15000</td><td class="num">1152.3</td><td class="num">4776.4</td><td class="num">4.15</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>A string's length with <code>ark_interop</code>: there is no <code>length</code> on a string value, so read the text.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(t.getProperty("str").toString().size) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.str).size) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">string.readShort</td><td class="num">20000</td><td class="num">930.5</td><td class="num">3705.6</td><td class="num">3.98</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>A string's length with <code>ark_interop</code>: there is no <code>length</code> on a string value, so read the text.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(t.getProperty("short").toString().size) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.short).size) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">string.readLong</td><td class="num">10000</td><td class="num">7886.4</td><td class="num">9229.4</td><td class="num">1.17</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>A string's length with <code>ark_interop</code>: there is no <code>length</code> on a string value, so read the text.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(t.getProperty("long").toString().size) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.long).size) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.bool</td><td class="num">20000</td><td class="num">1087.1</td><td class="num">3460.2</td><td class="num">3.18</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.boolean(true).toJSValue())
+            if (t.getProperty("slot").toBoolean()) { sink += 1.0 }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = true
+            if (ArkTSRuntime.fromExtern&lt;Bool&gt;(t.slot)) { sink += 1.0 }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.string</td><td class="num">15000</td><td class="num">1778.5</td><td class="num">6252.6</td><td class="num">3.52</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.string("abcdefghij").toJSValue())
+            sink += Float64(t.getProperty("slot").toString().size)
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = "abcdefghij"
+            sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.slot).size)
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.arrayFloat64</td><td class="num">100</td><td class="num">325828.1</td><td class="num">679531.3</td><td class="num">2.09</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let elements = Array&lt;JSValue&gt;(numbers.size) { i =&gt; context.number(numbers[i]).toJSValue() }
+            t.setProperty("slot", context.array(elements).toJSValue())
+            let back = t.getProperty("slot").asArray()
+            for (i in 0..back.size) { sink += back[i].toNumber() }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = numbers
+            let back = ArkTSRuntime.fromExtern&lt;Array&lt;Float64&gt;&gt;(t.slot)
+            for (x in back) { sink += x }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.nestedArray</td><td class="num">100</td><td class="num">319822.9</td><td class="num">678677.1</td><td class="num">2.12</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let rows = Array&lt;JSValue&gt;(nested.size) { i =&gt;
+                let row = nested[i]
+                context.array(Array&lt;JSValue&gt;(row.size) { j =&gt; context.number(row[j]).toJSValue() }).toJSValue()
+            }
+            t.setProperty("slot", context.array(rows).toJSValue())
+            let back = t.getProperty("slot").asArray()
+            for (i in 0..back.size) {
+                let row = back[i].asArray()
+                for (j in 0..row.size) { sink += row[j].toNumber() }
+            }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = nested
+            for (row in ArkTSRuntime.fromExtern&lt;Array&lt;Array&lt;Float64&gt;&gt;&gt;(t.slot)) {
+                for (x in row) { sink += x }
+            }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.optionSome</td><td class="num">20000</td><td class="num">1057.4</td><td class="num">4463.1</td><td class="num">4.22</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.number(1.5).toJSValue())
+            let v = t.getProperty("slot")
+            let back: ?Float64 = if (v.isUndefined() || v.isNull()) { None } else { v.toNumber() }
+            sink += back ?? 0.0
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = Some(1.5)
+            sink += ArkTSRuntime.fromExtern&lt;?Float64&gt;(t.slot) ?? 0.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.optionNone</td><td class="num">20000</td><td class="num">968.3</td><td class="num">3954.3</td><td class="num">4.08</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.undefined().toJSValue())
+            let v = t.getProperty("slot")
+            let back: ?Float64 = if (v.isUndefined() || v.isNull()) { None } else { v.toNumber() }
+            sink += back ?? 1.0
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = None&lt;Float64&gt;
+            sink += ArkTSRuntime.fromExtern&lt;?Float64&gt;(t.slot) ?? 1.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">sequence.twoWrites</td><td class="num">25000</td><td class="num">941.9</td><td class="num">3084.1</td><td class="num">3.27</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Consecutive statements: one operation is the whole sequence of writes.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("x", context.number(1.0).toJSValue())
+            t.setProperty("y", context.number(2.0).toJSValue())
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.x = 1.0
+            t.y = 2.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">sequence.threeWrites</td><td class="num">15000</td><td class="num">1407.8</td><td class="num">4829.2</td><td class="num">3.43</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Consecutive statements: one operation is the whole sequence of writes.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("x", context.number(1.0).toJSValue())
+            t.setProperty("y", context.number(2.0).toJSValue())
+            t.setProperty("z", context.number(3.0).toJSValue())
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.x = 1.0
+            t.y = 2.0
+            t.z = 3.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">callback.arkTSCallsCangjie</td><td class="num">30000</td><td class="num">674.9</td><td class="num">2131.6</td><td class="num">3.16</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>ArkTS <code>callTimes(f, n)</code> calls the Cangjie function <code>f</code> <code>n</code> times; one operation is one call of <code>f</code>.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let callTimes = interopBench(context).getProperty("callTimes").asFunction()
+    let f = context.function { c, info =&gt; c.number(info[0].toNumber() + 1.0).toJSValue() }
+    { n: Int64 =&gt;
+        sink += callTimes.call([f.toJSValue(), context.number(Float64(n)).toJSValue()]).toNumber()
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let bench = runtimeBench()
+    let f = ArkTSRuntime.function { args =&gt;
+        ArkTSRuntime.toExtern(ArkTSRuntime.fromExtern&lt;Float64&gt;(args[0]) + 1.0)
+    }
+    { n: Int64 =&gt; sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(bench.callTimes(f, Float64(n))) }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">handles.createAndDrop</td><td class="num">20000</td><td class="num">1936.8</td><td class="num">4022.6</td><td class="num">2.08</td><td class="num">1</td><td class="num">1</td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation keeps an ArkTS object (<code>target.a</code>) in a Cangjie value and drops it. The page also measures the ArkTS heap after full collections around one run of each variant.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let a = t.getProperty("a").asObject()
+            if (a.hasProperty("b")) { sink += 1.0 }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let a = ArkTSRuntime.eval(t.a)
+            if (ArkTSRuntime.objectHasProperty(a, "b")) { sink += 1.0 }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">thread.readNumber</td><td class="num">250</td><td class="num">491216.7</td><td class="num">399510.4</td><td class="num">0.81</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p><code>property.readNumber</code> from a spawned thread: every operation goes through <code>postJSTask</code>.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) { sink += onJSThread(context) { =&gt; t.getProperty("num").toNumber() } }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.num) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">exception.throwCatch</td><td class="num">2000</td><td class="num">29355.2</td><td class="num">45850.3</td><td class="num">1.56</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>ArkTS <code>thrower()</code> throws an <code>Error</code>; each operation calls it and catches the exception in Cangjie.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let thrower = interopBench(context).getProperty("thrower").asFunction()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            try {
+                thrower.call()
+            } catch (_: BusinessException) {
+                sink += 1.0
+            }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let bench = runtimeBench()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            try {
+                bench.thrower()
+            } catch (_: ForeignRuntimeException) {
+                sink += 1.0
+            }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+</table>
+<h2>arkts_runtime across runs</h2>
+<p>Every result file of ohos in results/, oldest first: arkts_runtime ns/op on a
+logarithmic axis. Point at a line to highlight it, at a point for its value.</p>
+<svg class="history" viewBox="0 0 1090 555" width="1090" height="555">
+<line class="grid" x1="70" x2="1070" y1="475.0" y2="475.0"/><text class="axis" x="64" y="479.0" text-anchor="end">1 ns</text>
+<line class="minor" x1="70" x2="1070" y1="455.2" y2="455.2"/>
+<line class="minor" x1="70" x2="1070" y1="429.1" y2="429.1"/>
+<line class="grid" x1="70" x2="1070" y1="409.3" y2="409.3"/><text class="axis" x="64" y="413.3" text-anchor="end">10 ns</text>
+<line class="minor" x1="70" x2="1070" y1="389.5" y2="389.5"/>
+<line class="minor" x1="70" x2="1070" y1="363.4" y2="363.4"/>
+<line class="grid" x1="70" x2="1070" y1="343.6" y2="343.6"/><text class="axis" x="64" y="347.6" text-anchor="end">100 ns</text>
+<line class="minor" x1="70" x2="1070" y1="323.8" y2="323.8"/>
+<line class="minor" x1="70" x2="1070" y1="297.6" y2="297.6"/>
+<line class="grid" x1="70" x2="1070" y1="277.9" y2="277.9"/><text class="axis" x="64" y="281.9" text-anchor="end">1 µs</text>
+<line class="minor" x1="70" x2="1070" y1="258.1" y2="258.1"/>
+<line class="minor" x1="70" x2="1070" y1="231.9" y2="231.9"/>
+<line class="grid" x1="70" x2="1070" y1="212.1" y2="212.1"/><text class="axis" x="64" y="216.1" text-anchor="end">10 µs</text>
+<line class="minor" x1="70" x2="1070" y1="192.4" y2="192.4"/>
+<line class="minor" x1="70" x2="1070" y1="166.2" y2="166.2"/>
+<line class="grid" x1="70" x2="1070" y1="146.4" y2="146.4"/><text class="axis" x="64" y="150.4" text-anchor="end">100 µs</text>
+<line class="minor" x1="70" x2="1070" y1="126.6" y2="126.6"/>
+<line class="minor" x1="70" x2="1070" y1="100.5" y2="100.5"/>
+<line class="grid" x1="70" x2="1070" y1="80.7" y2="80.7"/><text class="axis" x="64" y="84.7" text-anchor="end">1 ms</text>
+<line class="minor" x1="70" x2="1070" y1="60.9" y2="60.9"/>
+<line class="minor" x1="70" x2="1070" y1="34.8" y2="34.8"/>
+<line class="grid" x1="70" x2="1070" y1="15.0" y2="15.0"/><text class="axis" x="64" y="19.0" text-anchor="end">10 ms</text>
+<text class="axis" transform="translate(70.0 491) rotate(-40)" text-anchor="end">10-16 11:26</text>
+<text class="axis" transform="translate(128.8 491) rotate(-40)" text-anchor="end">10-16 11:49</text>
+<text class="axis" transform="translate(187.6 491) rotate(-40)" text-anchor="end">10-16 13:48</text>
+<text class="axis" transform="translate(246.5 491) rotate(-40)" text-anchor="end">10-16 14:08</text>
+<text class="axis" transform="translate(305.3 491) rotate(-40)" text-anchor="end">10-16 14:22</text>
+<text class="axis" transform="translate(364.1 491) rotate(-40)" text-anchor="end">10-16 14:34</text>
+<text class="axis" transform="translate(422.9 491) rotate(-40)" text-anchor="end">10-16 14:37</text>
+<text class="axis" transform="translate(481.8 491) rotate(-40)" text-anchor="end">10-16 15:11</text>
+<text class="axis" transform="translate(540.6 491) rotate(-40)" text-anchor="end">10-16 15:23</text>
+<text class="axis" transform="translate(599.4 491) rotate(-40)" text-anchor="end">10-16 15:29</text>
+<text class="axis" transform="translate(658.2 491) rotate(-40)" text-anchor="end">10-16 16:14</text>
+<text class="axis" transform="translate(717.1 491) rotate(-40)" text-anchor="end">10-16 16:25</text>
+<text class="axis" transform="translate(775.9 491) rotate(-40)" text-anchor="end">10-16 16:35</text>
+<text class="axis" transform="translate(834.7 491) rotate(-40)" text-anchor="end">10-16 16:36</text>
+<text class="axis" transform="translate(893.5 491) rotate(-40)" text-anchor="end">10-16 16:44</text>
+<text class="axis" transform="translate(952.4 491) rotate(-40)" text-anchor="end">10-16 16:53</text>
+<text class="axis" transform="translate(1011.2 491) rotate(-40)" text-anchor="end">10-16 17:22</text>
+<text class="axis" transform="translate(1070.0 491) rotate(-40)" text-anchor="end">10-16 17:32</text>
+<g class="series"><title>property.readNumber</title><polyline stroke="hsl(137, 70%, 38%)" points="70.0,245.8 128.8,260.2 187.6,260.2 246.5,260.7 305.3,261.8 364.1,258.4 422.9,261.5 481.8,261.1 540.6,261.2 599.4,260.8 658.2,261.2 717.1,260.3 775.9,259.4 834.7,259.9 893.5,259.6 952.4,259.9 1011.2,259.0 1070.0,259.9 "/><circle fill="hsl(137, 70%, 38%)" r="3" cx="70.0" cy="245.8"><title>property.readNumber, 2026-10-16-1126: 3075.7 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="128.8" cy="260.2"><title>property.readNumber, 2026-10-16-1149: 1859.2 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="187.6" cy="260.2"><title>property.readNumber, 2026-10-16-1348: 1859.4 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="246.5" cy="260.7"><title>property.readNumber, 2026-10-16-1408: 1825.8 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="305.3" cy="261.8"><title>property.readNumber, 2026-10-16-1422: 1754.7 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="364.1" cy="258.4"><title>property.readNumber, 2026-10-16-1434: 1980.4 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="422.9" cy="261.5"><title>property.readNumber, 2026-10-16-1437: 1776.7 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="481.8" cy="261.1"><title>property.readNumber, 2026-10-16-1511: 1799.4 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="540.6" cy="261.2"><title>property.readNumber, 2026-10-16-1523: 1789.8 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="599.4" cy="260.8"><title>property.readNumber, 2026-10-16-1529: 1815.0 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="658.2" cy="261.2"><title>property.readNumber, 2026-10-16-1614: 1792.9 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="717.1" cy="260.3"><title>property.readNumber, 2026-10-16-1625: 1850.7 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="775.9" cy="259.4"><title>property.readNumber, 2026-10-16-1635: 1911.3 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="834.7" cy="259.9"><title>property.readNumber, 2026-10-16-1636: 1878.1 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="893.5" cy="259.6"><title>property.readNumber, 2026-10-16-1644: 1896.7 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="952.4" cy="259.9"><title>property.readNumber, 2026-10-16-1653: 1878.2 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="1011.2" cy="259.0"><title>property.readNumber, 2026-10-16-1722: 1939.3 ns</title></circle><circle fill="hsl(137, 70%, 38%)" r="3" cx="1070.0" cy="259.9"><title>property.readNumber, 2026-10-16-1732: 1878.7 ns</title></circle></g>
+<g class="series"><title>property.writeNumber</title><polyline stroke="hsl(275, 70%, 52%)" points="70.0,258.4 128.8,263.4 187.6,263.2 246.5,261.9 305.3,262.1 364.1,264.7 422.9,264.3 481.8,263.3 540.6,264.1 599.4,264.0 658.2,262.7 717.1,263.6 775.9,261.1 834.7,264.0 893.5,263.7 952.4,264.3 1011.2,263.8 1070.0,263.8 "/><circle fill="hsl(275, 70%, 52%)" r="3" cx="70.0" cy="258.4"><title>property.writeNumber, 2026-10-16-1126: 1977.7 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="128.8" cy="263.4"><title>property.writeNumber, 2026-10-16-1149: 1659.4 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="187.6" cy="263.2"><title>property.writeNumber, 2026-10-16-1348: 1670.0 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="246.5" cy="261.9"><title>property.writeNumber, 2026-10-16-1408: 1751.4 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="305.3" cy="262.1"><title>property.writeNumber, 2026-10-16-1422: 1738.4 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="364.1" cy="264.7"><title>property.writeNumber, 2026-10-16-1434: 1583.3 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="422.9" cy="264.3"><title>property.writeNumber, 2026-10-16-1437: 1609.1 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="481.8" cy="263.3"><title>property.writeNumber, 2026-10-16-1511: 1666.0 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="540.6" cy="264.1"><title>property.writeNumber, 2026-10-16-1523: 1616.7 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="599.4" cy="264.0"><title>property.writeNumber, 2026-10-16-1529: 1625.2 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="658.2" cy="262.7"><title>property.writeNumber, 2026-10-16-1614: 1703.3 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="717.1" cy="263.6"><title>property.writeNumber, 2026-10-16-1625: 1646.6 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="775.9" cy="261.1"><title>property.writeNumber, 2026-10-16-1635: 1798.3 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="834.7" cy="264.0"><title>property.writeNumber, 2026-10-16-1636: 1623.1 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="893.5" cy="263.7"><title>property.writeNumber, 2026-10-16-1644: 1639.7 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="952.4" cy="264.3"><title>property.writeNumber, 2026-10-16-1653: 1609.5 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="1011.2" cy="263.8"><title>property.writeNumber, 2026-10-16-1722: 1637.8 ns</title></circle><circle fill="hsl(275, 70%, 52%)" r="3" cx="1070.0" cy="263.8"><title>property.writeNumber, 2026-10-16-1732: 1633.9 ns</title></circle></g>
+<g class="series"><title>property.readChain</title><polyline stroke="hsl(52, 70%, 38%)" points="70.0,227.5 128.8,238.5 187.6,239.6 246.5,239.9 305.3,241.4 364.1,238.4 422.9,239.8 481.8,239.9 540.6,240.3 599.4,239.8 658.2,239.9 717.1,239.4 775.9,240.5 834.7,239.6 893.5,239.3 952.4,239.0 1011.2,238.6 1070.0,239.2 "/><circle fill="hsl(52, 70%, 38%)" r="3" cx="70.0" cy="227.5"><title>property.readChain, 2026-10-16-1126: 5832.0 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="128.8" cy="238.5"><title>property.readChain, 2026-10-16-1149: 3965.3 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="187.6" cy="239.6"><title>property.readChain, 2026-10-16-1348: 3815.8 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="246.5" cy="239.9"><title>property.readChain, 2026-10-16-1408: 3781.6 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="305.3" cy="241.4"><title>property.readChain, 2026-10-16-1422: 3583.6 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="364.1" cy="238.4"><title>property.readChain, 2026-10-16-1434: 3985.1 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="422.9" cy="239.8"><title>property.readChain, 2026-10-16-1437: 3790.8 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="481.8" cy="239.9"><title>property.readChain, 2026-10-16-1511: 3781.3 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="540.6" cy="240.3"><title>property.readChain, 2026-10-16-1523: 3723.6 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="599.4" cy="239.8"><title>property.readChain, 2026-10-16-1529: 3799.0 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="658.2" cy="239.9"><title>property.readChain, 2026-10-16-1614: 3783.8 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="717.1" cy="239.4"><title>property.readChain, 2026-10-16-1625: 3846.5 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="775.9" cy="240.5"><title>property.readChain, 2026-10-16-1635: 3706.9 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="834.7" cy="239.6"><title>property.readChain, 2026-10-16-1636: 3822.5 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="893.5" cy="239.3"><title>property.readChain, 2026-10-16-1644: 3864.4 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="952.4" cy="239.0"><title>property.readChain, 2026-10-16-1653: 3904.5 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="1011.2" cy="238.6"><title>property.readChain, 2026-10-16-1722: 3959.5 ns</title></circle><circle fill="hsl(52, 70%, 38%)" r="3" cx="1070.0" cy="239.2"><title>property.readChain, 2026-10-16-1732: 3870.3 ns</title></circle></g>
+<g class="series"><title>call.method0</title><polyline stroke="hsl(190, 70%, 52%)" points="70.0,231.0 128.8,235.5 187.6,235.7 246.5,237.0 305.3,237.2 364.1,236.6 422.9,233.7 481.8,237.0 540.6,234.2 599.4,235.0 658.2,236.3 717.1,235.7 775.9,236.4 834.7,236.5 893.5,235.8 952.4,236.5 1011.2,236.8 1070.0,235.2 "/><circle fill="hsl(190, 70%, 52%)" r="3" cx="70.0" cy="231.0"><title>call.method0, 2026-10-16-1126: 5162.8 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="128.8" cy="235.5"><title>call.method0, 2026-10-16-1149: 4409.0 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="187.6" cy="235.7"><title>call.method0, 2026-10-16-1348: 4382.7 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="246.5" cy="237.0"><title>call.method0, 2026-10-16-1408: 4192.4 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="305.3" cy="237.2"><title>call.method0, 2026-10-16-1422: 4155.2 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="364.1" cy="236.6"><title>call.method0, 2026-10-16-1434: 4246.6 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="422.9" cy="233.7"><title>call.method0, 2026-10-16-1437: 4699.4 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="481.8" cy="237.0"><title>call.method0, 2026-10-16-1511: 4180.6 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="540.6" cy="234.2"><title>call.method0, 2026-10-16-1523: 4613.3 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="599.4" cy="235.0"><title>call.method0, 2026-10-16-1529: 4492.0 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="658.2" cy="236.3"><title>call.method0, 2026-10-16-1614: 4296.3 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="717.1" cy="235.7"><title>call.method0, 2026-10-16-1625: 4379.0 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="775.9" cy="236.4"><title>call.method0, 2026-10-16-1635: 4281.3 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="834.7" cy="236.5"><title>call.method0, 2026-10-16-1636: 4258.2 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="893.5" cy="235.8"><title>call.method0, 2026-10-16-1644: 4367.1 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="952.4" cy="236.5"><title>call.method0, 2026-10-16-1653: 4257.3 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="1011.2" cy="236.8"><title>call.method0, 2026-10-16-1722: 4215.0 ns</title></circle><circle fill="hsl(190, 70%, 52%)" r="3" cx="1070.0" cy="235.2"><title>call.method0, 2026-10-16-1732: 4450.8 ns</title></circle></g>
+<g class="series"><title>call.method1</title><polyline stroke="hsl(327, 70%, 38%)" points="70.0,227.6 128.8,236.9 187.6,237.0 246.5,234.8 305.3,235.5 364.1,236.5 422.9,235.7 481.8,235.5 540.6,235.1 599.4,234.6 658.2,235.7 717.1,236.9 775.9,234.0 834.7,236.6 893.5,235.9 952.4,234.4 1011.2,235.9 1070.0,236.5 "/><circle fill="hsl(327, 70%, 38%)" r="3" cx="70.0" cy="227.6"><title>call.method1, 2026-10-16-1126: 5811.2 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="128.8" cy="236.9"><title>call.method1, 2026-10-16-1149: 4198.8 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="187.6" cy="237.0"><title>call.method1, 2026-10-16-1348: 4182.5 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="246.5" cy="234.8"><title>call.method1, 2026-10-16-1408: 4524.1 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="305.3" cy="235.5"><title>call.method1, 2026-10-16-1422: 4414.1 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="364.1" cy="236.5"><title>call.method1, 2026-10-16-1434: 4260.0 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="422.9" cy="235.7"><title>call.method1, 2026-10-16-1437: 4377.7 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="481.8" cy="235.5"><title>call.method1, 2026-10-16-1511: 4415.1 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="540.6" cy="235.1"><title>call.method1, 2026-10-16-1523: 4475.5 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="599.4" cy="234.6"><title>call.method1, 2026-10-16-1529: 4556.7 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="658.2" cy="235.7"><title>call.method1, 2026-10-16-1614: 4376.1 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="717.1" cy="236.9"><title>call.method1, 2026-10-16-1625: 4196.1 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="775.9" cy="234.0"><title>call.method1, 2026-10-16-1635: 4656.1 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="834.7" cy="236.6"><title>call.method1, 2026-10-16-1636: 4239.4 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="893.5" cy="235.9"><title>call.method1, 2026-10-16-1644: 4355.3 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="952.4" cy="234.4"><title>call.method1, 2026-10-16-1653: 4588.3 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="1011.2" cy="235.9"><title>call.method1, 2026-10-16-1722: 4355.2 ns</title></circle><circle fill="hsl(327, 70%, 38%)" r="3" cx="1070.0" cy="236.5"><title>call.method1, 2026-10-16-1732: 4261.9 ns</title></circle></g>
+<g class="series"><title>call.method3</title><polyline stroke="hsl(105, 70%, 52%)" points="70.0,227.0 128.8,234.6 187.6,235.1 246.5,233.1 305.3,232.0 364.1,233.9 422.9,232.8 481.8,233.6 540.6,234.1 599.4,232.3 658.2,230.5 717.1,232.2 775.9,228.8 834.7,230.9 893.5,232.6 952.4,232.7 1011.2,231.1 1070.0,232.0 "/><circle fill="hsl(105, 70%, 52%)" r="3" cx="70.0" cy="227.0"><title>call.method3, 2026-10-16-1126: 5939.7 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="128.8" cy="234.6"><title>call.method3, 2026-10-16-1149: 4560.5 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="187.6" cy="235.1"><title>call.method3, 2026-10-16-1348: 4476.0 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="246.5" cy="233.1"><title>call.method3, 2026-10-16-1408: 4797.8 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="305.3" cy="232.0"><title>call.method3, 2026-10-16-1422: 4994.3 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="364.1" cy="233.9"><title>call.method3, 2026-10-16-1434: 4660.7 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="422.9" cy="232.8"><title>call.method3, 2026-10-16-1437: 4844.3 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="481.8" cy="233.6"><title>call.method3, 2026-10-16-1511: 4713.1 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="540.6" cy="234.1"><title>call.method3, 2026-10-16-1523: 4630.7 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="599.4" cy="232.3"><title>call.method3, 2026-10-16-1529: 4930.2 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="658.2" cy="230.5"><title>call.method3, 2026-10-16-1614: 5250.8 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="717.1" cy="232.2"><title>call.method3, 2026-10-16-1625: 4947.7 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="775.9" cy="228.8"><title>call.method3, 2026-10-16-1635: 5574.3 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="834.7" cy="230.9"><title>call.method3, 2026-10-16-1636: 5176.6 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="893.5" cy="232.6"><title>call.method3, 2026-10-16-1644: 4875.0 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="952.4" cy="232.7"><title>call.method3, 2026-10-16-1653: 4861.4 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="1011.2" cy="231.1"><title>call.method3, 2026-10-16-1722: 5138.2 ns</title></circle><circle fill="hsl(105, 70%, 52%)" r="3" cx="1070.0" cy="232.0"><title>call.method3, 2026-10-16-1732: 4990.7 ns</title></circle></g>
+<g class="series"><title>call.function1</title><polyline stroke="hsl(242, 70%, 38%)" points="70.0,234.6 128.8,245.2 187.6,246.2 246.5,245.5 305.3,241.6 364.1,243.8 422.9,241.5 481.8,245.0 540.6,243.5 599.4,243.7 658.2,244.1 717.1,241.3 775.9,243.9 834.7,244.3 893.5,243.4 952.4,243.5 1011.2,242.0 1070.0,244.1 "/><circle fill="hsl(242, 70%, 38%)" r="3" cx="70.0" cy="234.6"><title>call.function1, 2026-10-16-1126: 4545.8 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="128.8" cy="245.2"><title>call.function1, 2026-10-16-1149: 3136.0 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="187.6" cy="246.2"><title>call.function1, 2026-10-16-1348: 3035.2 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="246.5" cy="245.5"><title>call.function1, 2026-10-16-1408: 3112.1 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="305.3" cy="241.6"><title>call.function1, 2026-10-16-1422: 3562.7 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="364.1" cy="243.8"><title>call.function1, 2026-10-16-1434: 3301.0 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="422.9" cy="241.5"><title>call.function1, 2026-10-16-1437: 3581.1 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="481.8" cy="245.0"><title>call.function1, 2026-10-16-1511: 3157.2 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="540.6" cy="243.5"><title>call.function1, 2026-10-16-1523: 3332.4 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="599.4" cy="243.7"><title>call.function1, 2026-10-16-1529: 3311.3 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="658.2" cy="244.1"><title>call.function1, 2026-10-16-1614: 3267.8 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="717.1" cy="241.3"><title>call.function1, 2026-10-16-1625: 3601.2 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="775.9" cy="243.9"><title>call.function1, 2026-10-16-1635: 3291.6 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="834.7" cy="244.3"><title>call.function1, 2026-10-16-1636: 3241.2 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="893.5" cy="243.4"><title>call.function1, 2026-10-16-1644: 3349.2 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="952.4" cy="243.5"><title>call.function1, 2026-10-16-1653: 3331.2 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="1011.2" cy="242.0"><title>call.function1, 2026-10-16-1722: 3518.6 ns</title></circle><circle fill="hsl(242, 70%, 38%)" r="3" cx="1070.0" cy="244.1"><title>call.function1, 2026-10-16-1732: 3266.3 ns</title></circle></g>
+<g class="series"><title>array.readElement</title><polyline stroke="hsl(20, 70%, 52%)" points="70.0,244.2 128.8,257.1 187.6,267.0 246.5,264.4 305.3,267.8 364.1,261.7 422.9,267.3 481.8,264.7 540.6,265.0 599.4,267.7 658.2,267.3 717.1,264.3 775.9,263.9 834.7,266.0 893.5,265.3 952.4,265.1 1011.2,263.3 1070.0,262.8 "/><circle fill="hsl(20, 70%, 52%)" r="3" cx="70.0" cy="244.2"><title>array.readElement, 2026-10-16-1126: 3247.8 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="128.8" cy="257.1"><title>array.readElement, 2026-10-16-1149: 2072.3 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="187.6" cy="267.0"><title>array.readElement, 2026-10-16-1348: 1460.7 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="246.5" cy="264.4"><title>array.readElement, 2026-10-16-1408: 1599.9 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="305.3" cy="267.8"><title>array.readElement, 2026-10-16-1422: 1424.0 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="364.1" cy="261.7"><title>array.readElement, 2026-10-16-1434: 1763.0 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="422.9" cy="267.3"><title>array.readElement, 2026-10-16-1437: 1448.2 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="481.8" cy="264.7"><title>array.readElement, 2026-10-16-1511: 1586.2 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="540.6" cy="265.0"><title>array.readElement, 2026-10-16-1523: 1571.7 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="599.4" cy="267.7"><title>array.readElement, 2026-10-16-1529: 1427.6 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="658.2" cy="267.3"><title>array.readElement, 2026-10-16-1614: 1447.1 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="717.1" cy="264.3"><title>array.readElement, 2026-10-16-1625: 1610.3 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="775.9" cy="263.9"><title>array.readElement, 2026-10-16-1635: 1630.1 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="834.7" cy="266.0"><title>array.readElement, 2026-10-16-1636: 1514.1 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="893.5" cy="265.3"><title>array.readElement, 2026-10-16-1644: 1555.3 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="952.4" cy="265.1"><title>array.readElement, 2026-10-16-1653: 1561.4 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="1011.2" cy="263.3"><title>array.readElement, 2026-10-16-1722: 1667.9 ns</title></circle><circle fill="hsl(20, 70%, 52%)" r="3" cx="1070.0" cy="262.8"><title>array.readElement, 2026-10-16-1732: 1693.8 ns</title></circle></g>
+<g class="series"><title>array.writeElement</title><polyline stroke="hsl(157, 70%, 38%)" points="70.0,254.8 128.8,260.3 187.6,273.3 246.5,273.7 305.3,272.7 364.1,271.7 422.9,270.6 481.8,271.6 540.6,272.7 599.4,272.6 658.2,271.3 717.1,272.5 775.9,271.4 834.7,271.3 893.5,271.0 952.4,270.6 1011.2,272.0 1070.0,271.5 "/><circle fill="hsl(157, 70%, 38%)" r="3" cx="70.0" cy="254.8"><title>array.writeElement, 2026-10-16-1126: 2246.8 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="128.8" cy="260.3"><title>array.writeElement, 2026-10-16-1149: 1851.1 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="187.6" cy="273.3"><title>array.writeElement, 2026-10-16-1348: 1173.7 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="246.5" cy="273.7"><title>array.writeElement, 2026-10-16-1408: 1158.6 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="305.3" cy="272.7"><title>array.writeElement, 2026-10-16-1422: 1199.3 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="364.1" cy="271.7"><title>array.writeElement, 2026-10-16-1434: 1239.9 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="422.9" cy="270.6"><title>array.writeElement, 2026-10-16-1437: 1287.9 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="481.8" cy="271.6"><title>array.writeElement, 2026-10-16-1511: 1243.0 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="540.6" cy="272.7"><title>array.writeElement, 2026-10-16-1523: 1197.7 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="599.4" cy="272.6"><title>array.writeElement, 2026-10-16-1529: 1202.8 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="658.2" cy="271.3"><title>array.writeElement, 2026-10-16-1614: 1257.2 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="717.1" cy="272.5"><title>array.writeElement, 2026-10-16-1625: 1205.5 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="775.9" cy="271.4"><title>array.writeElement, 2026-10-16-1635: 1253.9 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="834.7" cy="271.3"><title>array.writeElement, 2026-10-16-1636: 1259.4 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="893.5" cy="271.0"><title>array.writeElement, 2026-10-16-1644: 1272.6 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="952.4" cy="270.6"><title>array.writeElement, 2026-10-16-1653: 1290.3 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="1011.2" cy="272.0"><title>array.writeElement, 2026-10-16-1722: 1228.4 ns</title></circle><circle fill="hsl(157, 70%, 38%)" r="3" cx="1070.0" cy="271.5"><title>array.writeElement, 2026-10-16-1732: 1249.6 ns</title></circle></g>
+<g class="series"><title>array.loop1000</title><polyline stroke="hsl(295, 70%, 52%)" points="70.0,46.0 128.8,58.7 187.6,69.9 246.5,69.0 305.3,70.4 364.1,67.2 422.9,69.9 481.8,70.1 540.6,69.0 599.4,69.1 658.2,70.2 717.1,68.2 775.9,67.9 834.7,68.9 893.5,67.1 952.4,68.9 1011.2,67.0 1070.0,68.9 "/><circle fill="hsl(295, 70%, 52%)" r="3" cx="70.0" cy="46.0"><title>array.loop1000, 2026-10-16-1126: 3371475.7 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="128.8" cy="58.7"><title>array.loop1000, 2026-10-16-1149: 2164878.5 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="187.6" cy="69.9"><title>array.loop1000, 2026-10-16-1348: 1461666.7 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="246.5" cy="69.0"><title>array.loop1000, 2026-10-16-1408: 1507048.6 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="305.3" cy="70.4"><title>array.loop1000, 2026-10-16-1422: 1433802.1 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="364.1" cy="67.2"><title>array.loop1000, 2026-10-16-1434: 1606163.2 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="422.9" cy="69.9"><title>array.loop1000, 2026-10-16-1437: 1463090.3 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="481.8" cy="70.1"><title>array.loop1000, 2026-10-16-1511: 1451701.4 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="540.6" cy="69.0"><title>array.loop1000, 2026-10-16-1523: 1506093.7 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="599.4" cy="69.1"><title>array.loop1000, 2026-10-16-1529: 1501527.8 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="658.2" cy="70.2"><title>array.loop1000, 2026-10-16-1614: 1446562.5 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="717.1" cy="68.2"><title>array.loop1000, 2026-10-16-1625: 1551961.8 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="775.9" cy="67.9"><title>array.loop1000, 2026-10-16-1635: 1565538.2 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="834.7" cy="68.9"><title>array.loop1000, 2026-10-16-1636: 1512100.7 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="893.5" cy="67.1"><title>array.loop1000, 2026-10-16-1644: 1610347.2 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="952.4" cy="68.9"><title>array.loop1000, 2026-10-16-1653: 1511597.2 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="1011.2" cy="67.0"><title>array.loop1000, 2026-10-16-1722: 1616996.5 ns</title></circle><circle fill="hsl(295, 70%, 52%)" r="3" cx="1070.0" cy="68.9"><title>array.loop1000, 2026-10-16-1732: 1510295.1 ns</title></circle></g>
+<g class="series"><title>string.length</title><polyline stroke="hsl(72, 70%, 38%)" points="70.0,219.4 128.8,227.6 187.6,239.5 246.5,238.7 305.3,240.4 364.1,237.8 422.9,239.3 481.8,239.3 540.6,237.9 599.4,233.7 658.2,238.5 717.1,238.9 775.9,235.2 834.7,237.5 893.5,238.8 952.4,237.6 1011.2,240.4 1070.0,233.2 "/><circle fill="hsl(72, 70%, 38%)" r="3" cx="70.0" cy="219.4"><title>string.length, 2026-10-16-1126: 7756.6 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="128.8" cy="227.6"><title>string.length, 2026-10-16-1149: 5812.3 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="187.6" cy="239.5"><title>string.length, 2026-10-16-1348: 3837.0 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="246.5" cy="238.7"><title>string.length, 2026-10-16-1408: 3949.7 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="305.3" cy="240.4"><title>string.length, 2026-10-16-1422: 3714.0 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="364.1" cy="237.8"><title>string.length, 2026-10-16-1434: 4071.1 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="422.9" cy="239.3"><title>string.length, 2026-10-16-1437: 3861.2 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="481.8" cy="239.3"><title>string.length, 2026-10-16-1511: 3854.7 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="540.6" cy="237.9"><title>string.length, 2026-10-16-1523: 4055.9 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="599.4" cy="233.7"><title>string.length, 2026-10-16-1529: 4695.3 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="658.2" cy="238.5"><title>string.length, 2026-10-16-1614: 3965.4 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="717.1" cy="238.9"><title>string.length, 2026-10-16-1625: 3915.2 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="775.9" cy="235.2"><title>string.length, 2026-10-16-1635: 4463.5 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="834.7" cy="237.5"><title>string.length, 2026-10-16-1636: 4111.2 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="893.5" cy="238.8"><title>string.length, 2026-10-16-1644: 3936.1 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="952.4" cy="237.6"><title>string.length, 2026-10-16-1653: 4093.7 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="1011.2" cy="240.4"><title>string.length, 2026-10-16-1722: 3713.4 ns</title></circle><circle fill="hsl(72, 70%, 38%)" r="3" cx="1070.0" cy="233.2"><title>string.length, 2026-10-16-1732: 4776.4 ns</title></circle></g>
+<g class="series"><title>string.readShort</title><polyline stroke="hsl(210, 70%, 52%)" points="70.0,237.2 128.8,238.6 187.6,239.6 246.5,238.1 305.3,238.4 364.1,236.5 422.9,236.1 481.8,238.8 540.6,236.1 599.4,239.6 658.2,236.8 717.1,234.3 775.9,237.9 834.7,236.1 893.5,236.9 952.4,237.9 1011.2,234.9 1070.0,240.5 "/><circle fill="hsl(210, 70%, 52%)" r="3" cx="70.0" cy="237.2"><title>string.readShort, 2026-10-16-1126: 4159.9 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="128.8" cy="238.6"><title>string.readShort, 2026-10-16-1149: 3957.9 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="187.6" cy="239.6"><title>string.readShort, 2026-10-16-1348: 3825.2 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="246.5" cy="238.1"><title>string.readShort, 2026-10-16-1408: 4028.2 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="305.3" cy="238.4"><title>string.readShort, 2026-10-16-1422: 3987.9 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="364.1" cy="236.5"><title>string.readShort, 2026-10-16-1434: 4252.0 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="422.9" cy="236.1"><title>string.readShort, 2026-10-16-1437: 4322.3 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="481.8" cy="238.8"><title>string.readShort, 2026-10-16-1511: 3932.6 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="540.6" cy="236.1"><title>string.readShort, 2026-10-16-1523: 4313.1 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="599.4" cy="239.6"><title>string.readShort, 2026-10-16-1529: 3816.4 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="658.2" cy="236.8"><title>string.readShort, 2026-10-16-1614: 4215.8 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="717.1" cy="234.3"><title>string.readShort, 2026-10-16-1625: 4598.8 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="775.9" cy="237.9"><title>string.readShort, 2026-10-16-1635: 4058.7 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="834.7" cy="236.1"><title>string.readShort, 2026-10-16-1636: 4315.4 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="893.5" cy="236.9"><title>string.readShort, 2026-10-16-1644: 4203.9 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="952.4" cy="237.9"><title>string.readShort, 2026-10-16-1653: 4049.9 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="1011.2" cy="234.9"><title>string.readShort, 2026-10-16-1722: 4499.4 ns</title></circle><circle fill="hsl(210, 70%, 52%)" r="3" cx="1070.0" cy="240.5"><title>string.readShort, 2026-10-16-1732: 3705.6 ns</title></circle></g>
+<g class="series"><title>string.readLong</title><polyline stroke="hsl(347, 70%, 38%)" points="70.0,214.3 128.8,212.4 187.6,213.7 246.5,215.3 305.3,200.8 364.1,215.3 422.9,227.4 481.8,215.5 540.6,214.5 599.4,214.4 658.2,216.9 717.1,215.5 775.9,203.3 834.7,219.2 893.5,205.8 952.4,216.4 1011.2,212.2 1070.0,214.4 "/><circle fill="hsl(347, 70%, 38%)" r="3" cx="70.0" cy="214.3"><title>string.readLong, 2026-10-16-1126: 9263.6 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="128.8" cy="212.4"><title>string.readLong, 2026-10-16-1149: 9904.3 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="187.6" cy="213.7"><title>string.readLong, 2026-10-16-1348: 9468.5 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="246.5" cy="215.3"><title>string.readLong, 2026-10-16-1408: 8957.0 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="305.3" cy="200.8"><title>string.readLong, 2026-10-16-1422: 14860.0 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="364.1" cy="215.3"><title>string.readLong, 2026-10-16-1434: 8952.1 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="422.9" cy="227.4"><title>string.readLong, 2026-10-16-1437: 5866.3 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="481.8" cy="215.5"><title>string.readLong, 2026-10-16-1511: 8885.8 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="540.6" cy="214.5"><title>string.readLong, 2026-10-16-1523: 9202.4 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="599.4" cy="214.4"><title>string.readLong, 2026-10-16-1529: 9240.1 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="658.2" cy="216.9"><title>string.readLong, 2026-10-16-1614: 8474.1 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="717.1" cy="215.5"><title>string.readLong, 2026-10-16-1625: 8887.0 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="775.9" cy="203.3"><title>string.readLong, 2026-10-16-1635: 13655.5 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="834.7" cy="219.2"><title>string.readLong, 2026-10-16-1636: 7795.9 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="893.5" cy="205.8"><title>string.readLong, 2026-10-16-1644: 12468.3 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="952.4" cy="216.4"><title>string.readLong, 2026-10-16-1653: 8621.4 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="1011.2" cy="212.2"><title>string.readLong, 2026-10-16-1722: 9971.1 ns</title></circle><circle fill="hsl(347, 70%, 38%)" r="3" cx="1070.0" cy="214.4"><title>string.readLong, 2026-10-16-1732: 9229.4 ns</title></circle></g>
+<g class="series"><title>convert.bool</title><polyline stroke="hsl(125, 70%, 52%)" points="70.0,232.0 128.8,240.7 187.6,241.6 246.5,241.2 305.3,241.7 364.1,239.6 422.9,241.2 481.8,240.2 540.6,241.5 599.4,240.7 658.2,241.3 717.1,240.2 775.9,239.7 834.7,239.9 893.5,242.2 952.4,242.7 1011.2,243.0 1070.0,242.4 "/><circle fill="hsl(125, 70%, 52%)" r="3" cx="70.0" cy="232.0"><title>convert.bool, 2026-10-16-1126: 4984.5 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="128.8" cy="240.7"><title>convert.bool, 2026-10-16-1149: 3670.2 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="187.6" cy="241.6"><title>convert.bool, 2026-10-16-1348: 3568.3 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="246.5" cy="241.2"><title>convert.bool, 2026-10-16-1408: 3606.6 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="305.3" cy="241.7"><title>convert.bool, 2026-10-16-1422: 3555.6 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="364.1" cy="239.6"><title>convert.bool, 2026-10-16-1434: 3818.6 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="422.9" cy="241.2"><title>convert.bool, 2026-10-16-1437: 3609.6 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="481.8" cy="240.2"><title>convert.bool, 2026-10-16-1511: 3746.6 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="540.6" cy="241.5"><title>convert.bool, 2026-10-16-1523: 3576.8 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="599.4" cy="240.7"><title>convert.bool, 2026-10-16-1529: 3671.8 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="658.2" cy="241.3"><title>convert.bool, 2026-10-16-1614: 3604.1 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="717.1" cy="240.2"><title>convert.bool, 2026-10-16-1625: 3746.1 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="775.9" cy="239.7"><title>convert.bool, 2026-10-16-1635: 3805.6 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="834.7" cy="239.9"><title>convert.bool, 2026-10-16-1636: 3783.2 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="893.5" cy="242.2"><title>convert.bool, 2026-10-16-1644: 3493.2 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="952.4" cy="242.7"><title>convert.bool, 2026-10-16-1653: 3430.7 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="1011.2" cy="243.0"><title>convert.bool, 2026-10-16-1722: 3395.1 ns</title></circle><circle fill="hsl(125, 70%, 52%)" r="3" cx="1070.0" cy="242.4"><title>convert.bool, 2026-10-16-1732: 3460.2 ns</title></circle></g>
+<g class="series"><title>convert.string</title><polyline stroke="hsl(262, 70%, 38%)" points="70.0,220.3 128.8,224.6 187.6,226.2 246.5,223.9 305.3,220.6 364.1,224.8 422.9,225.5 481.8,224.5 540.6,226.0 599.4,225.3 658.2,222.5 717.1,224.7 775.9,223.2 834.7,223.3 893.5,225.9 952.4,225.7 1011.2,226.3 1070.0,225.5 "/><circle fill="hsl(262, 70%, 38%)" r="3" cx="70.0" cy="220.3"><title>convert.string, 2026-10-16-1126: 7506.9 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="128.8" cy="224.6"><title>convert.string, 2026-10-16-1149: 6468.7 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="187.6" cy="226.2"><title>convert.string, 2026-10-16-1348: 6115.0 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="246.5" cy="223.9"><title>convert.string, 2026-10-16-1408: 6612.1 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="305.3" cy="220.6"><title>convert.string, 2026-10-16-1422: 7436.6 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="364.1" cy="224.8"><title>convert.string, 2026-10-16-1434: 6426.5 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="422.9" cy="225.5"><title>convert.string, 2026-10-16-1437: 6267.8 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="481.8" cy="224.5"><title>convert.string, 2026-10-16-1511: 6496.4 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="540.6" cy="226.0"><title>convert.string, 2026-10-16-1523: 6144.2 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="599.4" cy="225.3"><title>convert.string, 2026-10-16-1529: 6307.6 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="658.2" cy="222.5"><title>convert.string, 2026-10-16-1614: 6967.4 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="717.1" cy="224.7"><title>convert.string, 2026-10-16-1625: 6441.9 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="775.9" cy="223.2"><title>convert.string, 2026-10-16-1635: 6779.2 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="834.7" cy="223.3"><title>convert.string, 2026-10-16-1636: 6760.5 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="893.5" cy="225.9"><title>convert.string, 2026-10-16-1644: 6166.0 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="952.4" cy="225.7"><title>convert.string, 2026-10-16-1653: 6229.5 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="1011.2" cy="226.3"><title>convert.string, 2026-10-16-1722: 6099.4 ns</title></circle><circle fill="hsl(262, 70%, 38%)" r="3" cx="1070.0" cy="225.5"><title>convert.string, 2026-10-16-1732: 6252.6 ns</title></circle></g>
+<g class="series"><title>convert.arrayFloat64</title><polyline stroke="hsl(40, 70%, 52%)" points="70.0,87.3 128.8,94.6 187.6,94.8 246.5,94.2 305.3,92.7 364.1,86.8 422.9,93.0 481.8,92.7 540.6,91.2 599.4,92.6 658.2,93.0 717.1,92.1 775.9,92.7 834.7,92.0 893.5,93.0 952.4,92.9 1011.2,92.7 1070.0,91.7 "/><circle fill="hsl(40, 70%, 52%)" r="3" cx="70.0" cy="87.3"><title>convert.arrayFloat64, 2026-10-16-1126: 795182.3 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="128.8" cy="94.6"><title>convert.arrayFloat64, 2026-10-16-1149: 615442.7 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="187.6" cy="94.8"><title>convert.arrayFloat64, 2026-10-16-1348: 609609.4 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="246.5" cy="94.2"><title>convert.arrayFloat64, 2026-10-16-1408: 622505.2 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="305.3" cy="92.7"><title>convert.arrayFloat64, 2026-10-16-1422: 657984.4 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="364.1" cy="86.8"><title>convert.arrayFloat64, 2026-10-16-1434: 807187.5 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="422.9" cy="93.0"><title>convert.arrayFloat64, 2026-10-16-1437: 649385.4 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="481.8" cy="92.7"><title>convert.arrayFloat64, 2026-10-16-1511: 656651.0 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="540.6" cy="91.2"><title>convert.arrayFloat64, 2026-10-16-1523: 691723.9 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="599.4" cy="92.6"><title>convert.arrayFloat64, 2026-10-16-1529: 659869.8 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="658.2" cy="93.0"><title>convert.arrayFloat64, 2026-10-16-1614: 649083.3 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="717.1" cy="92.1"><title>convert.arrayFloat64, 2026-10-16-1625: 671447.9 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="775.9" cy="92.7"><title>convert.arrayFloat64, 2026-10-16-1635: 656791.7 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="834.7" cy="92.0"><title>convert.arrayFloat64, 2026-10-16-1636: 673854.2 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="893.5" cy="93.0"><title>convert.arrayFloat64, 2026-10-16-1644: 649609.4 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="952.4" cy="92.9"><title>convert.arrayFloat64, 2026-10-16-1653: 652739.6 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="1011.2" cy="92.7"><title>convert.arrayFloat64, 2026-10-16-1722: 656359.4 ns</title></circle><circle fill="hsl(40, 70%, 52%)" r="3" cx="1070.0" cy="91.7"><title>convert.arrayFloat64, 2026-10-16-1732: 679531.3 ns</title></circle></g>
+<g class="series"><title>convert.nestedArray</title><polyline stroke="hsl(177, 70%, 38%)" points="70.0,85.9 128.8,93.1 187.6,92.8 246.5,92.8 305.3,91.6 364.1,85.6 422.9,91.8 481.8,90.3 540.6,91.6 599.4,91.5 658.2,90.1 717.1,90.7 775.9,90.5 834.7,91.1 893.5,91.5 952.4,91.3 1011.2,91.4 1070.0,91.8 "/><circle fill="hsl(177, 70%, 38%)" r="3" cx="70.0" cy="85.9"><title>convert.nestedArray, 2026-10-16-1126: 832588.5 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="128.8" cy="93.1"><title>convert.nestedArray, 2026-10-16-1149: 647697.9 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="187.6" cy="92.8"><title>convert.nestedArray, 2026-10-16-1348: 653677.1 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="246.5" cy="92.8"><title>convert.nestedArray, 2026-10-16-1408: 653692.7 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="305.3" cy="91.6"><title>convert.nestedArray, 2026-10-16-1422: 683937.5 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="364.1" cy="85.6"><title>convert.nestedArray, 2026-10-16-1434: 843614.6 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="422.9" cy="91.8"><title>convert.nestedArray, 2026-10-16-1437: 678369.8 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="481.8" cy="90.3"><title>convert.nestedArray, 2026-10-16-1511: 714364.6 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="540.6" cy="91.6"><title>convert.nestedArray, 2026-10-16-1523: 683526.0 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="599.4" cy="91.5"><title>convert.nestedArray, 2026-10-16-1529: 684458.3 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="658.2" cy="90.1"><title>convert.nestedArray, 2026-10-16-1614: 720307.3 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="717.1" cy="90.7"><title>convert.nestedArray, 2026-10-16-1625: 704958.3 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="775.9" cy="90.5"><title>convert.nestedArray, 2026-10-16-1635: 709989.6 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="834.7" cy="91.1"><title>convert.nestedArray, 2026-10-16-1636: 694317.7 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="893.5" cy="91.5"><title>convert.nestedArray, 2026-10-16-1644: 686442.7 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="952.4" cy="91.3"><title>convert.nestedArray, 2026-10-16-1653: 691020.8 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="1011.2" cy="91.4"><title>convert.nestedArray, 2026-10-16-1722: 688161.5 ns</title></circle><circle fill="hsl(177, 70%, 38%)" r="3" cx="1070.0" cy="91.8"><title>convert.nestedArray, 2026-10-16-1732: 678677.1 ns</title></circle></g>
+<g class="series"><title>convert.optionSome</title><polyline stroke="hsl(315, 70%, 52%)" points="70.0,227.8 128.8,237.5 187.6,238.0 246.5,236.0 305.3,237.4 364.1,237.6 422.9,236.9 481.8,236.7 540.6,237.4 599.4,236.9 658.2,237.1 717.1,235.5 775.9,235.3 834.7,235.7 893.5,235.9 952.4,235.1 1011.2,235.0 1070.0,235.2 "/><circle fill="hsl(315, 70%, 52%)" r="3" cx="70.0" cy="227.8"><title>convert.optionSome, 2026-10-16-1126: 5774.3 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="128.8" cy="237.5"><title>convert.optionSome, 2026-10-16-1149: 4117.4 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="187.6" cy="238.0"><title>convert.optionSome, 2026-10-16-1348: 4037.4 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="246.5" cy="236.0"><title>convert.optionSome, 2026-10-16-1408: 4327.4 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="305.3" cy="237.4"><title>convert.optionSome, 2026-10-16-1422: 4127.9 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="364.1" cy="237.6"><title>convert.optionSome, 2026-10-16-1434: 4098.2 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="422.9" cy="236.9"><title>convert.optionSome, 2026-10-16-1437: 4202.3 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="481.8" cy="236.7"><title>convert.optionSome, 2026-10-16-1511: 4226.0 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="540.6" cy="237.4"><title>convert.optionSome, 2026-10-16-1523: 4121.1 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="599.4" cy="236.9"><title>convert.optionSome, 2026-10-16-1529: 4192.8 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="658.2" cy="237.1"><title>convert.optionSome, 2026-10-16-1614: 4167.6 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="717.1" cy="235.5"><title>convert.optionSome, 2026-10-16-1625: 4417.9 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="775.9" cy="235.3"><title>convert.optionSome, 2026-10-16-1635: 4446.2 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="834.7" cy="235.7"><title>convert.optionSome, 2026-10-16-1636: 4374.9 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="893.5" cy="235.9"><title>convert.optionSome, 2026-10-16-1644: 4347.5 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="952.4" cy="235.1"><title>convert.optionSome, 2026-10-16-1653: 4467.1 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="1011.2" cy="235.0"><title>convert.optionSome, 2026-10-16-1722: 4484.6 ns</title></circle><circle fill="hsl(315, 70%, 52%)" r="3" cx="1070.0" cy="235.2"><title>convert.optionSome, 2026-10-16-1732: 4463.1 ns</title></circle></g>
+<g class="series"><title>convert.optionNone</title><polyline stroke="hsl(92, 70%, 38%)" points="70.0,231.7 128.8,239.8 187.6,240.9 246.5,239.3 305.3,240.8 364.1,241.9 422.9,240.7 481.8,239.0 540.6,241.1 599.4,240.4 658.2,240.8 717.1,239.2 775.9,238.5 834.7,239.0 893.5,239.5 952.4,239.2 1011.2,239.7 1070.0,238.6 "/><circle fill="hsl(92, 70%, 38%)" r="3" cx="70.0" cy="231.7"><title>convert.optionNone, 2026-10-16-1126: 5038.7 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="128.8" cy="239.8"><title>convert.optionNone, 2026-10-16-1149: 3800.0 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="187.6" cy="240.9"><title>convert.optionNone, 2026-10-16-1348: 3649.4 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="246.5" cy="239.3"><title>convert.optionNone, 2026-10-16-1408: 3863.0 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="305.3" cy="240.8"><title>convert.optionNone, 2026-10-16-1422: 3660.1 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="364.1" cy="241.9"><title>convert.optionNone, 2026-10-16-1434: 3524.2 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="422.9" cy="240.7"><title>convert.optionNone, 2026-10-16-1437: 3681.5 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="481.8" cy="239.0"><title>convert.optionNone, 2026-10-16-1511: 3907.8 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="540.6" cy="241.1"><title>convert.optionNone, 2026-10-16-1523: 3629.2 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="599.4" cy="240.4"><title>convert.optionNone, 2026-10-16-1529: 3709.3 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="658.2" cy="240.8"><title>convert.optionNone, 2026-10-16-1614: 3658.0 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="717.1" cy="239.2"><title>convert.optionNone, 2026-10-16-1625: 3871.6 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="775.9" cy="238.5"><title>convert.optionNone, 2026-10-16-1635: 3967.0 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="834.7" cy="239.0"><title>convert.optionNone, 2026-10-16-1636: 3905.4 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="893.5" cy="239.5"><title>convert.optionNone, 2026-10-16-1644: 3829.7 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="952.4" cy="239.2"><title>convert.optionNone, 2026-10-16-1653: 3880.7 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="1011.2" cy="239.7"><title>convert.optionNone, 2026-10-16-1722: 3807.0 ns</title></circle><circle fill="hsl(92, 70%, 38%)" r="3" cx="1070.0" cy="238.6"><title>convert.optionNone, 2026-10-16-1732: 3954.3 ns</title></circle></g>
+<g class="series"><title>sequence.twoWrites</title><polyline stroke="hsl(230, 70%, 52%)" points="70.0,239.0 128.8,245.1 187.6,247.3 246.5,243.9 305.3,247.1 364.1,246.6 422.9,246.6 481.8,247.0 540.6,246.8 599.4,246.2 658.2,247.1 717.1,245.6 775.9,243.5 834.7,246.0 893.5,245.7 952.4,246.4 1011.2,246.9 1070.0,245.7 "/><circle fill="hsl(230, 70%, 52%)" r="3" cx="70.0" cy="239.0"><title>sequence.twoWrites, 2026-10-16-1126: 3899.2 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="128.8" cy="245.1"><title>sequence.twoWrites, 2026-10-16-1149: 3149.7 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="187.6" cy="247.3"><title>sequence.twoWrites, 2026-10-16-1348: 2922.0 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="246.5" cy="243.9"><title>sequence.twoWrites, 2026-10-16-1408: 3292.1 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="305.3" cy="247.1"><title>sequence.twoWrites, 2026-10-16-1422: 2942.8 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="364.1" cy="246.6"><title>sequence.twoWrites, 2026-10-16-1434: 2986.9 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="422.9" cy="246.6"><title>sequence.twoWrites, 2026-10-16-1437: 2986.8 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="481.8" cy="247.0"><title>sequence.twoWrites, 2026-10-16-1511: 2945.7 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="540.6" cy="246.8"><title>sequence.twoWrites, 2026-10-16-1523: 2965.0 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="599.4" cy="246.2"><title>sequence.twoWrites, 2026-10-16-1529: 3030.5 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="658.2" cy="247.1"><title>sequence.twoWrites, 2026-10-16-1614: 2934.0 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="717.1" cy="245.6"><title>sequence.twoWrites, 2026-10-16-1625: 3092.3 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="775.9" cy="243.5"><title>sequence.twoWrites, 2026-10-16-1635: 3329.1 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="834.7" cy="246.0"><title>sequence.twoWrites, 2026-10-16-1636: 3058.1 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="893.5" cy="245.7"><title>sequence.twoWrites, 2026-10-16-1644: 3080.6 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="952.4" cy="246.4"><title>sequence.twoWrites, 2026-10-16-1653: 3013.8 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="1011.2" cy="246.9"><title>sequence.twoWrites, 2026-10-16-1722: 2961.6 ns</title></circle><circle fill="hsl(230, 70%, 52%)" r="3" cx="1070.0" cy="245.7"><title>sequence.twoWrites, 2026-10-16-1732: 3084.1 ns</title></circle></g>
+<g class="series"><title>sequence.threeWrites</title><polyline stroke="hsl(7, 70%, 38%)" points="70.0,226.4 128.8,234.1 187.6,234.1 246.5,232.5 305.3,235.6 364.1,234.9 422.9,235.1 481.8,233.1 540.6,235.1 599.4,234.6 658.2,232.5 717.1,234.1 775.9,231.7 834.7,234.3 893.5,234.4 952.4,234.3 1011.2,235.4 1070.0,232.9 "/><circle fill="hsl(7, 70%, 38%)" r="3" cx="70.0" cy="226.4"><title>sequence.threeWrites, 2026-10-16-1126: 6067.1 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="128.8" cy="234.1"><title>sequence.threeWrites, 2026-10-16-1149: 4631.8 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="187.6" cy="234.1"><title>sequence.threeWrites, 2026-10-16-1348: 4632.7 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="246.5" cy="232.5"><title>sequence.threeWrites, 2026-10-16-1408: 4904.3 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="305.3" cy="235.6"><title>sequence.threeWrites, 2026-10-16-1422: 4393.0 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="364.1" cy="234.9"><title>sequence.threeWrites, 2026-10-16-1434: 4499.8 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="422.9" cy="235.1"><title>sequence.threeWrites, 2026-10-16-1437: 4473.3 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="481.8" cy="233.1"><title>sequence.threeWrites, 2026-10-16-1511: 4793.5 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="540.6" cy="235.1"><title>sequence.threeWrites, 2026-10-16-1523: 4471.4 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="599.4" cy="234.6"><title>sequence.threeWrites, 2026-10-16-1529: 4545.6 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="658.2" cy="232.5"><title>sequence.threeWrites, 2026-10-16-1614: 4900.0 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="717.1" cy="234.1"><title>sequence.threeWrites, 2026-10-16-1625: 4633.4 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="775.9" cy="231.7"><title>sequence.threeWrites, 2026-10-16-1635: 5044.1 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="834.7" cy="234.3"><title>sequence.threeWrites, 2026-10-16-1636: 4594.1 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="893.5" cy="234.4"><title>sequence.threeWrites, 2026-10-16-1644: 4586.7 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="952.4" cy="234.3"><title>sequence.threeWrites, 2026-10-16-1653: 4604.6 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="1011.2" cy="235.4"><title>sequence.threeWrites, 2026-10-16-1722: 4423.1 ns</title></circle><circle fill="hsl(7, 70%, 38%)" r="3" cx="1070.0" cy="232.9"><title>sequence.threeWrites, 2026-10-16-1732: 4829.2 ns</title></circle></g>
+<g class="series"><title>callback.arkTSCallsCangjie</title><polyline stroke="hsl(145, 70%, 52%)" points="70.0,245.1 128.8,255.8 187.6,260.3 246.5,259.7 305.3,259.3 364.1,256.5 422.9,257.9 481.8,259.1 540.6,256.2 599.4,258.2 658.2,259.3 717.1,257.9 775.9,256.6 834.7,254.6 893.5,253.9 952.4,255.6 1011.2,257.4 1070.0,256.3 "/><circle fill="hsl(145, 70%, 52%)" r="3" cx="70.0" cy="245.1"><title>callback.arkTSCallsCangjie, 2026-10-16-1126: 3156.5 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="128.8" cy="255.8"><title>callback.arkTSCallsCangjie, 2026-10-16-1149: 2169.0 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="187.6" cy="260.3"><title>callback.arkTSCallsCangjie, 2026-10-16-1348: 1852.4 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="246.5" cy="259.7"><title>callback.arkTSCallsCangjie, 2026-10-16-1408: 1891.4 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="305.3" cy="259.3"><title>callback.arkTSCallsCangjie, 2026-10-16-1422: 1918.5 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="364.1" cy="256.5"><title>callback.arkTSCallsCangjie, 2026-10-16-1434: 2114.2 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="422.9" cy="257.9"><title>callback.arkTSCallsCangjie, 2026-10-16-1437: 2014.4 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="481.8" cy="259.1"><title>callback.arkTSCallsCangjie, 2026-10-16-1511: 1932.8 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="540.6" cy="256.2"><title>callback.arkTSCallsCangjie, 2026-10-16-1523: 2138.5 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="599.4" cy="258.2"><title>callback.arkTSCallsCangjie, 2026-10-16-1529: 1989.5 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="658.2" cy="259.3"><title>callback.arkTSCallsCangjie, 2026-10-16-1614: 1917.5 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="717.1" cy="257.9"><title>callback.arkTSCallsCangjie, 2026-10-16-1625: 2012.7 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="775.9" cy="256.6"><title>callback.arkTSCallsCangjie, 2026-10-16-1635: 2104.2 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="834.7" cy="254.6"><title>callback.arkTSCallsCangjie, 2026-10-16-1636: 2262.3 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="893.5" cy="253.9"><title>callback.arkTSCallsCangjie, 2026-10-16-1644: 2311.8 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="952.4" cy="255.6"><title>callback.arkTSCallsCangjie, 2026-10-16-1653: 2182.4 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="1011.2" cy="257.4"><title>callback.arkTSCallsCangjie, 2026-10-16-1722: 2050.7 ns</title></circle><circle fill="hsl(145, 70%, 52%)" r="3" cx="1070.0" cy="256.3"><title>callback.arkTSCallsCangjie, 2026-10-16-1732: 2131.6 ns</title></circle></g>
+<g class="series"><title>handles.createAndDrop</title><polyline stroke="hsl(282, 70%, 38%)" points="70.0,233.8 128.8,232.6 187.6,229.6 246.5,236.6 305.3,235.5 364.1,236.4 422.9,233.9 481.8,235.9 540.6,236.6 599.4,235.0 658.2,236.0 717.1,234.2 775.9,231.4 834.7,234.8 893.5,238.0 952.4,239.0 1011.2,237.8 1070.0,238.1 "/><circle fill="hsl(282, 70%, 38%)" r="3" cx="70.0" cy="233.8"><title>handles.createAndDrop, 2026-10-16-1126: 4678.4 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="128.8" cy="232.6"><title>handles.createAndDrop, 2026-10-16-1149: 4878.0 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="187.6" cy="229.6"><title>handles.createAndDrop, 2026-10-16-1348: 5420.1 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="246.5" cy="236.6"><title>handles.createAndDrop, 2026-10-16-1408: 4251.8 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="305.3" cy="235.5"><title>handles.createAndDrop, 2026-10-16-1422: 4405.8 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="364.1" cy="236.4"><title>handles.createAndDrop, 2026-10-16-1434: 4275.8 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="422.9" cy="233.9"><title>handles.createAndDrop, 2026-10-16-1437: 4664.1 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="481.8" cy="235.9"><title>handles.createAndDrop, 2026-10-16-1511: 4347.0 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="540.6" cy="236.6"><title>handles.createAndDrop, 2026-10-16-1523: 4248.8 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="599.4" cy="235.0"><title>handles.createAndDrop, 2026-10-16-1529: 4491.3 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="658.2" cy="236.0"><title>handles.createAndDrop, 2026-10-16-1614: 4337.0 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="717.1" cy="234.2"><title>handles.createAndDrop, 2026-10-16-1625: 4615.6 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="775.9" cy="231.4"><title>handles.createAndDrop, 2026-10-16-1635: 5101.5 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="834.7" cy="234.8"><title>handles.createAndDrop, 2026-10-16-1636: 4520.9 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="893.5" cy="238.0"><title>handles.createAndDrop, 2026-10-16-1644: 4037.9 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="952.4" cy="239.0"><title>handles.createAndDrop, 2026-10-16-1653: 3903.2 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="1011.2" cy="237.8"><title>handles.createAndDrop, 2026-10-16-1722: 4076.4 ns</title></circle><circle fill="hsl(282, 70%, 38%)" r="3" cx="1070.0" cy="238.1"><title>handles.createAndDrop, 2026-10-16-1732: 4022.6 ns</title></circle></g>
+<g class="series"><title>thread.readNumber</title><polyline stroke="hsl(60, 70%, 52%)" points="70.0,130.2 128.8,135.6 187.6,133.6 246.5,104.7 305.3,134.9 364.1,104.8 422.9,110.3 481.8,110.9 540.6,105.2 599.4,105.5 658.2,136.0 717.1,109.8 775.9,128.1 834.7,105.2 893.5,104.5 952.4,135.2 1011.2,103.8 1070.0,106.9 "/><circle fill="hsl(60, 70%, 52%)" r="3" cx="70.0" cy="130.2"><title>thread.readNumber, 2026-10-16-1126: 176700.0 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="128.8" cy="135.6"><title>thread.readNumber, 2026-10-16-1149: 146341.7 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="187.6" cy="133.6"><title>thread.readNumber, 2026-10-16-1348: 156564.6 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="246.5" cy="104.7"><title>thread.readNumber, 2026-10-16-1408: 431333.3 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="305.3" cy="134.9"><title>thread.readNumber, 2026-10-16-1422: 149783.3 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="364.1" cy="104.8"><title>thread.readNumber, 2026-10-16-1434: 429760.4 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="422.9" cy="110.3"><title>thread.readNumber, 2026-10-16-1437: 355114.6 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="481.8" cy="110.9"><title>thread.readNumber, 2026-10-16-1511: 347079.2 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="540.6" cy="105.2"><title>thread.readNumber, 2026-10-16-1523: 424385.4 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="599.4" cy="105.5"><title>thread.readNumber, 2026-10-16-1529: 419147.9 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="658.2" cy="136.0"><title>thread.readNumber, 2026-10-16-1614: 144322.9 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="717.1" cy="109.8"><title>thread.readNumber, 2026-10-16-1625: 361002.1 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="775.9" cy="128.1"><title>thread.readNumber, 2026-10-16-1635: 190333.3 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="834.7" cy="105.2"><title>thread.readNumber, 2026-10-16-1636: 423397.9 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="893.5" cy="104.5"><title>thread.readNumber, 2026-10-16-1644: 433812.5 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="952.4" cy="135.2"><title>thread.readNumber, 2026-10-16-1653: 148283.3 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="1011.2" cy="103.8"><title>thread.readNumber, 2026-10-16-1722: 444797.9 ns</title></circle><circle fill="hsl(60, 70%, 52%)" r="3" cx="1070.0" cy="106.9"><title>thread.readNumber, 2026-10-16-1732: 399510.4 ns</title></circle></g>
+<g class="series"><title>exception.throwCatch</title><polyline stroke="hsl(197, 70%, 38%)" points="70.0,168.0 128.8,168.5 187.6,168.6 246.5,168.5 305.3,168.3 364.1,168.2 422.9,167.9 481.8,167.8 540.6,168.4 599.4,168.4 658.2,168.3 717.1,168.3 775.9,168.8 834.7,167.8 893.5,168.3 952.4,168.6 1011.2,168.5 1070.0,168.7 "/><circle fill="hsl(197, 70%, 38%)" r="3" cx="70.0" cy="168.0"><title>exception.throwCatch, 2026-10-16-1126: 47013.5 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="128.8" cy="168.5"><title>exception.throwCatch, 2026-10-16-1149: 46153.9 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="187.6" cy="168.6"><title>exception.throwCatch, 2026-10-16-1348: 46047.1 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="246.5" cy="168.5"><title>exception.throwCatch, 2026-10-16-1408: 46090.9 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="305.3" cy="168.3"><title>exception.throwCatch, 2026-10-16-1422: 46401.6 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="364.1" cy="168.2"><title>exception.throwCatch, 2026-10-16-1434: 46707.6 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="422.9" cy="167.9"><title>exception.throwCatch, 2026-10-16-1437: 47086.2 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="481.8" cy="167.8"><title>exception.throwCatch, 2026-10-16-1511: 47267.2 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="540.6" cy="168.4"><title>exception.throwCatch, 2026-10-16-1523: 46263.5 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="599.4" cy="168.4"><title>exception.throwCatch, 2026-10-16-1529: 46316.1 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="658.2" cy="168.3"><title>exception.throwCatch, 2026-10-16-1614: 46440.1 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="717.1" cy="168.3"><title>exception.throwCatch, 2026-10-16-1625: 46397.4 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="775.9" cy="168.8"><title>exception.throwCatch, 2026-10-16-1635: 45716.7 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="834.7" cy="167.8"><title>exception.throwCatch, 2026-10-16-1636: 47210.7 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="893.5" cy="168.3"><title>exception.throwCatch, 2026-10-16-1644: 46530.5 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="952.4" cy="168.6"><title>exception.throwCatch, 2026-10-16-1653: 45917.7 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="1011.2" cy="168.5"><title>exception.throwCatch, 2026-10-16-1722: 46102.6 ns</title></circle><circle fill="hsl(197, 70%, 38%)" r="3" cx="1070.0" cy="168.7"><title>exception.throwCatch, 2026-10-16-1732: 45850.3 ns</title></circle></g>
+<g class="series"><title>array.readFloat64Index</title><polyline stroke="hsl(335, 70%, 52%)" points="717.1,265.8 775.9,264.4 834.7,265.0 893.5,264.1 952.4,263.0 1011.2,263.7 1070.0,264.1 "/><circle fill="hsl(335, 70%, 52%)" r="3" cx="717.1" cy="265.8"><title>array.readFloat64Index, 2026-10-16-1625: 1527.1 ns</title></circle><circle fill="hsl(335, 70%, 52%)" r="3" cx="775.9" cy="264.4"><title>array.readFloat64Index, 2026-10-16-1635: 1602.5 ns</title></circle><circle fill="hsl(335, 70%, 52%)" r="3" cx="834.7" cy="265.0"><title>array.readFloat64Index, 2026-10-16-1636: 1566.9 ns</title></circle><circle fill="hsl(335, 70%, 52%)" r="3" cx="893.5" cy="264.1"><title>array.readFloat64Index, 2026-10-16-1644: 1621.9 ns</title></circle><circle fill="hsl(335, 70%, 52%)" r="3" cx="952.4" cy="263.0"><title>array.readFloat64Index, 2026-10-16-1653: 1681.7 ns</title></circle><circle fill="hsl(335, 70%, 52%)" r="3" cx="1011.2" cy="263.7"><title>array.readFloat64Index, 2026-10-16-1722: 1641.9 ns</title></circle><circle fill="hsl(335, 70%, 52%)" r="3" cx="1070.0" cy="264.1"><title>array.readFloat64Index, 2026-10-16-1732: 1620.9 ns</title></circle></g>
+<g class="series"><title>array.readExternIndex</title><polyline stroke="hsl(112, 70%, 38%)" points="717.1,263.9 775.9,262.6 834.7,263.0 893.5,261.7 952.4,262.9 1011.2,262.0 1070.0,262.6 "/><circle fill="hsl(112, 70%, 38%)" r="3" cx="717.1" cy="263.9"><title>array.readExternIndex, 2026-10-16-1625: 1628.4 ns</title></circle><circle fill="hsl(112, 70%, 38%)" r="3" cx="775.9" cy="262.6"><title>array.readExternIndex, 2026-10-16-1635: 1703.8 ns</title></circle><circle fill="hsl(112, 70%, 38%)" r="3" cx="834.7" cy="263.0"><title>array.readExternIndex, 2026-10-16-1636: 1684.7 ns</title></circle><circle fill="hsl(112, 70%, 38%)" r="3" cx="893.5" cy="261.7"><title>array.readExternIndex, 2026-10-16-1644: 1758.8 ns</title></circle><circle fill="hsl(112, 70%, 38%)" r="3" cx="952.4" cy="262.9"><title>array.readExternIndex, 2026-10-16-1653: 1686.0 ns</title></circle><circle fill="hsl(112, 70%, 38%)" r="3" cx="1011.2" cy="262.0"><title>array.readExternIndex, 2026-10-16-1722: 1742.5 ns</title></circle><circle fill="hsl(112, 70%, 38%)" r="3" cx="1070.0" cy="262.6"><title>array.readExternIndex, 2026-10-16-1732: 1704.6 ns</title></circle></g>
+<g class="series"><title>probe.number.isNumber</title><polyline stroke="hsl(250, 70%, 52%)" points="1011.2,442.7 "/><circle fill="hsl(250, 70%, 52%)" r="3" cx="1011.2" cy="442.7"><title>probe.number.isNumber, 2026-10-16-1722: 3.1 ns</title></circle></g>
+<g class="series"><title>probe.number.typeof</title><polyline stroke="hsl(27, 70%, 38%)" points="1011.2,438.4 "/><circle fill="hsl(27, 70%, 38%)" r="3" cx="1011.2" cy="438.4"><title>probe.number.typeof, 2026-10-16-1722: 3.6 ns</title></circle></g>
+<g class="series"><title>probe.number.toNumber</title><polyline stroke="hsl(165, 70%, 52%)" points="1011.2,442.7 "/><circle fill="hsl(165, 70%, 52%)" r="3" cx="1011.2" cy="442.7"><title>probe.number.toNumber, 2026-10-16-1722: 3.1 ns</title></circle></g>
+<g class="series"><title>probe.boolean.isBoolean</title><polyline stroke="hsl(302, 70%, 38%)" points="1011.2,442.7 "/><circle fill="hsl(302, 70%, 38%)" r="3" cx="1011.2" cy="442.7"><title>probe.boolean.isBoolean, 2026-10-16-1722: 3.1 ns</title></circle></g>
+<g class="series"><title>probe.boolean.typeof</title><polyline stroke="hsl(80, 70%, 52%)" points="1011.2,434.0 "/><circle fill="hsl(80, 70%, 52%)" r="3" cx="1011.2" cy="434.0"><title>probe.boolean.typeof, 2026-10-16-1722: 4.2 ns</title></circle></g>
+<g class="series"><title>probe.string.isString</title><polyline stroke="hsl(217, 70%, 38%)" points="1011.2,430.2 "/><circle fill="hsl(217, 70%, 38%)" r="3" cx="1011.2" cy="430.2"><title>probe.string.isString, 2026-10-16-1722: 4.8 ns</title></circle></g>
+<g class="series"><title>probe.string.typeof</title><polyline stroke="hsl(355, 70%, 52%)" points="1011.2,442.7 "/><circle fill="hsl(355, 70%, 52%)" r="3" cx="1011.2" cy="442.7"><title>probe.string.typeof, 2026-10-16-1722: 3.1 ns</title></circle></g>
+<g class="series"><title>probe.object.isObject</title><polyline stroke="hsl(132, 70%, 38%)" points="1011.2,430.2 "/><circle fill="hsl(132, 70%, 38%)" r="3" cx="1011.2" cy="430.2"><title>probe.object.isObject, 2026-10-16-1722: 4.8 ns</title></circle></g>
+<g class="series"><title>probe.object.isArray</title><polyline stroke="hsl(270, 70%, 52%)" points="1011.2,430.2 "/><circle fill="hsl(270, 70%, 52%)" r="3" cx="1011.2" cy="430.2"><title>probe.object.isArray, 2026-10-16-1722: 4.8 ns</title></circle></g>
+<g class="series"><title>probe.object.typeof</title><polyline stroke="hsl(47, 70%, 38%)" points="1011.2,434.0 "/><circle fill="hsl(47, 70%, 38%)" r="3" cx="1011.2" cy="434.0"><title>probe.object.typeof, 2026-10-16-1722: 4.2 ns</title></circle></g>
+</svg>
+<div class="legend"><span><i style="background: hsl(137, 70%, 38%)"></i>property.readNumber</span><span><i style="background: hsl(275, 70%, 52%)"></i>property.writeNumber</span><span><i style="background: hsl(52, 70%, 38%)"></i>property.readChain</span><span><i style="background: hsl(190, 70%, 52%)"></i>call.method0</span><span><i style="background: hsl(327, 70%, 38%)"></i>call.method1</span><span><i style="background: hsl(105, 70%, 52%)"></i>call.method3</span><span><i style="background: hsl(242, 70%, 38%)"></i>call.function1</span><span><i style="background: hsl(20, 70%, 52%)"></i>array.readElement</span><span><i style="background: hsl(157, 70%, 38%)"></i>array.writeElement</span><span><i style="background: hsl(295, 70%, 52%)"></i>array.loop1000</span><span><i style="background: hsl(72, 70%, 38%)"></i>string.length</span><span><i style="background: hsl(210, 70%, 52%)"></i>string.readShort</span><span><i style="background: hsl(347, 70%, 38%)"></i>string.readLong</span><span><i style="background: hsl(125, 70%, 52%)"></i>convert.bool</span><span><i style="background: hsl(262, 70%, 38%)"></i>convert.string</span><span><i style="background: hsl(40, 70%, 52%)"></i>convert.arrayFloat64</span><span><i style="background: hsl(177, 70%, 38%)"></i>convert.nestedArray</span><span><i style="background: hsl(315, 70%, 52%)"></i>convert.optionSome</span><span><i style="background: hsl(92, 70%, 38%)"></i>convert.optionNone</span><span><i style="background: hsl(230, 70%, 52%)"></i>sequence.twoWrites</span><span><i style="background: hsl(7, 70%, 38%)"></i>sequence.threeWrites</span><span><i style="background: hsl(145, 70%, 52%)"></i>callback.arkTSCallsCangjie</span><span><i style="background: hsl(282, 70%, 38%)"></i>handles.createAndDrop</span><span><i style="background: hsl(60, 70%, 52%)"></i>thread.readNumber</span><span><i style="background: hsl(197, 70%, 38%)"></i>exception.throwCatch</span><span><i style="background: hsl(335, 70%, 52%)"></i>array.readFloat64Index</span><span><i style="background: hsl(112, 70%, 38%)"></i>array.readExternIndex</span><span><i style="background: hsl(250, 70%, 52%)"></i>probe.number.isNumber</span><span><i style="background: hsl(27, 70%, 38%)"></i>probe.number.typeof</span><span><i style="background: hsl(165, 70%, 52%)"></i>probe.number.toNumber</span><span><i style="background: hsl(302, 70%, 38%)"></i>probe.boolean.isBoolean</span><span><i style="background: hsl(80, 70%, 52%)"></i>probe.boolean.typeof</span><span><i style="background: hsl(217, 70%, 38%)"></i>probe.string.isString</span><span><i style="background: hsl(355, 70%, 52%)"></i>probe.string.typeof</span><span><i style="background: hsl(132, 70%, 38%)"></i>probe.object.isObject</span><span><i style="background: hsl(270, 70%, 52%)"></i>probe.object.isArray</span><span><i style="background: hsl(47, 70%, 38%)"></i>probe.object.typeof</span></div>
+<h2 id="shared">Fixtures and helpers</h2>
+<h3>Bench.ets: the ArkTS fixtures</h3><pre>
+class C {
+  d: number = 1.25;
+}
+
+class B {
+  c: C = new C();
+}
+
+class A {
+  b: B = new B();
+}
+
+export class Target {
+  num: number = 1.5;
+  a: A = new A();
+  items: number[] = [];
+  str: string = 'x'.repeat(100);
+  short: string = 'abcdefghij';
+  long: string = 'x'.repeat(10000);
+  slot: Object | null | undefined = undefined;
+  x: number = 0;
+  y: number = 0;
+  z: number = 0;
+
+  constructor() {
+    for (let i = 0; i &lt; 1000; i++) {
+      this.items.push(i * 0.5);
+    }
+  }
+
+  m0(): number {
+    return 1;
+  }
+
+  m1(a: number): number {
+    return a;
+  }
+
+  m3(a: number, b: number, c: number): number {
+    return a + b + c;
+  }
+}
+
+export function f1(a: number): number {
+  return a;
+}
+
+export function thrower(): void {
+  throw new Error('bench');
+}
+
+/** Calls `f` `n` times from ArkTS. */
+export function callTimes(f: (x: number) =&gt; number, n: number): number {
+  let sum = 0;
+  for (let i = 0; i &lt; n; i++) {
+    sum += f(i);
+  }
+  return sum;
+}
+
+// Read from Cangjie with ArkTSRuntime.global().Bench (and context.global in the ark_interop
+// variants).
+globalThis.Bench = { target: new Target(), f1, thrower, callTimes };
+</pre>
+<h3>b05_conversions.cj: values shared by its benchmarks</h3><pre>let numbers = Array&lt;Float64&gt;(1000) { i =&gt; Float64(i) }
+let nested = Array&lt;Array&lt;Float64&gt;&gt;(10) { i =&gt; Array&lt;Float64&gt;(100) { j =&gt; Float64(i * 100 + j) } }
+</pre>
+<h3>harness.cj: helpers used by the benchmarks</h3><pre>
+/** Every measured result is added here, so no variant can skip its work. */
+var sink: Float64 = 0.0
+
+/** What an `ark_interop` user writes to run engine code from another thread: post it and wait. */
+func onJSThread&lt;T&gt;(context: JSContext, operation: () -&gt; T): T {
+    let result = Box(None&lt;T&gt;)
+    let mutex = Mutex()
+    let finished = synchronized(mutex) { mutex.condition() }
+    context.postJSTask {
+        let value = operation()
+        synchronized(mutex) {
+            result.value = Some(value)
+            finished.notify()
+        }
+    }
+    synchronized(mutex) {
+        finished.waitUntil({ =&gt; result.value.isSome() })
+        result.value.getOrThrow()
+    }
+}
+
+func interopBench(context: JSContext): JSObject {
+    context.global.getProperty("Bench").asObject()
+}
+
+func interopTarget(context: JSContext): JSObject {
+    interopBench(context).getProperty("target").asObject()
+}
+
+func runtimeBench(): Extern&lt;ArkTSRuntime&gt; {
+    ArkTSRuntime.eval(ArkTSRuntime.global().Bench)
+}
+
+func runtimeTarget(): Extern&lt;ArkTSRuntime&gt; {
+    ArkTSRuntime.eval(ArkTSRuntime.global().Bench.target)
+}
+
+</pre>
+<script>
+document.querySelectorAll('td.name').forEach(function (cell) {
+  cell.addEventListener('click', function () {
+    var row = cell.parentElement.nextElementSibling;
+    row.hidden = !row.hidden;
+  });
+});
+</script>
+</body></html>

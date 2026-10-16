@@ -478,6 +478,40 @@ emulator.
   both. Benchmarks `*-2026-10-16-1635` and `ohos-…-1636` / `emulator-…-1637`: no measurable
   change; `string.length` (a non-immediate `fromExtern`) 3915 → 4464 → 4111 ns on the phone,
   897 → 1146 → 953 on the emulator.
+- **`retain` and `jsTypeName` use `typeof()`** (2026-10-16). One engine call for the type
+  (plus `isArray()` for objects) instead of a chain of `isX()` calls: a string took 6, an
+  object 8, `null` / a boolean 9 (after the external check). `JSType` constants cannot be
+  `match` patterns (cjc: "enum pattern is not matched", host probe), so a `match` without a
+  selector compares the type with `==` (local, no engine call); an unknown type throws
+  `ExternConversionException`. The same form replaces the other `isX()` chains: `toIndex`'s
+  `Extern` branch (number / string / symbol, up to 3 calls) and `Option.fromJS` (undefined /
+  null, 2 calls); single checks stay `isX()`. That second pass (`*-2026-10-16-1653`) is
+  neutral against `*-1644`/`-1645` (`convert.optionNone` 1.01 / 0.94, `array.readExternIndex`
+  0.96 / 1.00). Existing tests cover every kind
+  (`step4.retainClassifiesEachKind`, `payloadRoundTrip`). 24 host and 89 device tests pass on
+  both. Benchmarks `ohos-2026-10-16-1644`, `emulator-…-1645` against the mean of the previous
+  two runs, `arkts_runtime`: phone `convert.bool` 0.92, `convert.string` 0.91, `string.length`
+  0.92, `handles.createAndDrop` (objects) 0.84, numbers unchanged (`property.readNumber`
+  1.00); emulator `convert.bool` 0.91, `string.length` 0.81 (its `ark_interop` 0.98).
+- **What a `JSValue` type check costs** (2026-10-16, investigation, no library change). In
+  the device's `libohos.ark_interop.so` every `JSValue` method does two GC read barriers, an
+  "alive" flag check, `ARKTS_GetPosixThreadId()` (= `pthread_self`, no syscall) against the
+  bound thread, then a direct C call (no Cangjie-to-native stub) into `libark_interop.z.so`:
+  `ARKTS_IsNull` / `IsUndefined` are one compare on the raw value, `IsNumber` / `IsBool` a bit
+  test, `ARKTS_GetValueType` a chain of those plus, for heap values, a `JsiFastNativeScope` and
+  the heap checks. There is no public way to read the raw value from Cangjie. Measured with a
+  temporary benchmark group (results kept in `demos/benchmarks/.devicetest/probe/`, not in
+  `results/`), ns per check, phone / emulator, empty loop 3–5 / 1: number `isNumber` 23 / 6,
+  `typeof` 15 / 5, `toNumber` 44 / 14; boolean `isBoolean` 33 / 12, `typeof` 40 / 10; string
+  `isString` 74 / 27, `typeof` 47 / 9; object `isObject` 75 / 29, `isArray` 74 / 23, `typeof`
+  29 / 7. So type checks are 15–75 ns against about 1500–1800 ns per `arkts_runtime`
+  operation on the phone: not where the gap to `ark_interop` is.
+- **`retain` without `isArray`** (2026-10-16): arrays are kept as `Ref(asObject())`, as plain
+  objects; `evalPayload` only calls `toJSValue()` on the handle, so the kind of `JSHeapObject`
+  makes no difference. Saves the `isArray` call (about 74 ns on the phone) per object or array
+  result. Benchmarks 1732 and 1737 vs 1653: `property.readChain` -1% / -1% on the phone, -5% /
+  +4% on the emulator, `handles.createAndDrop` +3% / +4% and +5% / +2%: no measurable change,
+  within the run-to-run noise.
 - **Benchmark history chart** (2026-10-16): each generated `.html` has a line chart below the
   table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
   oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline

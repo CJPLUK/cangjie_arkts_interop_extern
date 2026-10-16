@@ -88,13 +88,21 @@ private func mismatch(value: JSValue, target: String): ExternConversionException
 }
 
 private func jsTypeName(value: JSValue): String {
-    if (value.isUndefined()) { "undefined" } else if (value.isNull()) { "null" } else if (value.isBoolean()) {
-        "boolean"
-    } else if (value.isNumber()) { "number" } else if (value.isBigInt()) { "bigint" } else if (value.isString()) {
-        "string"
-    } else if (value.isSymbol()) { "symbol" } else if (value.isFunction()) { "function" } else if (value.isArray()) {
-        "array"
-    } else if (value.isExternal()) { "external" } else { "object" }
+    let t = value.typeof()
+    match {
+        case t == JSType.OBJECT && value.isArray() => "array"
+        case t == JSType.OBJECT => "object"
+        case t == JSType.UNDEFINED => "undefined"
+        case t == JSType.NULL => "null"
+        case t == JSType.BOOLEAN => "boolean"
+        case t == JSType.NUMBER => "number"
+        case t == JSType.BIGINT => "bigint"
+        case t == JSType.STRING => "string"
+        case t == JSType.SYMBOL => "symbol"
+        case t == JSType.FUNCTION => "function"
+        case t == JSType.EXTERNAL => "external"
+        case _ => t.toString()
+    }
 }
 
 private func readNumber(value: JSValue, target: String): Float64 {
@@ -231,10 +239,11 @@ extend<T> Option<T> <: ToJS & FromJS<Option<T>> {
     }
 
     public static func fromJS(value: JSValue): Option<T> {
-        if (value.isUndefined() || value.isNull()) {
-            return None
+        let t = value.typeof()
+        match {
+            case t == JSType.UNDEFINED || t == JSType.NULL => None
+            case _ => Some(ArkTSRuntime.fromJSValue<T>(value))
         }
-        Some(ArkTSRuntime.fromJSValue<T>(value))
     }
 }
 
