@@ -8,7 +8,7 @@ import ohos.ark_interop.*
  */
 extend ArkTSRuntime {
     public static func undefined(): Extern<ArkTSRuntime> {
-        run { retain(context.undefined().toJSValue()) }
+        run { undefinedExtern }
     }
 
     public static func null(): Extern<ArkTSRuntime> {

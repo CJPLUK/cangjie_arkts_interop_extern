@@ -72,6 +72,30 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
+    /** The `undefined` the runtime returns and passes, built on first use. Bind thread only. */
+    private static var undefined_: ?(JSValue, Extern<ArkTSRuntime>) = None
+
+    private static func undefinedPair(): (JSValue, Extern<ArkTSRuntime>) {
+        match (undefined_) {
+            case Some(pair) => pair
+            case None =>
+                let value = context.undefined().toJSValue()
+                let pair = (value, ArkTSRuntime.retain(value))
+                undefined_ = Some(pair)
+                pair
+        }
+    }
+
+    /** ArkTS `undefined`, shared by the whole runtime. Bind thread only. */
+    static prop undefinedValue: JSValue {
+        get() { undefinedPair()[0] }
+    }
+
+    /** `undefinedValue` as an evaluated `Extern`, shared by the whole runtime. Bind thread only. */
+    static prop undefinedExtern: Extern<ArkTSRuntime> {
+        get() { undefinedPair()[1] }
+    }
+
     /**
      * Runs `operation` on the bind thread inside a fresh engine scope and returns its result,
      * or rethrows its exception or error on the calling thread. Blocks callers on other threads
@@ -152,9 +176,15 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             case ExternIndexedAccess(target, index) =>
                 run { ArkTSRuntime.retain(readIndex(evalTree(target), index)) }
             case ExternMemberUpdate(target, field, value) =>
-                run { ArkTSRuntime.retain(evalMemberUpdate(target, field, value)) }
+                run {
+                    evalMemberUpdate(target, field, value)
+                    undefinedExtern
+                }
             case ExternIndexedUpdate(target, index, value) =>
-                run { ArkTSRuntime.retain(evalIndexedUpdate(target, index, value)) }
+                run {
+                    evalIndexedUpdate(target, index, value)
+                    undefinedExtern
+                }
             case ExternFunctionCall(callee, arguments) =>
                 run { ArkTSRuntime.retain(call(callee, arguments)) }
             case ExternCompoundAssignment(_, _, _) => evalCompoundAssignment()
@@ -207,7 +237,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     private static func evalMemberUpdate(target: Extern<ArkTSRuntime>, field: String, value: Any): JSValue {
         let receiver = evalTree(target)
         writeMember(receiver, field, ArkTSRuntime.toJSValue(value))
-        context.undefined().toJSValue()
+        undefinedValue
     }
 
     private static func memberError(e: BusinessException): Exception {
@@ -227,7 +257,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     private static func evalIndexedUpdate(target: Extern<ArkTSRuntime>, index: Any, value: Any): JSValue {
         let receiver = evalTree(target)
         writeIndex(receiver, index, value)
-        context.undefined().toJSValue()
+        undefinedValue
     }
 
     private static func readIndex(target: JSValue, index: Any): JSValue {
@@ -290,7 +320,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 let target = evalTree(receiver)
                 invoke(readIndex(target, index), arguments, target)
             case _ =>
-                invoke(evalTree(callee), arguments, context.undefined().toJSValue())
+                invoke(evalTree(callee), arguments, undefinedValue)
         }
     }
 

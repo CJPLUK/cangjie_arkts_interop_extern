@@ -518,6 +518,14 @@ emulator.
   Benchmarks 1806 vs 1737: `call.method0` / `method1` / `method3` -7% / -2% / 0% on the phone,
   -16% / +10% / +22% on the emulator, as noisy as `call.function1` (unaffected): no measurable
   change.
+- **One shared `undefined`** (2026-10-16): `ArkTSRuntime.undefinedValue` (the `JSValue`) and
+  `undefinedExtern` (its `Imm` payload) are built on first use inside `run`, so only on the bind
+  thread, and kept in `undefined_`, which only the bind thread touches (no lock). Used by
+  update results (no `retain` any more), `undefined()`, the `this` of a plain call, and the
+  `Unit` and `None` conversions. An immediate stays valid outside the scope that made it, as
+  for every `Imm`. Benchmarks 1810/1811 vs the mean of 1737 and 1806: `sequence.twoWrites` /
+  `threeWrites` -3% / -3% on the phone, +11% / -5% on the emulator, `array.writeElement` -10% /
+  +7%: within the noise.
 - **Benchmark history chart** (2026-10-16): each generated `.html` has a line chart below the
   table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
   oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline

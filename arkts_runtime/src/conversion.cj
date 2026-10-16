@@ -130,7 +130,7 @@ private func readBigInt(value: JSValue, target: String, min: BigInt, max: BigInt
 }
 
 extend Unit <: ToJS & FromJS<Unit> {
-    public func toJS(): JSValue { ArkTSRuntime.context.undefined().toJSValue() }
+    public func toJS(): JSValue { ArkTSRuntime.undefinedValue }
     public static func fromJS(_: JSValue): Unit {}
 }
 
@@ -234,7 +234,7 @@ extend<T> Option<T> <: ToJS & FromJS<Option<T>> {
     public func toJS(): JSValue {
         match (this) {
             case Some(x) => ArkTSRuntime.toJSValue(x)
-            case None => ArkTSRuntime.context.undefined().toJSValue()
+            case None => ArkTSRuntime.undefinedValue
         }
     }
 
