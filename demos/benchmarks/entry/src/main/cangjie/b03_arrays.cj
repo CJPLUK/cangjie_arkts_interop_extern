@@ -14,6 +14,26 @@ func arrayBenchmarks(): Array<Benchmark> {
                 let items = ArkTSRuntime.eval(runtimeTarget().items)
                 { n: Int64 => for (i in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(items[i % 1000]) } }
             }, false),
+        Benchmark("array.readFloat64Index", 30000,
+            { context: JSContext =>
+                let items = interopTarget(context).getProperty("items")
+                { n: Int64 => for (i in 0..n) { sink += items.getProperty(Float64(i % 1000)).toNumber() } }
+            },
+            { =>
+                let items = ArkTSRuntime.eval(runtimeTarget().items)
+                { n: Int64 => for (i in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(items[Float64(i % 1000)]) } }
+            }, false),
+        Benchmark("array.readExternIndex", 30000,
+            { context: JSContext =>
+                let items = interopTarget(context).getProperty("items")
+                let keys = Array<JSValue>(1000) { k => context.number(Float64(k)).toJSValue() }
+                { n: Int64 => for (i in 0..n) { sink += items.getProperty(keys[i % 1000].toNumber()).toNumber() } }
+            },
+            { =>
+                let items = ArkTSRuntime.eval(runtimeTarget().items)
+                let keys = Array<Extern<ArkTSRuntime>>(1000) { k => ArkTSRuntime.toExtern(Float64(k)) }
+                { n: Int64 => for (i in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(items[keys[i % 1000]]) } }
+            }, false),
         Benchmark("array.writeElement", 50000,
             { context: JSContext =>
                 let items = interopTarget(context).getProperty("items").asArray()

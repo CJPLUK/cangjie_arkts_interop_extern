@@ -440,6 +440,33 @@ emulator.
   "Cannot convert ArkTS external to String". 24 host and 89 device tests pass on both.
   Benchmarks `*-2026-10-16-1529`: no change; `convert.bool`, whose boolean now also goes
   through `isExternal()` in `retain`, 1.03 (phone) / 0.97 (emulator) of `*-1523`.
+- **Index types are `ark_interop`'s** (2026-10-16). `ark_interop` takes `Int64` element
+  positions (`getElement` / `setElement`) and `JSKeyable` keys (`String`, `JSString`,
+  `JSSymbol`, `Utf16String`, `Float64`). `toIndex` now accepts `Int64` (element), `String`,
+  `Float64` and `Utf16String` (keys), and `Extern` values as before; `Int32` is no longer an
+  element position and every other Cangjie integer type stays unsupported ("Unsupported ArkTS
+  index type"; convert with `Int64(i)`). A `Float64` key on an array reaches the element through
+  the engine (`e.items[1.0]` is element 1). Tests: `step5.indexReadWrite` reads `e.items[0.0]`
+  and `e[Utf16String("num")]`, writes `e.items[1.0]` and `e[0.25]`; `step5.unsupportedIndex`
+  and `step7.ownExceptionsNotWrapped` expect `Int32` / `UInt8` indices to throw;
+  `step9.mixedScenario` writes `o.items[1.0]`. README updated. 24 host and 89 device tests pass
+  on both. Benchmarks `ohos-2026-10-16-1614`, `emulator-…-1615`: array benchmarks (which index
+  with `Int64`) 0.96–1.05 of `*-1529` on the phone; the emulator's `array.loop1000` 1.29 is not
+  matched on the phone.
+- **`Extern` numbers as indices are property keys** (2026-10-16). Their `ark_interop` type is
+  `Float64` (`toNumber()`), a `JSKeyable`, so they now behave as a Cangjie `Float64` key:
+  `Key(value.toNumber())`, JS's rules (on an array `a[Extern 1]` is element 1, past the end
+  `undefined`; on a `Map`, typed array or plain object a property). The integral / ±9e18 check
+  that sent them to `getElement` is gone, with its edge cases (-0 on an object threw, ≥ 2^32
+  threw an unwrapped `OverflowException`). Tests changed: `step5.indexBoundaries` (`a[Extern 5]`
+  is `undefined`), `numberKeys` (-0 sets "0"), `nonArrayIndexing` (`u8[Extern 1]` is 2),
+  `indexReadWrite` (comments). New benchmarks `array.readFloat64Index` and
+  `array.readExternIndex` (`ark_interop` variant: `getProperty(Float64)`). Results
+  `*-2026-10-16-1625`, ns/op, `ark_interop` / `arkts_runtime`: phone readElement 374 / 1610,
+  readFloat64Index 474 / 1527, readExternIndex 575 / 1628; emulator 72 / 443, 104 / 425,
+  116 / 425. In `ark_interop` a number key costs about 100 ns (phone) more than `getElement`;
+  in `arkts_runtime` the three are within noise of each other. 24 host and 89 device tests pass
+  on both.
 - **Benchmark history chart** (2026-10-16): each generated `.html` has a line chart below the
   table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
   oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline

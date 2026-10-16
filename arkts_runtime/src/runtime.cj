@@ -2,10 +2,10 @@ package arkts_runtime
 
 import std.sync.Mutex
 import std.sync.Condition
-import std.math.trunc
 import ohos.ark_interop.JSContext
 import ohos.ark_interop.JSValue
 import ohos.ark_interop.JSKeyable
+import ohos.ark_interop.Utf16String
 import ohos.business_exception.BusinessException
 
 /** `BusinessException.code` of an exception thrown by JS code ("Outside error occurred"). */
@@ -256,24 +256,19 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     }
 
     /**
-     * Cangjie integers, and an `Extern` (possibly unevaluated) holding an integral number, are
-     * element positions; `String`s, and an `Extern` holding a string, a symbol or any other
-     * number, are property keys.
+     * The Cangjie types `ark_interop` accepts: `Int64` is an element position; `String`,
+     * `Utf16String` and `Float64` are property keys. An `Extern` (possibly unevaluated) holding
+     * a number, a string or a symbol is a property key, the number as a `Float64`.
      */
     private static func toIndex(index: Any): ArkTSIndex {
         match (index) {
             case position: Int64 => Element(position)
-            case position: Int32 => Element(Int64(position))
             case name: String => Key(name)
+            case number: Float64 => Key(number)
+            case name: Utf16String => Key(name)
             case external: Extern<ArkTSRuntime> =>
                 let value = evalTree(external)
-                if (value.isNumber()) {
-                    let n = value.toNumber()
-                    if (n >= -9.0e18 && n <= 9.0e18 && n == trunc(n)) {
-                        return Element(Int64(n))
-                    }
-                    return Key(n)
-                }
+                if (value.isNumber()) { return Key(value.toNumber()) }
                 if (value.isString()) { return Key(value.asString()) }
                 if (value.isSymbol()) { return Key(value.asSymbol()) }
                 throw ExternIndexedAccessException("Unsupported ArkTS index type")

@@ -200,8 +200,9 @@ func callNonFunction(fixtures: Array<JSValue>): String {
 }
 
 /**
- * fixtures: Target. Integers are element positions, strings, symbols and fractional numbers are
- * property keys. ArkTS checks items == [55, 77, 99] (length 3), str == "via string", num == 4.
+ * fixtures: Target. `Int64` is an element position; `String`, `Utf16String`, `Float64` and
+ * `Extern` numbers, strings and symbols are property keys, which on an array reach its elements.
+ * ArkTS checks items == [55, 77, 99] (length 3), str == "via string", num == 4.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func indexReadWrite(context: JSContext, fixtures: Array<JSValue>): String {
@@ -209,22 +210,25 @@ func indexReadWrite(context: JSContext, fixtures: Array<JSValue>): String {
     let symbol = ArkTSRuntime.retain(context.symbol(description: "k").toJSValue())
     let readChecks = [
         expectEqual("e.items[1] (Int64)", number(e.items[1]), 20.0),
-        expectEqual("e.items[Int32(0)]", number(e.items[Int32(0)]), 10.0),
+        expectEqual("e.items[0.0] (Float64 key)", number(e.items[0.0]), 10.0),
         expectEqual("e[\"num\"] (String)", number(e["num"]), 1.5),
+        expectEqual("e[Utf16String(\"num\")]", number(e[Utf16String("num")]), 1.5),
         expectEqual("e[e.keyName] (Extern string)", number(e[e.keyName]), 1.5),
-        expectEqual("e.items[e.one] (Extern integral number)", number(e.items[e.one]), 20.0)
+        expectEqual("e.items[e.one] (Extern number key)", number(e.items[e.one]), 20.0)
     ]
     e.items[2] = 99.0
-    e.items[Int32(1)] = 77.0
+    e.items[1.0] = 77.0
     e.items[e.zero] = 55.0
     e["str"] = "via string"
     e[e.keyName] = 4.0
     e[e.half] = "fraction"
+    e[0.25] = "quarter"
     e[symbol] = 8.0
     firstFailure([
         firstFailure(readChecks),
         expectEqual("e[e.half] (Extern fractional number)", text(e[e.half]), "fraction"),
         expectEqual("property \"1.5\"", fixture(fixtures, 0).getProperty("1.5").toString(), "fraction"),
+        expectEqual("property \"0.25\" (Float64 key)", fixture(fixtures, 0).getProperty("0.25").toString(), "quarter"),
         expectEqual("e[symbol] (Extern symbol)", number(e[symbol]), 8.0),
         expectThrows<ExternIndexedAccessException>("e[0] on an object (not an array)", "expect: array, given: object",
             { => e[0] = "zero" }),
@@ -233,9 +237,10 @@ func indexReadWrite(context: JSContext, fixtures: Array<JSValue>): String {
 }
 
 /**
- * fixtures: [10, 20, 30]. `ark_interop`'s rules: reads need a position in 0..length-1; writes
- * at or past `length` grow the array (with holes), at -1 throw, and at 4294967295 succeed but
- * empty the array (`length` 0). ArkTS checks items.length == 0.
+ * fixtures: [10, 20, 30]. `ark_interop`'s rules for `Int64` positions: reads need a position in
+ * 0..length-1; writes at or past `length` grow the array (with holes), at -1 throw, and at
+ * 4294967295 succeed but empty the array (`length` 0). An `Extern` number is a key, so it reads
+ * `undefined` past the end. ArkTS checks items.length == 0.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func indexBoundaries(context: JSContext, fixtures: Array<JSValue>): String {
@@ -245,7 +250,7 @@ func indexBoundaries(context: JSContext, fixtures: Array<JSValue>): String {
         expectThrows<ExternIndexedAccessException>("a[3] (just past the end)", "allowed: [0, 3), given: 3",
             { => a[3] }),
         expectThrows<ExternIndexedAccessException>("a[-1]", "given: -1", { => a[-1] }),
-        expectThrows<ExternIndexedAccessException>("a[Extern 5]", "given: 5", { => a[num(5.0)] })
+        expectEqual("a[Extern 5] (a key: undefined past the end)", ArkTSRuntime.isUndefined(a[num(5.0)]), true)
     ]
     func outcome(write: () -> Unit): String {
         try {
@@ -272,9 +277,10 @@ func indexBoundaries(context: JSContext, fixtures: Array<JSValue>): String {
 }
 
 /**
- * fixtures: Map {0 => "zero"}, Uint8Array [1, 2, 3, 4]. As in `ark_interop`, integer indices
- * work only on arrays: on a Map or a typed array they throw and change nothing; members and
- * string keys still work. ArkTS checks the Map has one entry and the bytes are [1, 2, 3, 4].
+ * fixtures: Map {0 => "zero"}, Uint8Array [1, 2, 3, 4]. As in `ark_interop`, `Int64` indices
+ * work only on arrays: on a Map or a typed array they throw and change nothing; members, string
+ * keys and `Extern` number keys still work. ArkTS checks the Map has one entry and the bytes are
+ * [1, 2, 3, 4].
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func nonArrayIndexing(fixtures: Array<JSValue>): String {
@@ -287,6 +293,7 @@ func nonArrayIndexing(fixtures: Array<JSValue>): String {
         expectThrows<ExternIndexedAccessException>("u8[1] = 300", notArray, { => u8[1] = 300.0 }),
         expectEqual("m.get(0)", text(m.get(0.0)), "zero"),
         expectEqual("u8[\"1\"] (string key)", number(u8["1"]), 2.0),
+        expectEqual("u8[Extern 1] (number key)", number(u8[ArkTSRuntime.toExtern(1.0)]), 2.0),
         expectEqual("u8.length", number(u8.length), 4.0)
     ])
 }
@@ -296,8 +303,10 @@ func nonArrayIndexing(fixtures: Array<JSValue>): String {
 func unsupportedIndex(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
     firstFailure([
-        expectThrows<ExternIndexedAccessException>("e[1.5] (Float64)", "Unsupported ArkTS index type",
-            { => e[1.5] }),
+        expectThrows<ExternIndexedAccessException>("e.items[Int32(0)]", "Unsupported ArkTS index type",
+            { => e.items[Int32(0)] }),
+        expectThrows<ExternIndexedAccessException>("e.items[UInt8(0)]", "Unsupported ArkTS index type",
+            { => e.items[UInt8(0)] }),
         expectThrows<ExternIndexedAccessException>("e[e.flag] (Extern boolean)", "Unsupported ArkTS index type",
             { => e[e.flag] }),
         expectThrows<ExternIndexedAccessException>("e.nothing[0]", "expect: array, given: undefined",
@@ -318,9 +327,8 @@ func indexWriteOrder(fixtures: Array<JSValue>): String {
 }
 
 /**
- * fixtures: Target. An `Extern` number that is not an integer in the `Int64` range is a property
- * key, named by the engine (JS `String(...)`, not Cangjie's "1.500000"); an integral one, -0
- * included, is an element position.
+ * fixtures: Target. An `Extern` number is a property key, named by the engine (JS `String(...)`,
+ * not Cangjie's "1.500000"), integral or not: -0 is "0".
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func numberKeys(context: JSContext, fixtures: Array<JSValue>): String {
@@ -328,11 +336,11 @@ func numberKeys(context: JSContext, fixtures: Array<JSValue>): String {
     func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
     e[num(1e21)] = "huge"
     e[num(0.25)] = "quarter"
+    e[num(-0.0)] = "zero"
     firstFailure([
         expectEqual("key for Extern 1e21", fixture(fixtures, 0).getProperty("1e+21").toString(), "huge"),
         expectEqual("key for Extern 0.25", fixture(fixtures, 0).getProperty("0.25").toString(), "quarter"),
-        expectThrows<ExternIndexedAccessException>("Extern -0 on an object", "expect: array, given: object",
-            { => e[num(-0.0)] = "zero" })
+        expectEqual("key for Extern -0", fixture(fixtures, 0).getProperty("0").toString(), "zero")
     ])
 }
 

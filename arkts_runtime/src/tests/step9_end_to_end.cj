@@ -68,10 +68,10 @@ func mixedOnce(i: Int64): String {
     o.big = i + 1
     o.flag = true
 
-    // Arrays and indexing with Int64, Int32, String, Extern number and Extern symbol keys.
+    // Arrays and indexing with Int64, Float64, String, Extern number and Extern symbol keys.
     o.items = [1.0, 2.0, 3.0]
     o.items[0] = 10.0
-    o.items[Int32(1)] = 7.0
+    o.items[1.0] = 7.0
     o.idx = 2.0
     let third = from<Float64>(o.items[o.idx])
     let pushed = from<Float64>(o.items.push(4.0))

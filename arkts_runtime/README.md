@@ -21,11 +21,13 @@ Member and index access behave as in `ark_interop`:
 - `e.f` works only on objects (arrays and functions included). On a string, number, symbol,
   `undefined` or `null` it throws `ExternMemberAccessException` ("The ArkTS data types do not
   match, ..."): read a string's length with `ArkTSRuntime.fromExtern<String>(e.s).size`.
-- `e[i]` with an integer (`Int64`, `Int32`, or an `Extern` holding an integral number) is an
-  array element, in `0..length-1` only. Outside that range, or on anything that is not an
-  array (a `Map`, a typed array, a plain object), it throws `ExternIndexedAccessException`.
-- `e[k]` with a `String`, or an `Extern` holding a string, a symbol or a fractional number, is a
-  property key, as `e.f`.
+- `e[i]` with an `Int64` is an array element, in `0..length-1` only. Outside that range, or on
+  anything that is not an array (a `Map`, a typed array, a plain object), it throws
+  `ExternIndexedAccessException`. Other integer types are not indices, as in `ark_interop`:
+  convert them with `Int64(i)`.
+- `e[k]` with a `String`, `Utf16String` or `Float64`, or an `Extern` holding a number, a string
+  or a symbol, is a property key, as `e.f`, with JS's rules: on an array `e[1.0]` is element 1,
+  and past the end it is `undefined`.
 
 ## Requirements
 
