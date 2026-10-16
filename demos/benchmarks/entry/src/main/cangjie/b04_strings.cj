@@ -13,7 +13,7 @@ func stringBenchmarks(): Array<Benchmark> {
             },
             { =>
                 let t = runtimeTarget()
-                { n: Int64 => for (_ in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(t.str.length) } }
+                { n: Int64 => for (_ in 0..n) { sink += Float64(ArkTSRuntime.fromExtern<String>(t.str).size) } }
             }, false),
         Benchmark("string.readShort", 20000,
             { context: JSContext =>

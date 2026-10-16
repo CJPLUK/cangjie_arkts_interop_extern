@@ -89,8 +89,8 @@ emulator.
 | ArkTS: allocating garbage triggers only young collections, which never cleared a `WeakRef` (16 collections, 1.8 GB freed); `hidebug.dumpJsHeapData` runs a full one (0.5–0.9 s) | GC tests force collections with a heap dump; memory is measured with `hidebug.getAppVMObjectUsedSize()` after one, not with PSS (too noisy: ±40 MB) |
 | Engine values kept past their scope without a global handle still read correctly until a full GC | Lifetime tests must force a full GC and observe it (`WeakRef`) |
 | The class body cannot call static functions added by an `extend` without qualifying them (`retain(v)` is "undeclared"); the `extend` can call class members unqualified | `runtime.cj` writes `ArkTSRuntime.retain` / `evalPayload` / `toJSValue` |
-| `JSValue.getProperty` works only on objects ("expect object, given string"); `toString()` only on strings | Members of primitives are read through `Object(value)`; other values are turned into strings through the global `String` |
-| `getElement` / `setElement` differ from JS (probed on the phone, array `[10, 20, 30]`): both work only on arrays ("expect array, given object"); `getElement` throws "index out of range" at and past `length` (JS reads `undefined`) and at -1; `setElement(-1)` throws; `setElement(4294967295)` stores the value but sets `length` to 0 while elements 0–2 remain; `setElement(≥ 2^32)` throws `OverflowException`. Appending and sparse writes up to 4294967294 behave like JS. `setProperty` / `getProperty` with the number's name (`"3"`, `"-1"`, `"4294967294"`, `"4294967295"`) match JS in every case, including `length` | Not used: every numeric index is a property name. Plain ArkTS on the phone has exactly the JS rules (`items[5]` undefined, `-1` / `4294967295` plain properties, `4294967294` the last element) |
+| `JSValue.getProperty` works only on objects ("expect object, given string"); `toString()` only on strings | Since 2026-10-16 the runtime follows it: members of primitives, `undefined` and `null` throw `ExternMemberAccessException` with `ark_interop`'s message (until then they were read through `Object(value)`) |
+| `getElement` / `setElement` differ from JS (probed on the phone, array `[10, 20, 30]`): both work only on arrays ("expect array, given object"); `getElement` throws "index out of range" at and past `length` (JS reads `undefined`) and at -1; `setElement(-1)` throws; `setElement(4294967295)` stores the value but sets `length` to 0 while elements 0–2 remain; `setElement(≥ 2^32)` throws `OverflowException`. Appending and sparse writes up to 4294967294 behave like JS. `setProperty` / `getProperty` with the number's name (`"3"`, `"-1"`, `"4294967294"`, `"4294967295"`) match JS in every case, including `length` | Since 2026-10-16 integer indices use them, with exactly these rules (until then every numeric index was a property name, with the JS rules that plain ArkTS has) |
 | `extend Extern<R> <: I` fails ("extending type 'Enum-Extern<...>' is not allowed"); conditional extensions (`extend<T> Array<T> <: I`) and `TypeTag<R>() as I` in generic code work | `conversion.cj` handles `Extern` as an explicit case; `Array` / `Option` are extended unconditionally and convert elements dynamically |
 ## Status
 
@@ -357,6 +357,57 @@ emulator.
   - Yielding with `setTimeout(0)` between runs starved the main thread's event queue and the
     watchdog killed the app (`THREAD_BLOCK_6S`); runs are separated by 20 ms. After the pause
     the CPU is slower, so every timed run is preceded by an untimed one.
+
+- **Fewer engine calls per statement** (2026-10-16), by the user's choice, before step 12.
+  Every `JSValue.isX()` checks the thread and calls into the engine, and each statement made
+  up to a dozen of them. Changes: member and index access recognise an object receiver with
+  one `isObject()` before the other checks; `retain` checks numbers and `undefined` first;
+  `toJSValue` / `fromJSValue` match `Float64`, `Bool` and `String` directly, before the
+  `ToJS` cast and the `TypeTag` allocation; `fromExtern` of an evaluated immediate (number,
+  boolean, `undefined`, `null`) on the bind thread reads it without `run`, since that creates
+  no handle and runs no JS (the compiler always passes `fromExtern` an evaluated value, so a
+  read was two `run`s). 88 device tests and 24 host tests pass. Phone, `arkts_runtime` ns/op
+  against the step 11 baseline (`results/ohos-2026-10-16-1149.*`): `property.readNumber`
+  3 076 → 1 859, `property.readChain` 5 832 → 3 965, `call.function1` 4 546 → 3 136,
+  `array.loop1000` 3.37 → 2.16 ms, `string.length` 7 757 → 5 812, `convert.bool` 4 985 →
+  3 670, `callback.arkTSCallsCangjie` 3 157 → 2 169; handles and exceptions unchanged. Once
+  the emulator stopped at `exception.throwCatch` (app alive, no fault log); the rerun passed
+  (`results/emulator-2026-10-16-1155.*`).
+- **Member and index access follow `ark_interop`** (2026-10-16), by the user's choice,
+  replacing the JS rules chosen in step 5 (and the index rules decided then with the user):
+  - `e.f` is `getProperty` / `setProperty`: it works on objects (arrays and functions
+    included); on a string, number, bigint, symbol, `undefined` or `null` `ark_interop`
+    throws code 34300005 ("The ArkTS data types do not match, expect: object, given:
+    string."), rethrown as `ExternMemberAccessException` with that message. `checkReceiver`,
+    `objectFor` (the `Object(value)` wrapper), `isPrimitive`, `typeName` and `jsString` are
+    gone. `x += 1` on an `Extern` variable (`x.+(1)`) now fails reading the member `+`.
+  - `e[i]` with an `Int64` / `Int32`, or an `Extern` holding an integral number in the
+    `Int64` range, is `getElement` / `setElement`; a `String`, or an `Extern` holding a string,
+    a symbol or another number, is a property key (`ark_interop`'s `Float64` key for numbers,
+    named by the engine: `1e21` → `"1e+21"`). Codes 34300001 (out of range) and 34300005
+    become `ExternIndexedAccessException`. Probed: reads need 0..length-1; writes at or past
+    `length` grow the array; -1 throws; a write at 4294967295 succeeds but empties the array
+    (`length` 0), pinned by `indexBoundaries`; on a `Map`, a typed array or a plain object an
+    integer index throws ("expect: array, given: object"), string keys still work.
+  - Tests changed to pin these rules: `memberRead`, `primitiveReceivers`,
+    `memberOfUndefinedOrNull`, `indexReadWrite`, `indexBoundaries`, `nonArrayIndexing`,
+    `unsupportedIndex`, `numberKeys`, `variableCompoundIsMethodCall`,
+    `ownExceptionsNotWrapped`, `mixedOnce`; `symbols` and `helpersFromOtherThread` read a
+    description with JS `String(symbol)`. 88 device tests and 24 host tests pass.
+    `arkts_runtime/README.md` describes the rules.
+  - Benchmarks (`results/*-2026-10-16-1348.*`), phone `arkts_runtime` ns/op:
+    `array.readElement` 2 072 → 1 461, `array.writeElement` 1 851 → 1 174, `array.loop1000`
+    2.16 → 1.46 ms; member access unchanged. `string.length` now reads the string into
+    Cangjie (`fromExtern<String>(t.str).size`), the same operation as its `ark_interop`
+    variant, so it is not comparable with earlier runs. Step 12's items 4 and 5 are superseded.
+- **Every concrete type converted directly** (2026-10-16), by the user's choice: `toJSValue`
+  and `fromJSValue` match all integer, float, `Bool`, `String`, `BigInt` and `Unit` types
+  directly; only `Array<T>` and `Option<T>` go through the `ToJS` cast / `TypeTag` (their
+  element type is unknown, and arrays are invariant, so no finite list of cases covers them).
+  88 device tests and 24 host tests pass. Benchmarks (`results/*-2026-10-16-1408.*`): no
+  measurable change, as the suite converts only `Float64`, `Bool` and `String` (already
+  direct) and containers of them; `convert.optionSome` / `optionNone` 6–7% slower on the phone
+  (15 more failed type tests before `TypeTag`), within the phone's ~10% noise.
 
 ## Testing strategy
 
@@ -982,19 +1033,10 @@ device is saved, as the baseline for step 12.
    - Device: whole suite passes; benchmark 1 (property access) is measurably faster than in
      the step 11 baseline.
 3. Path / batch access waits for the new `ARKTS_*` FFI functions.
-4. Fast path for array elements: `getElement` / `setElement` when the target is an array and
-   0 ≤ index < `length` (they differ from JS outside that range, see Constraints), instead of
-   building the property name.
-   - Device: whole suite passes; `indexBoundaries` still passes; benchmark 3 (arrays) is
-     measurably faster than in the step 11 baseline.
-5. Cache the JS conversion functions `Object` and `String`. `ark_interop` has no "convert to
-   object" or "convert to text" (`asObject()` / `asString()` / `toString()` only accept values
-   that already have that type), so `objectFor` and `jsString` in `runtime.cj` call the JS
-   global functions, looked up on `context.global` at every call. Looking them up once (after
-   binding) and keeping them saves that lookup, and stops later replacements of the global
-   `Object` / `String` by application code from affecting the runtime.
-   - Device: whole suite passes; benchmarks 4 (strings) and 5 (conversions) are measurably
-     faster than in the step 11 baseline.
+4. ~~Fast path for array elements~~: superseded, integer indices always use `getElement` /
+   `setElement` since access follows `ark_interop` (status, 2026-10-16).
+5. ~~Cache the JS conversion functions `Object` and `String`~~: superseded, `objectFor` and
+   `jsString` are gone since access follows `ark_interop` (status, 2026-10-16).
 
 ## Open points
 

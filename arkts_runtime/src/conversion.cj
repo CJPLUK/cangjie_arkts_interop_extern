@@ -36,6 +36,8 @@ extend ArkTSRuntime {
      * reduced with `evalTree`, so it may be unevaluated. Bind thread only.
      */
     static func toJSValue(value: Any): JSValue {
+        // Concrete types are matched directly; only `Array<T>` and `Option<T>`, whose element type
+        // is unknown here, need the slower interface cast.
         match (value) {
             case external: Extern<ArkTSRuntime> => evalTree(external)
             case convertible: ToJS => convertible.toJS()
@@ -45,6 +47,26 @@ extend ArkTSRuntime {
 
     /** Reads `value` as a Cangjie `R`; `Extern<ArkTSRuntime>` is the identity. Bind thread only. */
     static func fromJSValue<R>(value: JSValue): R {
+        // Concrete types skip the `TypeTag` allocation and the interface cast; only `Array<T>` and
+        // `Option<T>` need them, to reach the element type's `fromJS`.
+        match (None<R>) {
+            case _: Option<Float64> => return (Float64.fromJS(value) as R).getOrThrow()
+            case _: Option<Bool> => return (Bool.fromJS(value) as R).getOrThrow()
+            case _: Option<String> => return (String.fromJS(value) as R).getOrThrow()
+            case _: Option<Int64> => return (Int64.fromJS(value) as R).getOrThrow()
+            case _: Option<Int32> => return (Int32.fromJS(value) as R).getOrThrow()
+            case _: Option<Int16> => return (Int16.fromJS(value) as R).getOrThrow()
+            case _: Option<Int8> => return (Int8.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt64> => return (UInt64.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt32> => return (UInt32.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt16> => return (UInt16.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt8> => return (UInt8.fromJS(value) as R).getOrThrow()
+            case _: Option<Float32> => return (Float32.fromJS(value) as R).getOrThrow()
+            case _: Option<Float16> => return (Float16.fromJS(value) as R).getOrThrow()
+            case _: Option<BigInt> => return (BigInt.fromJS(value) as R).getOrThrow()
+            case _: Option<Unit> => return (Unit.fromJS(value) as R).getOrThrow()
+            case _ => ()
+        }
         match (TypeTag<R>() as JSReader) {
             case Some(reader) => (reader.read(value) as R).getOrThrow()
             case None => match (None<R>) {

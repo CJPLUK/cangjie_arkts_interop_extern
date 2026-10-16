@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>arkts_runtime benchmarks: emulator 2026-10-16-1408</title>
+<style>
+body { font-family: -apple-system, sans-serif; margin: 2em; }
+table { border-collapse: collapse; }
+th, td { border: 1px solid #ccc; padding: 4px 10px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th { background: #f2f2f2; }
+td.name { cursor: pointer; color: #0645ad; }
+td.name:hover { text-decoration: underline; }
+tr.code > td { background: #fafafa; }
+.variants { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
+h3 { margin: 0.8em 0 0.3em; font-size: 1em; }
+pre { margin: 0; padding: 8px; background: #fff; border: 1px solid #ddd; overflow-x: auto; font-size: 12px; }
+</style></head><body>
+<h1>arkts_runtime against ark_interop</h1>
+<p>Date: 2026-10-16-1408<br>Device: emulator<br>Build: release<br>
+Median of 5 runs, nanoseconds per operation. Ratio = arkts_runtime / ark_interop.</p>
+<p>Click a benchmark to see its code. In each variant the outer block is the setup (not timed)
+and the inner <code>{ n: Int64 =&gt; ... }</code> block is the timed run, with n = N.
+The fixtures and helpers it uses are <a href="#shared">below the table</a>.</p>
+<table>
+<tr><th>Benchmark</th><th>N</th><th>ark_interop ns/op</th><th>arkts_runtime ns/op</th><th>Ratio</th><th>ark_interop heap KB</th><th>arkts_runtime heap KB</th></tr>
+<tr><td class="name">property.readNumber</td><td class="num">30000</td><td class="num">211.7</td><td class="num">964.2</td><td class="num">4.55</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += t.getProperty("num").toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.num) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">property.writeNumber</td><td class="num">50000</td><td class="num">216.2</td><td class="num">540.0</td><td class="num">2.50</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { t.setProperty("num", context.number(1.5).toJSValue()) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { t.num = 1.5 } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">property.readChain</td><td class="num">15000</td><td class="num">1274.0</td><td class="num">1215.2</td><td class="num">0.95</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            sink += t.getProperty("a").asObject().getProperty("b").asObject().getProperty("c").asObject()
+                .getProperty("d").toNumber()
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.a.b.c.d) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.method0</td><td class="num">20000</td><td class="num">592.4</td><td class="num">1315.3</td><td class="num">2.22</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += t.callMethod("m0", []).toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.m0()) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.method1</td><td class="num">15000</td><td class="num">592.7</td><td class="num">1201.4</td><td class="num">2.03</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) { sink += t.callMethod("m1", [context.number(1.0).toJSValue()]).toNumber() }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.m1(1.0)) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.method3</td><td class="num">15000</td><td class="num">734.1</td><td class="num">1595.3</td><td class="num">2.17</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let args = [context.number(1.0).toJSValue(), context.number(2.0).toJSValue(),
+                context.number(3.0).toJSValue()]
+            sink += t.callMethod("m3", args).toNumber()
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.m3(1.0, 2.0, 3.0)) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">call.function1</td><td class="num">25000</td><td class="num">388.4</td><td class="num">1064.7</td><td class="num">2.74</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let f = interopBench(context).getProperty("f1").asFunction()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += f.call([context.number(1.0).toJSValue()]).toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let f = ArkTSRuntime.eval(runtimeBench().f1)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(f(1.0)) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.readElement</td><td class="num">30000</td><td class="num">73.0</td><td class="num">425.5</td><td class="num">5.83</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items").asArray()
+    { n: Int64 =&gt; for (i in 0..n) { sink += items[i % 1000].toNumber() } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    { n: Int64 =&gt; for (i in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(items[i % 1000]) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.writeElement</td><td class="num">50000</td><td class="num">41.3</td><td class="num">319.5</td><td class="num">7.74</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items").asArray()
+    { n: Int64 =&gt;
+        for (i in 0..n) { items[i % 1000] = context.number(Float64(i % 1000) * 0.5).toJSValue() }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    { n: Int64 =&gt; for (i in 0..n) { items[i % 1000] = Float64(i % 1000) * 0.5 } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">array.loop1000</td><td class="num">30</td><td class="num">70313.9</td><td class="num">362326.4</td><td class="num">5.15</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let items = interopTarget(context).getProperty("items").asArray()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            for (j in 0..1000) { sink += items[j].toNumber() }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let items = ArkTSRuntime.eval(runtimeTarget().items)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            for (j in 0..1000) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(items[j]) }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">string.length</td><td class="num">15000</td><td class="num">275.0</td><td class="num">1022.5</td><td class="num">3.72</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>A string's length with <code>ark_interop</code>: there is no <code>length</code> on a string value, so read the text.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(t.getProperty("str").toString().size) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.str).size) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">string.readShort</td><td class="num">20000</td><td class="num">245.5</td><td class="num">1142.7</td><td class="num">4.65</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>A string's length with <code>ark_interop</code>: there is no <code>length</code> on a string value, so read the text.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(t.getProperty("short").toString().size) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.short).size) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">string.readLong</td><td class="num">10000</td><td class="num">6180.1</td><td class="num">7735.4</td><td class="num">1.25</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>A string's length with <code>ark_interop</code>: there is no <code>length</code> on a string value, so read the text.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(t.getProperty("long").toString().size) } }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.long).size) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.bool</td><td class="num">20000</td><td class="num">319.0</td><td class="num">952.1</td><td class="num">2.98</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.boolean(true).toJSValue())
+            if (t.getProperty("slot").toBoolean()) { sink += 1.0 }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = true
+            if (ArkTSRuntime.fromExtern&lt;Bool&gt;(t.slot)) { sink += 1.0 }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.string</td><td class="num">15000</td><td class="num">529.1</td><td class="num">1738.4</td><td class="num">3.29</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.string("abcdefghij").toJSValue())
+            sink += Float64(t.getProperty("slot").toString().size)
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = "abcdefghij"
+            sink += Float64(ArkTSRuntime.fromExtern&lt;String&gt;(t.slot).size)
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.arrayFloat64</td><td class="num">100</td><td class="num">125974.2</td><td class="num">181680.8</td><td class="num">1.44</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let elements = Array&lt;JSValue&gt;(numbers.size) { i =&gt; context.number(numbers[i]).toJSValue() }
+            t.setProperty("slot", context.array(elements).toJSValue())
+            let back = t.getProperty("slot").asArray()
+            for (i in 0..back.size) { sink += back[i].toNumber() }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = numbers
+            let back = ArkTSRuntime.fromExtern&lt;Array&lt;Float64&gt;&gt;(t.slot)
+            for (x in back) { sink += x }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.nestedArray</td><td class="num">100</td><td class="num">110057.5</td><td class="num">204616.7</td><td class="num">1.86</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let rows = Array&lt;JSValue&gt;(nested.size) { i =&gt;
+                let row = nested[i]
+                context.array(Array&lt;JSValue&gt;(row.size) { j =&gt; context.number(row[j]).toJSValue() }).toJSValue()
+            }
+            t.setProperty("slot", context.array(rows).toJSValue())
+            let back = t.getProperty("slot").asArray()
+            for (i in 0..back.size) {
+                let row = back[i].asArray()
+                for (j in 0..row.size) { sink += row[j].toNumber() }
+            }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = nested
+            for (row in ArkTSRuntime.fromExtern&lt;Array&lt;Array&lt;Float64&gt;&gt;&gt;(t.slot)) {
+                for (x in row) { sink += x }
+            }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.optionSome</td><td class="num">20000</td><td class="num">291.3</td><td class="num">1171.0</td><td class="num">4.02</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.number(1.5).toJSValue())
+            let v = t.getProperty("slot")
+            let back: ?Float64 = if (v.isUndefined() || v.isNull()) { None } else { v.toNumber() }
+            sink += back ?? 0.0
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = Some(1.5)
+            sink += ArkTSRuntime.fromExtern&lt;?Float64&gt;(t.slot) ?? 0.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">convert.optionNone</td><td class="num">20000</td><td class="num">269.3</td><td class="num">1109.7</td><td class="num">4.12</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation writes a Cangjie value to <code>target.slot</code> and reads it back as the same type.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("slot", context.undefined().toJSValue())
+            let v = t.getProperty("slot")
+            let back: ?Float64 = if (v.isUndefined() || v.isNull()) { None } else { v.toNumber() }
+            sink += back ?? 1.0
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.slot = None&lt;Float64&gt;
+            sink += ArkTSRuntime.fromExtern&lt;?Float64&gt;(t.slot) ?? 1.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">sequence.twoWrites</td><td class="num">25000</td><td class="num">297.2</td><td class="num">830.7</td><td class="num">2.79</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Consecutive statements: one operation is the whole sequence of writes.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("x", context.number(1.0).toJSValue())
+            t.setProperty("y", context.number(2.0).toJSValue())
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.x = 1.0
+            t.y = 2.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">sequence.threeWrites</td><td class="num">15000</td><td class="num">400.5</td><td class="num">1170.4</td><td class="num">2.92</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Consecutive statements: one operation is the whole sequence of writes.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.setProperty("x", context.number(1.0).toJSValue())
+            t.setProperty("y", context.number(2.0).toJSValue())
+            t.setProperty("z", context.number(3.0).toJSValue())
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            t.x = 1.0
+            t.y = 2.0
+            t.z = 3.0
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">callback.arkTSCallsCangjie</td><td class="num">30000</td><td class="num">171.0</td><td class="num">516.4</td><td class="num">3.02</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>ArkTS <code>callTimes(f, n)</code> calls the Cangjie function <code>f</code> <code>n</code> times; one operation is one call of <code>f</code>.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let callTimes = interopBench(context).getProperty("callTimes").asFunction()
+    let f = context.function { c, info =&gt; c.number(info[0].toNumber() + 1.0).toJSValue() }
+    { n: Int64 =&gt;
+        sink += callTimes.call([f.toJSValue(), context.number(Float64(n)).toJSValue()]).toNumber()
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let bench = runtimeBench()
+    let f = ArkTSRuntime.function { args =&gt;
+        ArkTSRuntime.toExtern(ArkTSRuntime.fromExtern&lt;Float64&gt;(args[0]) + 1.0)
+    }
+    { n: Int64 =&gt; sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(bench.callTimes(f, Float64(n))) }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">handles.createAndDrop</td><td class="num">20000</td><td class="num">414.2</td><td class="num">1297.9</td><td class="num">3.13</td><td class="num">-1</td><td class="num">1</td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>Each operation keeps an ArkTS object (<code>target.a</code>) in a Cangjie value and drops it. The page also measures the ArkTS heap after full collections around one run of each variant.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let a = t.getProperty("a").asObject()
+            if (a.hasProperty("b")) { sink += 1.0 }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            let a = ArkTSRuntime.eval(t.a)
+            if (ArkTSRuntime.objectHasProperty(a, "b")) { sink += 1.0 }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">thread.readNumber</td><td class="num">250</td><td class="num">232220.8</td><td class="num">108703.7</td><td class="num">0.47</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p><code>property.readNumber</code> from a spawned thread: every operation goes through <code>postJSTask</code>.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let t = interopTarget(context)
+    { n: Int64 =&gt;
+        for (_ in 0..n) { sink += onJSThread(context) { =&gt; t.getProperty("num").toNumber() } }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let t = runtimeTarget()
+    { n: Int64 =&gt; for (_ in 0..n) { sink += ArkTSRuntime.fromExtern&lt;Float64&gt;(t.num) } }
+}</pre></div></div>
+</td></tr>
+<tr><td class="name">exception.throwCatch</td><td class="num">2000</td><td class="num">14336.4</td><td class="num">19846.6</td><td class="num">1.38</td><td class="num"></td><td class="num"></td></tr>
+<tr class="code" hidden><td colspan="7">
+<p>ArkTS <code>thrower()</code> throws an <code>Error</code>; each operation calls it and catches the exception in Cangjie.</p>
+<div class="variants"><div><h3>ark_interop</h3><pre>{ context: JSContext =&gt;
+    let thrower = interopBench(context).getProperty("thrower").asFunction()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            try {
+                thrower.call()
+            } catch (_: BusinessException) {
+                sink += 1.0
+            }
+        }
+    }
+}</pre></div>
+<div><h3>arkts_runtime</h3><pre>{ =&gt;
+    let bench = runtimeBench()
+    { n: Int64 =&gt;
+        for (_ in 0..n) {
+            try {
+                bench.thrower()
+            } catch (_: ForeignRuntimeException) {
+                sink += 1.0
+            }
+        }
+    }
+}</pre></div></div>
+</td></tr>
+</table>
+<h2 id="shared">Fixtures and helpers</h2>
+<h3>Bench.ets: the ArkTS fixtures</h3><pre>
+class C {
+  d: number = 1.25;
+}
+
+class B {
+  c: C = new C();
+}
+
+class A {
+  b: B = new B();
+}
+
+export class Target {
+  num: number = 1.5;
+  a: A = new A();
+  items: number[] = [];
+  str: string = 'x'.repeat(100);
+  short: string = 'abcdefghij';
+  long: string = 'x'.repeat(10000);
+  slot: Object | null | undefined = undefined;
+  x: number = 0;
+  y: number = 0;
+  z: number = 0;
+
+  constructor() {
+    for (let i = 0; i &lt; 1000; i++) {
+      this.items.push(i * 0.5);
+    }
+  }
+
+  m0(): number {
+    return 1;
+  }
+
+  m1(a: number): number {
+    return a;
+  }
+
+  m3(a: number, b: number, c: number): number {
+    return a + b + c;
+  }
+}
+
+export function f1(a: number): number {
+  return a;
+}
+
+export function thrower(): void {
+  throw new Error('bench');
+}
+
+/** Calls `f` `n` times from ArkTS. */
+export function callTimes(f: (x: number) =&gt; number, n: number): number {
+  let sum = 0;
+  for (let i = 0; i &lt; n; i++) {
+    sum += f(i);
+  }
+  return sum;
+}
+
+// Read from Cangjie with ArkTSRuntime.global().Bench (and context.global in the ark_interop
+// variants).
+globalThis.Bench = { target: new Target(), f1, thrower, callTimes };
+</pre>
+<h3>b05_conversions.cj: values shared by its benchmarks</h3><pre>let numbers = Array&lt;Float64&gt;(1000) { i =&gt; Float64(i) }
+let nested = Array&lt;Array&lt;Float64&gt;&gt;(10) { i =&gt; Array&lt;Float64&gt;(100) { j =&gt; Float64(i * 100 + j) } }
+</pre>
+<h3>harness.cj: helpers used by the benchmarks</h3><pre>
+/** Every measured result is added here, so no variant can skip its work. */
+var sink: Float64 = 0.0
+
+/** What an `ark_interop` user writes to run engine code from another thread: post it and wait. */
+func onJSThread&lt;T&gt;(context: JSContext, operation: () -&gt; T): T {
+    let result = Box(None&lt;T&gt;)
+    let mutex = Mutex()
+    let finished = synchronized(mutex) { mutex.condition() }
+    context.postJSTask {
+        let value = operation()
+        synchronized(mutex) {
+            result.value = Some(value)
+            finished.notify()
+        }
+    }
+    synchronized(mutex) {
+        finished.waitUntil({ =&gt; result.value.isSome() })
+        result.value.getOrThrow()
+    }
+}
+
+func interopBench(context: JSContext): JSObject {
+    context.global.getProperty("Bench").asObject()
+}
+
+func interopTarget(context: JSContext): JSObject {
+    interopBench(context).getProperty("target").asObject()
+}
+
+func runtimeBench(): Extern&lt;ArkTSRuntime&gt; {
+    ArkTSRuntime.eval(ArkTSRuntime.global().Bench)
+}
+
+func runtimeTarget(): Extern&lt;ArkTSRuntime&gt; {
+    ArkTSRuntime.eval(ArkTSRuntime.global().Bench.target)
+}
+
+</pre>
+<script>
+document.querySelectorAll('td.name').forEach(function (cell) {
+  cell.addEventListener('click', function () {
+    var row = cell.parentElement.nextElementSibling;
+    row.hidden = !row.hidden;
+  });
+});
+</script>
+</body></html>

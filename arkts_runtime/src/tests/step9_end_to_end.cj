@@ -131,7 +131,7 @@ func mixedOnce(i: Int64): String {
 
         // Exceptions.
         expectThrows<ForeignRuntimeException>("JSON.parse", "SyntaxError", { => g.JSON.parse("{") }),
-        expectThrows<ExternMemberAccessException>("o.missing.x", "Cannot read property 'x' of undefined",
+        expectThrows<ExternMemberAccessException>("o.missing.x", "expect: object, given: undefined",
             { => o.missing.x }),
         expectThrows<ExternFunctionAccessException>("o.count()", "ArkTS 'count' is not a function",
             { => o.count() }),

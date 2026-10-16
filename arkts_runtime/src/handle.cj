@@ -14,6 +14,8 @@ extend ArkTSRuntime {
      * engine-global handles, so the result outlives the current scope. Bind thread only.
      */
     static func retain(value: JSValue): Extern<ArkTSRuntime> {
+        // The most frequent results first: numbers, and `undefined` from every update.
+        if (value.isNumber() || value.isUndefined()) { return Extern<ArkTSRuntime>.ExternPayload(Imm(value)) }
         if (value.isFunction()) { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asFunction())) }
         if (value.isArray())    { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asArray())) }
         if (value.isSymbol())   { return Extern<ArkTSRuntime>.ExternPayload(Ref(value.asSymbol())) }
@@ -33,6 +35,17 @@ extend ArkTSRuntime {
             case Some(Ref(owner)) => owner.toJSValue()
             case None => throw ExternConversionException(
                 "Extern payload was not produced by ArkTSRuntime")
+        }
+    }
+
+    /** The `JSValue` of a payload holding an immediate, `None` for anything else. */
+    static func immediateOf(value: Extern<ArkTSRuntime>): ?JSValue {
+        match (value) {
+            case ExternPayload(handle) => match (handle as ArkTSHandle) {
+                case Some(Imm(immediate)) => immediate
+                case _ => None
+            }
+            case _ => None
         }
     }
 

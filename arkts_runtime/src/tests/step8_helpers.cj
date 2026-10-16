@@ -95,7 +95,10 @@ func globalIsGlobalThis(fixtures: Array<JSValue>): String {
     ])
 }
 
-/** fixtures: sink. ArkTS checks s1.description === "d", s1 !== s2, and the default description. */
+/**
+ * fixtures: sink. Symbols have no members here (not objects), so descriptions are read with JS
+ * `String(symbol)`. ArkTS checks String(s1) === "Symbol(d)", s1 !== s2, and the default description.
+ */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func symbols(fixtures: Array<JSValue>): String {
     let sink = ext(fixtures, 0)
@@ -107,7 +110,7 @@ func symbols(fixtures: Array<JSValue>): String {
     firstFailure([
         expectEqual("s1 === s2", ArkTSRuntime.strictEqual(s1, s2), false),
         expectEqual("s1 === s1", ArkTSRuntime.strictEqual(s1, s1), true),
-        expectEqual("s1.description", from<String>(s1.description), "d")
+        expectEqual("String(s1)", from<String>(ArkTSRuntime.global().String(s1)), "Symbol(d)")
     ])
 }
 
@@ -247,7 +250,7 @@ func helpersFromOtherThread(): String {
         expectEqual("isUndefined(undefined())", ArkTSRuntime.isUndefined(ArkTSRuntime.undefined()), true),
         expectEqual("isNull(null())", ArkTSRuntime.isNull(ArkTSRuntime.null()), true),
         expectEqual("global().JSON", ArkTSRuntime.isUndefined(ArkTSRuntime.global().JSON), false),
-        expectEqual("symbol description", from<String>(s.description), "t"),
+        expectEqual("String(symbol)", from<String>(ArkTSRuntime.global().String(s)), "Symbol(t)"),
         expectEqual("strictEqual", ArkTSRuntime.strictEqual(o, o), true),
         expectEqual("defineOwnProperty", defined, true),
         expectEqual("objectHasProperty", ArkTSRuntime.objectHasProperty(o, "k"), true),

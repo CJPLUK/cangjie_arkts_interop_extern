@@ -2,6 +2,7 @@ package arkts_runtime
 
 import std.sync.Mutex
 import std.sync.Condition
+import std.math.trunc
 import ohos.ark_interop.JSContext
 import ohos.ark_interop.JSValue
 import ohos.ark_interop.JSKeyable
@@ -10,10 +11,22 @@ import ohos.business_exception.BusinessException
 /** `BusinessException.code` of an exception thrown by JS code ("Outside error occurred"). */
 const JS_EXCEPTION_CODE: Int32 = 34300002
 
+/** `BusinessException.code` of `ark_interop`'s "The accessing index is out of range". */
+const INDEX_OUT_OF_RANGE_CODE: Int32 = 34300001
+
+/** `BusinessException.code` of `ark_interop`'s "The ArkTS data types do not match". */
+const TYPE_MISMATCH_CODE: Int32 = 34300005
+
 /** Outcome of an operation run on the JS thread, carried back to the waiting thread. */
 private enum ArkTSResult<R> {
     | Ok(R)
     | Err(Exception)
+}
+
+/** How an index is accessed: an array element, or a property key. */
+private enum ArkTSIndex {
+    | Element(Int64)
+    | Key(JSKeyable)
 }
 
 /**
@@ -164,63 +177,46 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
+    /*
+     * Member and index access behave as in `ark_interop`: `getProperty` / `setProperty` work only
+     * on objects, integer indices use `getElement` / `setElement`. Its "types do not match" and
+     * "index out of range" errors become the `Extern` exceptions, with its message.
+     */
+
     private static func readMember(receiver: JSValue, field: String): JSValue {
-        checkReceiver(receiver, "read", field)
-        objectFor(receiver).getProperty(field)
+        try {
+            receiver.getProperty(field)
+        } catch (e: BusinessException) {
+            throw memberError(e)
+        }
     }
 
     private static func writeMember(receiver: JSValue, field: String, value: JSValue): Unit {
-        checkReceiver(receiver, "set", field)
-        if (isPrimitive(receiver)) {
-            throw ExternMemberAccessException("Cannot set property '${field}' of a primitive ${typeName(receiver)}")
+        try {
+            receiver.setProperty(field, value)
+        } catch (e: BusinessException) {
+            throw memberError(e)
         }
-        receiver.setProperty(field, value)
     }
 
     private static func evalMemberUpdate(target: Extern<ArkTSRuntime>, field: String, value: Any): JSValue {
         let receiver = evalTree(target)
-        checkReceiver(receiver, "set", field)
         writeMember(receiver, field, ArkTSRuntime.toJSValue(value))
         context.undefined().toJSValue()
     }
 
-    /** JS throws a TypeError for members of `undefined` and `null`. */
-    private static func checkReceiver(receiver: JSValue, verb: String, field: String): Unit {
-        if (receiver.isUndefined() || receiver.isNull()) {
-            throw ExternMemberAccessException(
-                "Cannot ${verb} property '${field}' of ${if (receiver.isNull()) { "null" } else { "undefined" }}")
+    private static func memberError(e: BusinessException): Exception {
+        if (e.code == TYPE_MISMATCH_CODE) {
+            return ExternMemberAccessException(e.message)
         }
+        e
     }
 
-    /** Strings, numbers, booleans, bigints and symbols; `undefined` and `null` are checked apart. */
-    private static func isPrimitive(value: JSValue): Bool {
-        value.isString() || value.isNumber() || value.isBoolean() || value.isBigInt() || value.isSymbol()
-    }
-
-    private static func typeName(value: JSValue): String {
-        if (value.isString()) { "string" } else if (value.isNumber()) { "number" } else if (value.isBoolean()) {
-            "boolean"
-        } else if (value.isBigInt()) { "bigint" } else { "symbol" }
-    }
-
-    /**
-     * Where to look up members: JS reads members of a primitive from its wrapper object
-     * (`Object(value)`), while `getProperty` only accepts objects. Calls keep the primitive
-     * itself as `this`.
-     */
-    private static func objectFor(value: JSValue): JSValue {
-        if (isPrimitive(value)) {
-            return context.global.getProperty("Object").asFunction().call([value])
+    private static func indexError(e: BusinessException): Exception {
+        if (e.code == TYPE_MISMATCH_CODE || e.code == INDEX_OUT_OF_RANGE_CODE) {
+            return ExternIndexedAccessException(e.message)
         }
-        value
-    }
-
-    /** JS `String(value)`; `JSValue.toString` only reads values that already are strings. */
-    private static func jsString(value: JSValue): String {
-        if (value.isString()) {
-            return value.toString()
-        }
-        context.global.getProperty("String").asFunction().call([value]).toString()
+        e
     }
 
     private static func evalIndexedUpdate(target: Extern<ArkTSRuntime>, index: Any, value: Any): JSValue {
@@ -230,51 +226,52 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     }
 
     private static func readIndex(target: JSValue, index: Any): JSValue {
-        readKey(target, toIndexKey(index))
-    }
-
-    /** Resolves the key before converting the value: target, index, value order. */
-    private static func writeIndex(target: JSValue, index: Any, value: Any): Unit {
-        let key = toIndexKey(index)
-        writeKey(target, key, ArkTSRuntime.toJSValue(value))
-    }
-
-    private static func readKey(target: JSValue, key: JSKeyable): JSValue {
-        checkIndexTarget(target)
-        objectFor(target).getProperty(key)
-    }
-
-    private static func writeKey(target: JSValue, key: JSKeyable, value: JSValue): Unit {
-        checkIndexTarget(target)
-        if (isPrimitive(target)) {
-            throw ExternIndexedAccessException("Cannot index-assign a primitive ${typeName(target)}")
+        let resolved = toIndex(index)
+        try {
+            match (resolved) {
+                case Element(position) => target.getElement(position)
+                case Key(key) => target.getProperty(key)
+            }
+        } catch (e: BusinessException) {
+            throw indexError(e)
         }
-        target.setProperty(key, value)
     }
 
-    private static func checkIndexTarget(target: JSValue): Unit {
-        if (target.isUndefined() || target.isNull()) {
-            throw ExternIndexedAccessException(
-                "Cannot index ${if (target.isNull()) { "null" } else { "undefined" }}")
+    /** Resolves the index before converting the value: target, index, value order. */
+    private static func writeIndex(target: JSValue, index: Any, value: Any): Unit {
+        let resolved = toIndex(index)
+        let converted = ArkTSRuntime.toJSValue(value)
+        try {
+            match (resolved) {
+                case Element(position) => target.setElement(position, converted)
+                case Key(key) => target.setProperty(key, converted)
+            }
+        } catch (e: BusinessException) {
+            throw indexError(e)
         }
     }
 
     /**
-     * Integers and `String`s from Cangjie, or an `Extern` (possibly unevaluated) holding a string,
-     * a symbol or a number. Numbers become property names (their JS string form), as JS does
-     * for every index. `getElement` / `setElement` are not used: they throw past the end and at
-     * negative indices, and `setElement(4294967295)` corrupts the array's `length`.
+     * Cangjie integers, and an `Extern` (possibly unevaluated) holding an integral number, are
+     * element positions; `String`s, and an `Extern` holding a string, a symbol or any other
+     * number, are property keys.
      */
-    private static func toIndexKey(index: Any): JSKeyable {
+    private static func toIndex(index: Any): ArkTSIndex {
         match (index) {
-            case position: Int64 => "${position}"
-            case position: Int32 => "${position}"
-            case name: String => name
+            case position: Int64 => Element(position)
+            case position: Int32 => Element(Int64(position))
+            case name: String => Key(name)
             case external: Extern<ArkTSRuntime> =>
                 let value = evalTree(external)
-                if (value.isString()) { return value.asString() }
-                if (value.isSymbol()) { return value.asSymbol() }
-                if (value.isNumber()) { return jsString(value) }
+                if (value.isNumber()) {
+                    let n = value.toNumber()
+                    if (n >= -9.0e18 && n <= 9.0e18 && n == trunc(n)) {
+                        return Element(Int64(n))
+                    }
+                    return Key(n)
+                }
+                if (value.isString()) { return Key(value.asString()) }
+                if (value.isSymbol()) { return Key(value.asSymbol()) }
                 throw ExternIndexedAccessException("Unsupported ArkTS index type")
             case _ => throw ExternIndexedAccessException("Unsupported ArkTS index type")
         }
@@ -312,8 +309,18 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { ArkTSRuntime.retain(ArkTSRuntime.toJSValue(value)) }
     }
 
-    /** Evaluates `value` and reads it as `R`; wrong JS types throw `ExternConversionException`. */
+    /**
+     * Evaluates `value` and reads it as `R`; wrong JS types throw `ExternConversionException`.
+     * The compiler passes dynamic expressions already evaluated, so a number, boolean,
+     * `undefined` or `null` arrives as an immediate: on the bind thread it is read without
+     * `run`, since reading it creates no engine handle and runs no JS code.
+     */
     public static func fromExtern<R>(value: Extern<ArkTSRuntime>): R {
+        if (let Some(immediate) <- ArkTSRuntime.immediateOf(value)) {
+            if (context.isInBindThread()) {
+                return ArkTSRuntime.fromJSValue<R>(immediate)
+            }
+        }
         run { ArkTSRuntime.fromJSValue<R>(evalTree(value)) }
     }
 }

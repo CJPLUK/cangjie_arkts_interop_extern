@@ -18,3 +18,5 @@
 **/IDL_Dependencies_List~
 **/build-script-cache
 **/entry/libs
+*.DS_Store
+.vscode

@@ -17,6 +17,16 @@ let area: Float64 = ArkTSRuntime.fromExtern<Float64>(blob.area())
 Compound assignment (`blob.width += 2.0`, `e[i] &&= v`, ...) is not supported: it throws
 `ExternCompoundAssignmentException`.
 
+Member and index access behave as in `ark_interop`:
+- `e.f` works only on objects (arrays and functions included). On a string, number, symbol,
+  `undefined` or `null` it throws `ExternMemberAccessException` ("The ArkTS data types do not
+  match, ..."): read a string's length with `ArkTSRuntime.fromExtern<String>(e.s).size`.
+- `e[i]` with an integer (`Int64`, `Int32`, or an `Extern` holding an integral number) is an
+  array element, in `0..length-1` only. Outside that range, or on anything that is not an
+  array (a `Map`, a typed array, a plain object), it throws `ExternIndexedAccessException`.
+- `e[k]` with a `String`, or an `Extern` holding a string, a symbol or a fractional number, is a
+  property key, as `e.f`.
+
 ## Requirements
 
 - The Cangjie SDK in `~/.cangjie-sdk/6.1/cangjie`: its `cjc` has `Extern<T>` and
