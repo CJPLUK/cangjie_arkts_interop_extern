@@ -78,7 +78,7 @@ emulator.
 | `case x: Extern<ArkTSRuntime>` type patterns work | Used in `toJSValue` / `readIndex` |
 | `std.reflect` is not available | Not used |
 | `JSKeyable` is only `String`, `JSString`, `JSSymbol` (not `Float64`) | Numeric indices become property names (their JS string form, `"5"`) instead of `getProperty(Float64)` (deviation from the design) |
-| `--enable-extern-sequence` exists | Used to test `ExternSequence` in step 11 |
+| `--enable-extern-sequence` exists | Used to test `ExternSequence` in step 12 |
 | `std.unittest` is available for macOS | Host tests in layer 1 below |
 | Compiler bug: `let _: Extern<R> = expr` runs `expr` but skips `toExtern` (named bindings, assignments and arguments are fine) | Pinned by `wildcardBindingSkipsToExtern` in `hosttest/compiler_contract_test.cj`; flip it when cjc is fixed |
 | Without the forced cast, `R.fromExtern<U>(e.a.b)` receives the already evaluated `r1`, not the tree (the argument is desugared like any call argument) | `fromExtern` cannot avoid retaining the result until `(U)e` is supported; pinned by `explicitFromExternReceivesEvaluatedValue` |
@@ -229,7 +229,7 @@ emulator.
     and `ALL PASS (n)` / `n FAILED`. Verified on the emulator by tapping the button with
     `uitest`: `ALL PASS (3)`. Times: designExample 1 ms, mixedScenario ×1000 212 ms,
     off-thread ×100 899 ms (about 9 ms per iteration, which is the cost of posting to the JS
-    thread, a target for step 11). Not checked on the phone, which was locked; that has to
+    thread, a target for step 12). Not checked on the phone, which was locked; that has to
     be done by hand.
 
 - **Step 10 done** (2026-10-14). The runtime is the `cjpm` static library `arkts_runtime/`
@@ -882,30 +882,82 @@ Tests:
 Done when: the probes are recorded, all tests pass from `testapp`, both demos work on the
 emulator and the phone, and no app contains runtime code.
 
-### 11. Optimizations (each behind its own tests)
+### 11. Benchmarks: `arkts_runtime` against `ark_interop`
+
+A demo app that times the same operations written twice: with typical `ark_interop` code
+(`JSContext`, `JSObject`, `JSValue`, as a user of `ark_interop` would write it, without
+hand-made caches) and with `Extern<ArkTSRuntime>` syntax. The ratio is the cost of the
+runtime. The same set is rerun after each optimization in step 12 to measure what it gains.
+
+App: `demos/benchmarks` (`com.example.arkts.benchmarks`), a mixed app like the other demos.
+The ArkTS fixtures are in `entry/src/main/ets/Bench.ets`, published with
+`globalThis.Bench = { ... }` and imported by the page (no `requireArkModule`). The benchmarks
+are Cangjie, one file per group, each with an `arkInterop` and an `arktsRuntime` variant of
+the same operation.
+
+Benchmarks (each group: both variants, same fixture, same result checked once so neither
+variant can skip work):
+1. Property access: read and write a number field; read `a.b.c.d`.
+2. Calls: method with 0, 1 and 3 arguments; free function.
+3. Arrays: read and write `items[i]` within bounds; a loop over 1 000 elements.
+4. Strings: `str.length`; reading a short (10 characters) and a long (10 000) string into
+   Cangjie.
+5. Conversions: `toExtern` / `fromExtern` of `Float64`, `Bool`, `String`, `Array<Float64>`
+   (1 000 elements), nested arrays, `Option`.
+6. Consecutive statements: two and three property writes in a row.
+7. Callbacks: ArkTS calls a Cangjie function made with `ArkTSRuntime.function`, against one
+   made with `JSContext.function`.
+8. Handles: create and drop 100 000 `Extern` objects; time, and ArkTS heap growth after
+   forced full collections (as in step 4).
+9. Other threads: benchmark 1's read from a spawned thread (every operation goes through
+   `postJSTask`).
+10. Exceptions: a JS `throw` caught in Cangjie.
+
+Method:
+- Release build (`-O2`, as `profile.customized-option.release`).
+- Per benchmark: one warm-up run, then R = 5 runs of N iterations (N chosen per benchmark so a
+  run takes about 100 ms on the phone). Reported: median ns per operation for each variant,
+  and the ratio `arkts_runtime / ark_interop`.
+- No pass / fail thresholds: numbers are recorded and compared between runs.
+- Phone and emulator; the phone's numbers are the reference.
+
+Running: `demos/benchmarks/run.sh [--all]` builds the app, installs it, starts it and waits for
+the end. The app runs every benchmark once at start and logs one line per benchmark to
+hilog (fixed tag); the script collects those lines into
+`demos/benchmarks/results/<device>-<date>.tsv` (benchmark, N, `ark_interop` ns/op,
+`arkts_runtime` ns/op, ratio), plus the date, device and build mode in a header. The page
+shows the same table. The script only writes the results file; it never runs git. Results
+files are not ignored, so they stay next to the app and runs before and after an
+optimization can be compared.
+
+Done when: all 10 groups run on phone and emulator and a first results file per device is
+saved, as the baseline for step 12.
+
+### 12. Optimizations (each behind its own tests)
 
 1. `ExternSequence` handled in `eval` / `evalTree`.
    - Host: with `--enable-extern-sequence`, `RecordingRuntime` sees `ExternSequence` for two
      consecutive statements.
    - Device: the whole suite passes with the flag on and off; a sequence of two calls runs in
-     one `run` (counter hook); the first result is not retained.
+     one `run` (counter hook); the first result is not retained; benchmark 6 (consecutive
+     statements) against the step 11 baseline.
 2. Property-name cache.
-   - Device: whole suite passes; a loop reading the same field 100 000 times is measurably
-     faster than without the cache (timing printed, not asserted).
+   - Device: whole suite passes; benchmark 1 (property access) is measurably faster than in
+     the step 11 baseline.
 3. Path / batch access waits for the new `ARKTS_*` FFI functions.
 4. Fast path for array elements: `getElement` / `setElement` when the target is an array and
    0 ≤ index < `length` (they differ from JS outside that range, see Constraints), instead of
    building the property name.
-   - Device: whole suite passes; `indexBoundaries` still passes; a loop reading `e.items[1]`
-     100 000 times is measurably faster (timing printed, not asserted).
+   - Device: whole suite passes; `indexBoundaries` still passes; benchmark 3 (arrays) is
+     measurably faster than in the step 11 baseline.
 5. Cache the JS conversion functions `Object` and `String`. `ark_interop` has no "convert to
    object" or "convert to text" (`asObject()` / `asString()` / `toString()` only accept values
    that already have that type), so `objectFor` and `jsString` in `runtime.cj` call the JS
    global functions, looked up on `context.global` at every call. Looking them up once (after
    binding) and keeping them saves that lookup, and stops later replacements of the global
    `Object` / `String` by application code from affecting the runtime.
-   - Device: whole suite passes; a loop reading `e.str.length` 100 000 times is measurably
-     faster than without the cache (timing printed, not asserted).
+   - Device: whole suite passes; benchmarks 4 (strings) and 5 (conversions) are measurably
+     faster than in the step 11 baseline.
 
 ## Open points
 
