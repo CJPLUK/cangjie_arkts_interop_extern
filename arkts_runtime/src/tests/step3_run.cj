@@ -22,6 +22,7 @@ func step3OffThreadScenarios(): Array<(String, OffThreadScenario)> {
         ("step3.runOffThreadReturnsValue", runReturnsValue),
         ("step3.runOffThreadUsesEngine", runUsesEngine),
         ("step3.runOffThreadRethrows", runPropagatesException),
+        ("step3.runOffThreadRethrowsError", runOffThreadRethrowsError),
         ("step3.runOffThreadNested", runNested),
         ("step3.runFromManyThreads", runFromManyThreads)
     ]
@@ -71,6 +72,30 @@ func runPropagatesException(): String {
     } catch (e: Exception) {
         "wrong exception '${e}'"
     }
+}
+
+/**
+ * A Cangjie `Error` thrown by the operation reaches the caller, and `run` still works after
+ * it. The caller waits with a timeout, so a lost error fails instead of hanging.
+ */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
+func runOffThreadRethrowsError(): String {
+    let caller = spawn {
+        try {
+            "returned ${ArkTSRuntime.run { Array<Int64>(Int64.Max / 16, repeat: 0).size }}"
+        } catch (e: Error) {
+            e.toString()
+        }
+    }
+    let outcome = try {
+        caller.get(Duration.second * 10)
+    } catch (_: TimeoutException) {
+        "no result after 10 s"
+    }
+    firstFailure([
+        expectEqual("error rethrown on the caller", outcome, "OutOfMemoryError"),
+        expectEqual("run usable afterwards", ArkTSRuntime.run { 7 }, 7)
+    ])
 }
 
 /** An operation that calls `run` again completes; the inner call is already on the bind thread. */

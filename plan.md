@@ -408,6 +408,27 @@ emulator.
   measurable change, as the suite converts only `Float64`, `Bool` and `String` (already
   direct) and containers of them; `convert.optionSome` / `optionNone` 6–7% slower on the phone
   (15 more failed type tests before `TypeTag`), within the phone's ~10% noise.
+- **`toJSValue` reduced to the `ToJS` cast; `fromJSValue` keeps its direct cases**
+  (2026-10-16). `toJSValue` now matches only `Extern`, then `ToJS` (every concrete type
+  implements it, and the cast allocates nothing): no measurable change
+  (`results/*-2026-10-16-1422.*`). Doing the same in `fromJSValue` (only `TypeTag<R>() as
+  JSReader`) cost a `TypeTag` allocation per read, and per element in `Array<T>.fromJS`: on the
+  phone (`ohos-2026-10-16-1434`) `convert.arrayFloat64` 657984→807187 ns, `nestedArray`
+  683937→843614, `array.readElement` 1424→1763, `property.readNumber` 1755→1980, with
+  `ark_interop` unchanged. Restored (`ohos-2026-10-16-1437`): 649385, 678370, 1448, 1777. The
+  emulator's array conversions vary by ±20% between runs of the same code, so it cannot tell.
+  Tests pass in every state (24 host, 88 device on both).
+- **An `Error` inside `run` from another thread reaches the caller** (2026-10-16). The task
+  posted by `run` caught only `Exception`; a Cangjie `Error` (`OutOfMemoryError`,
+  `StackOverflowError`, ...) escaped it and aborted the app ("Uncaught exception:
+  std.core:OutOfMemoryError. Terminate required", seen on the emulator with the fix removed).
+  `ArkTSResult` has a `Failed(Error)` case, rethrown on the caller. New device test
+  `step3.runOffThreadRethrowsError` (allocates `Array<Int64>(Int64.Max / 16)` inside `run`,
+  expects `OutOfMemoryError` on the caller within 10 s, then `run` still works). 24 host and
+  89 device tests pass on both. Benchmarks `ohos-2026-10-16-1511`, `emulator-…-1512`: no
+  change; `thread.readNumber`, the only off-thread one, 0.98 / 1.02 of `*-1437`.
+  `string.readLong` on the phone jumps between about 9 and 15 µs from run to run (runs on the
+  JS thread, so not affected).
 
 ## Testing strategy
 

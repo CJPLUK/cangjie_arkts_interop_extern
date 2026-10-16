@@ -21,6 +21,7 @@ const TYPE_MISMATCH_CODE: Int32 = 34300005
 private enum ArkTSResult<R> {
     | Ok(R)
     | Err(Exception)
+    | Failed(Error)
 }
 
 /** How an index is accessed: an array element, or a property key. */
@@ -72,9 +73,9 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     /**
      * Runs `operation` on the bind thread inside a fresh engine scope and returns its result,
-     * or rethrows its exception on the calling thread. Blocks callers on other threads until
-     * the JS thread has run it, so the JS thread must never wait for a thread that is inside
-     * `run`. Public entry points call it exactly once; internal recursion never does.
+     * or rethrows its exception or error on the calling thread. Blocks callers on other threads
+     * until the JS thread has run it, so the JS thread must never wait for a thread that is
+     * inside `run`. Public entry points call it exactly once; internal recursion never does.
      */
     static func run<R>(operation: () -> R): R {
         if (context.isInBindThread()) {
@@ -101,6 +102,8 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                     ArkTSResult.Ok(res)
                 } catch (e: Exception) {
                     ArkTSResult.Err(e)
+                } catch (e: Error) {
+                    ArkTSResult.Failed(e)
                 }
             synchronized(mutex) {
                 result.value = Some(completed)
@@ -113,6 +116,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             match (result.value.getOrThrow()) {
                 case Ok(value) => value
                 case Err(error) => throw error
+                case Failed(error) => throw error
             }
         }
     }

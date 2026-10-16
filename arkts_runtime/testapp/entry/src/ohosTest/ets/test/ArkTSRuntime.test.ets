@@ -85,6 +85,7 @@ export default function arkTSRuntimeTest() {
         'step3.runOffThreadReturnsValue',
         'step3.runOffThreadUsesEngine',
         'step3.runOffThreadRethrows',
+        'step3.runOffThreadRethrowsError',
         'step3.runOffThreadNested',
         'step3.runFromManyThreads',
         'step4.retainedValueCrossesThreads',
@@ -206,6 +207,11 @@ export default function arkTSRuntimeTest() {
 
     it('runOffThreadRethrows', 0, async (done: Function) => {
       expect(await runArkTSTestOffThread('step3.runOffThreadRethrows')).assertEqual('');
+      done();
+    });
+
+    it('runOffThreadRethrowsError', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step3.runOffThreadRethrowsError')).assertEqual('');
       done();
     });
 

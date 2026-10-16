@@ -36,8 +36,6 @@ extend ArkTSRuntime {
      * reduced with `evalTree`, so it may be unevaluated. Bind thread only.
      */
     static func toJSValue(value: Any): JSValue {
-        // Concrete types are matched directly; only `Array<T>` and `Option<T>`, whose element type
-        // is unknown here, need the slower interface cast.
         match (value) {
             case external: Extern<ArkTSRuntime> => evalTree(external)
             case convertible: ToJS => convertible.toJS()
