@@ -1,6 +1,7 @@
 package arkts_runtime
 
 import ohos.ark_interop.*
+import ohos.business_exception.BusinessException
 
 /**
  * ArkTS-specific entry points used directly by applications, outside the compiler contract.
@@ -43,7 +44,7 @@ extend ArkTSRuntime {
         run { evalTree(value).isUndefined() }
     }
 
-    /** JS `key in value`: own or inherited. Throws `ExternConversionException` for non-objects. */
+    /** JS `key in value`: own or inherited. Throws `ExternMemberAccessException` for non-objects. */
     public static func objectHasProperty(value: Extern<ArkTSRuntime>, key: String): Bool {
         run { objectOf(evalTree(value)).hasProperty(key) }
     }
@@ -105,10 +106,12 @@ extend ArkTSRuntime {
         }
     }
 
+    /** As member access, a non-object throws `ExternMemberAccessException` with `ark_interop`'s message. */
     private static func objectOf(value: JSValue): JSObject {
-        if (!value.isObject()) {
-            throw ExternConversionException("ArkTS value is not an object")
+        try {
+            value.asObject()
+        } catch (e: BusinessException) {
+            throw memberError(e)
         }
-        value.asObject()
     }
 }

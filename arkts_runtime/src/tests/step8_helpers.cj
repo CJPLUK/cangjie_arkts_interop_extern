@@ -146,8 +146,8 @@ func objectProperties(fixtures: Array<JSValue>): String {
     o.visible = 1.0
     ArkTSRuntime.objectDefineOwnProperty(o, "hidden", 2.0, isEnumerable: false)
     o[ArkTSRuntime.symbol()] = 3.0
-    func notObject(what: String, block: () -> Any): String {
-        expectThrows<ExternConversionException>(what, "ArkTS value is not an object", block)
+    func notObject(what: String, given: String, block: () -> Any): String {
+        expectThrows<ExternMemberAccessException>(what, "expect: object, given: ${given}", block)
     }
     firstFailure([
         expectEqual("has own 'width'", ArkTSRuntime.objectHasProperty(rect, "width"), true),
@@ -161,10 +161,11 @@ func objectProperties(fixtures: Array<JSValue>): String {
         expectEqual("has '1' on an array", ArkTSRuntime.objectHasProperty(items, "1"), true),
         expectEqual("keys of a tree (globalThis.JSON)",
             ArkTSRuntime.objectKeys(member(ArkTSRuntime.global(), "JSON")).size, 0),
-        notObject("objectHasProperty(1.5)", { => ArkTSRuntime.objectHasProperty(to(1.5), "x") }),
-        notObject("objectKeys(\"s\")", { => ArkTSRuntime.objectKeys(to("s")) }),
-        notObject("objectKeys(undefined)", { => ArkTSRuntime.objectKeys(ArkTSRuntime.undefined()) }),
-        notObject("objectDefineOwnProperty(null)", { => ArkTSRuntime.objectDefineOwnProperty(ArkTSRuntime.null(), "x", 1.0) })
+        notObject("objectHasProperty(1.5)", "number", { => ArkTSRuntime.objectHasProperty(to(1.5), "x") }),
+        notObject("objectKeys(\"s\")", "string", { => ArkTSRuntime.objectKeys(to("s")) }),
+        notObject("objectKeys(undefined)", "undefined", { => ArkTSRuntime.objectKeys(ArkTSRuntime.undefined()) }),
+        notObject("objectDefineOwnProperty(null)", "null",
+            { => ArkTSRuntime.objectDefineOwnProperty(ArkTSRuntime.null(), "x", 1.0) })
     ])
 }
 

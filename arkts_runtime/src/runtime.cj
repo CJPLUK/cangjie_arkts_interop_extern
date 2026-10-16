@@ -240,7 +240,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         undefinedValue
     }
 
-    private static func memberError(e: BusinessException): Exception {
+    static func memberError(e: BusinessException): Exception {
         if (e.code == TYPE_MISMATCH_CODE) {
             return ExternMemberAccessException(e.message)
         }

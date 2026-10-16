@@ -526,6 +526,11 @@ emulator.
   for every `Imm`. Benchmarks 1810/1811 vs the mean of 1737 and 1806: `sequence.twoWrites` /
   `threeWrites` -3% / -3% on the phone, +11% / -5% on the emulator, `array.writeElement` -10% /
   +7%: within the noise.
+- **Helpers fail as member access** (2026-10-16): `objectHasProperty`, `objectKeys` and
+  `objectDefineOwnProperty` no longer check `isObject` themselves; `asObject`'s "types do not
+  match" error goes through `memberError`, so a non-object throws `ExternMemberAccessException`
+  with `ark_interop`'s message (`expect: object, given: number`), as `e.f` does. Keys stay
+  `String` only.
 - **Benchmark history chart** (2026-10-16): each generated `.html` has a line chart below the
   table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
   oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline
