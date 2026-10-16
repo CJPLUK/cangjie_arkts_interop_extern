@@ -923,15 +923,19 @@ Method:
 
 Running: `demos/benchmarks/run.sh [--all]` builds the app, installs it, starts it and waits for
 the end. The app runs every benchmark once at start and logs one line per benchmark to
-hilog (fixed tag); the script collects those lines into
-`demos/benchmarks/results/<device>-<date>.tsv` (benchmark, N, `ark_interop` ns/op,
-`arkts_runtime` ns/op, ratio), plus the date, device and build mode in a header. The page
-shows the same table. The script only writes the results file; it never runs git. Results
-files are not ignored, so they stay next to the app and runs before and after an
+hilog (fixed tag); the script collects those lines into two files with the same table
+(benchmark, N, `ark_interop` ns/op, `arkts_runtime` ns/op, ratio):
+- `demos/benchmarks/results/<device>-<date>.csv`: one header row, then one row per
+  benchmark; the date, device and build mode are columns, so files can be concatenated.
+- `demos/benchmarks/results/<device>-<date>.html`: a self-contained page (no external files)
+  with the date, device and build mode above the table, to open in a browser.
+
+The page shows the same table. The script only writes the results files; it never runs git.
+Results files are not ignored, so they stay next to the app and runs before and after an
 optimization can be compared.
 
-Done when: all 10 groups run on phone and emulator and a first results file per device is
-saved, as the baseline for step 12.
+Done when: all 10 groups run on phone and emulator and a first pair of results files per
+device is saved, as the baseline for step 12.
 
 ### 12. Optimizations (each behind its own tests)
 
