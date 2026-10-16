@@ -82,7 +82,7 @@ func ownExceptionsNotWrapped(fixtures: Array<JSValue>): String {
         expectThrows<ExternIndexedAccessException>("e[UInt8(1)]", "Unsupported ArkTS index type", { => e[UInt8(1)] }),
         expectThrows<ExternMemberAccessException>("e.nothing.x", "expect: object, given: undefined",
             { => e.nothing.x }),
-        expectThrows<ExternFunctionAccessException>("e.num()", "ArkTS 'num' is not a function", { => e.num() }),
+        expectThrows<ExternFunctionAccessException>("e.num()", "ArkTS value is not a function", { => e.num() }),
         expectThrows<ExternConversionException>("Bool from a number", "Cannot convert ArkTS number to Bool",
             { => from<Bool>(e.num) }),
         mismatch

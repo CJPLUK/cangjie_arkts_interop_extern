@@ -285,18 +285,18 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         match (callee) {
             case ExternMemberAccess(receiver, field) =>
                 let target = evalTree(receiver)
-                invoke(readMember(target, field), arguments, target, "'${field}'")
+                invoke(readMember(target, field), arguments, target)
             case ExternIndexedAccess(receiver, index) =>
                 let target = evalTree(receiver)
-                invoke(readIndex(target, index), arguments, target, "indexed value")
+                invoke(readIndex(target, index), arguments, target)
             case _ =>
-                invoke(evalTree(callee), arguments, context.undefined().toJSValue(), "value")
+                invoke(evalTree(callee), arguments, context.undefined().toJSValue())
         }
     }
 
-    private static func invoke(function: JSValue, arguments: Array<Any>, thisArg: JSValue, what: String): JSValue {
+    private static func invoke(function: JSValue, arguments: Array<Any>, thisArg: JSValue): JSValue {
         if (!function.isFunction()) {
-            throw ExternFunctionAccessException("ArkTS ${what} is not a function")
+            throw ExternFunctionAccessException("ArkTS value is not a function")
         }
         let converted = Array<JSValue>(arguments.size) { i => ArkTSRuntime.toJSValue(arguments[i]) }
         function.asFunction().call(converted, thisArg: thisArg)

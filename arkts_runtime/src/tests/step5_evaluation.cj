@@ -190,10 +190,10 @@ func callNonFunction(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
     let v = e.num
     firstFailure([
-        expectThrows<ExternFunctionAccessException>("e.str()", "ArkTS 'str' is not a function", { => e.str(1.0) }),
-        expectThrows<ExternFunctionAccessException>("e.missing()", "ArkTS 'missing' is not a function",
+        expectThrows<ExternFunctionAccessException>("e.str()", "ArkTS value is not a function", { => e.str(1.0) }),
+        expectThrows<ExternFunctionAccessException>("e.missing()", "ArkTS value is not a function",
             { => e.missing() }),
-        expectThrows<ExternFunctionAccessException>("e.items[0]()", "ArkTS indexed value is not a function",
+        expectThrows<ExternFunctionAccessException>("e.items[0]()", "ArkTS value is not a function",
             { => e.items[0]() }),
         expectThrows<ExternFunctionAccessException>("v()", "ArkTS value is not a function", { => v() })
     ])

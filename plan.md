@@ -512,6 +512,12 @@ emulator.
   result. Benchmarks 1732 and 1737 vs 1653: `property.readChain` -1% / -1% on the phone, -5% /
   +4% on the emulator, `handles.createAndDrop` +3% / +4% and +5% / +2%: no measurable change,
   within the run-to-run noise.
+- **Generic "not a function" error** (2026-10-16): `invoke` no longer takes a label, so a
+  member call does not build `"'${field}'"` on every call. Calling a non-function always
+  throws `ExternFunctionAccessException("ArkTS value is not a function")`, whatever the callee.
+  Benchmarks 1806 vs 1737: `call.method0` / `method1` / `method3` -7% / -2% / 0% on the phone,
+  -16% / +10% / +22% on the emulator, as noisy as `call.function1` (unaffected): no measurable
+  change.
 - **Benchmark history chart** (2026-10-16): each generated `.html` has a line chart below the
   table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
   oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline
