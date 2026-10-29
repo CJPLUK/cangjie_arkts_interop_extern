@@ -13,7 +13,7 @@ func step5Scenarios(): Array<(String, Scenario)> {
         ("step5.memberUpdate", { _, f => memberUpdate(f) }),
         ("step5.memberOfUndefinedOrNull", { _, f => memberOfUndefinedOrNull(f) }),
         ("step5.methodCallThis", { _, f => methodCallThis(f) }),
-        ("step5.freeCallThisUndefined", { _, f => freeCallThisUndefined(f) }),
+        ("step5.extractedMethodKeepsThis", { _, f => extractedMethodKeepsThis(f) }),
         ("step5.indexCallThis", indexCallThis),
         ("step5.receiverEvaluatedOnce", { _, f => receiverEvaluatedOnce(f) }),
         ("step5.argumentTypes", { _, f => argumentTypes(f) }),
@@ -26,21 +26,19 @@ func step5Scenarios(): Array<(String, Scenario)> {
         ("step5.numberKeys", { c, f => numberKeys(c, f) }),
         ("step5.compoundAssignmentUnsupported", { _, f => compoundAssignmentUnsupported(f) }),
         ("step5.variableCompoundIsMethodCall", { _, f => variableCompoundIsMethodCall(f) }),
-        ("step5.evalPayloadUnchanged", { _, f => evalPayloadUnchanged(f) }),
-        ("step5.derivedConstructor", { _, f => derivedConstructor(f) }),
         ("step5.longChainLoop", { _, f => longChainLoop(f) })
     ]
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func step5OffThreadScenarios(): Array<(String, OffThreadScenario)> {
-    [("step5.evalFromOtherThread", evalFromOtherThread)]
+    [("step5.operationsFromOtherThread", operationsFromOtherThread)]
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 type E = Extern<ArkTSRuntime>
 
-/** fixtures[index] as an evaluated Extern. */
+/** fixtures[index] as an Extern. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func ext(fixtures: Array<JSValue>, index: Int64): E {
     ArkTSRuntime.retain(fixture(fixtures, index))
@@ -51,11 +49,6 @@ func number(e: E): Float64 { unwrap(e).toNumber() }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func text(e: E): String { unwrap(e).toString() }
-
-@When[bundle == "com.example.testArkTSForeignRuntime"]
-func member(target: E, field: String): E {
-    E.ExternMemberAccess(target, field)
-}
 
 /** fixtures: Target. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -130,16 +123,24 @@ func methodCallThis(fixtures: Array<JSValue>): String {
     ])
 }
 
-/** fixtures: Target, callLog. ArkTS checks callLog.self === undefined. */
+/**
+ * fixtures: Target, callLog. A function that was not read from a receiver gets `this` =
+ * undefined; a method read into a variable keeps its receiver. ArkTS checks
+ * callLog.self === target.
+ */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func freeCallThisUndefined(fixtures: Array<JSValue>): String {
+func extractedMethodKeepsThis(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
     let log = ext(fixtures, 1)
+    let unbound = ArkTSRuntime.retain(fixture(fixtures, 0).getProperty("record"))
+    unbound(1.0)
+    let unboundThis = unwrap(log.self).isUndefined()
     let f = e.record
     f(1.0)
     firstFailure([
-        expectEqual("calls", number(log.calls), 1.0),
-        expectEqual("this is undefined", unwrap(log.self).isUndefined(), true)
+        expectEqual("calls", number(log.calls), 2.0),
+        expectEqual("unbound function: this is undefined", unboundThis, true),
+        expectEqual("extracted method: this === target", unwrap(log.self).strictEqual(fixture(fixtures, 0)), true)
     ])
 }
 
@@ -344,16 +345,18 @@ func numberKeys(context: JSContext, fixtures: Array<JSValue>): String {
     ])
 }
 
-/** fixtures: Target. Every compound assignment throws without touching the target. */
+/**
+ * fixtures: Target. The compiler expands `e.f op= v` to a read of the member `op` of `e.f`:
+ * on a primitive it throws, before anything is written.
+ */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func compoundAssignmentUnsupported(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
-    let message = "Compound assignment not supported"
+    let notObject = "The ArkTS data types do not match, expect: object, given: "
     firstFailure([
-        expectThrows<ExternCompoundAssignmentException>("e.num += 1", message, { => e.num += 1.0 }),
-        expectThrows<ExternCompoundAssignmentException>("e.items[0] += 1", message, { => e.items[0] += 1.0 }),
-        expectThrows<ExternCompoundAssignmentException>("e.flag &&= \"yes\"", message,
-            { => ArkTSRuntime.eval(E.ExternCompoundAssignment(member(e, "flag"), "&&", "yes")) }),
+        expectThrows<ExternMemberAccessException>("e.num += 1", notObject + "number", { => e.num += 1.0 }),
+        expectThrows<ExternMemberAccessException>("e.items[0] += 1", notObject + "number", { => e.items[0] += 1.0 }),
+        expectThrows<ExternMemberAccessException>("e.flag &&= \"yes\"", notObject + "bool", { => e.flag &&= "yes" }),
         expectEqual("e.num unchanged", number(e.num), 1.5),
         expectEqual("e.items[0] unchanged", number(e.items[0]), 10.0)
     ])
@@ -375,27 +378,7 @@ func variableCompoundIsMethodCall(fixtures: Array<JSValue>): String {
     }
 }
 
-/** fixtures: Rectangle. */
-@When[bundle == "com.example.testArkTSForeignRuntime"]
-func evalPayloadUnchanged(fixtures: Array<JSValue>): String {
-    let e = ext(fixtures, 0)
-    expectEqual("eval(payload) === fixture", unwrap(ArkTSRuntime.eval(e)).strictEqual(fixture(fixtures, 0)), true)
-}
-
-/** fixtures: Target. `ExternSequence` is derived: `eval` and `evalTree` hand it to `evalDerived`. */
-@When[bundle == "com.example.testArkTSForeignRuntime"]
-func derivedConstructor(fixtures: Array<JSValue>): String {
-    let e = ext(fixtures, 0)
-    let topLevel = ArkTSRuntime.eval(E.ExternSequence(E.ExternMemberUpdate(e, "num", 2.0), member(e, "num")))
-    let nested = ArkTSRuntime.eval(member(E.ExternSequence(E.ExternMemberUpdate(e, "zero", 3.0), member(e, "a")), "b"))
-    firstFailure([
-        expectEqual("top level: second result", number(topLevel), 2.0),
-        expectEqual("nested: first ran", number(e.zero), 3.0),
-        expectEqual("nested: result is e.a.b", unwrap(nested).strictEqual(unwrap(e.a.b)), true)
-    ])
-}
-
-/** fixtures: Target. Intermediates stay local to each evaluation's scope. */
+/** fixtures: Target. Every link of the chain is retained, then released by the Cangjie GC. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func longChainLoop(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
@@ -408,9 +391,9 @@ func longChainLoop(fixtures: Array<JSValue>): String {
     ""
 }
 
-/** Every operation dispatched from a spawned thread through the public `eval`. */
+/** Every operation dispatched from a spawned thread through its own `run`. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func evalFromOtherThread(): String {
+func operationsFromOtherThread(): String {
     let o = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.context.object().toJSValue()) }
     o.x = 1.5
     o.items = [1.0, 2.0]
@@ -419,7 +402,7 @@ func evalFromOtherThread(): String {
     firstFailure([
         expectEqual("o.x", x, 1.5),
         expectEqual("o.items[1]", item, 2.5),
-        expectThrows<ExternCompoundAssignmentException>("o.x += 1", "Compound assignment not supported",
+        expectThrows<ExternMemberAccessException>("o.x += 1", "expect: object, given: number",
             { => o.x += 1.0 })
     ])
 }

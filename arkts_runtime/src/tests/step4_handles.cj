@@ -21,13 +21,10 @@ func step4Scenarios(): Array<(String, Scenario)> {
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 const FOREIGN_PAYLOAD = "Extern payload was not produced by ArkTSRuntime"
 
-/** The JSValue held by an evaluated Extern, valid in the current scope. */
+/** The JSValue held by an Extern, valid in the current scope. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func unwrap(value: Extern<ArkTSRuntime>): JSValue {
-    match (value) {
-        case ExternPayload(handle) => ArkTSRuntime.evalPayload(handle)
-        case _ => throw IllegalArgumentException("not an evaluated Extern")
-    }
+    ArkTSRuntime.jsValueOf(value)
 }
 
 /**
@@ -58,19 +55,32 @@ class ExternalProbe <: SharedObject {}
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func retainClassifiesEachKind(context: JSContext, fixtures: Array<JSValue>): String {
-    firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
-        let (name, value, kind) = entry
-        expectEqual(name, ArkTSRuntime.handleKind(ArkTSRuntime.retain(value)), kind)
-    }))
+    let function = context.function({ ctx, _ => ctx.undefined().toJSValue() }).toJSValue()
+    let receiver = ArkTSRuntime.retain(fixture(fixtures, 0))
+    firstFailure([
+        firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
+            let (name, value, kind) = entry
+            expectEqual(name, ArkTSRuntime.handleKind(ArkTSRuntime.retain(value)), kind)
+        })),
+        expectEqual("function with a receiver",
+            ArkTSRuntime.handleKind(ArkTSRuntime.retain(function, receiver: receiver)), "Method"),
+        expectEqual("number with a receiver",
+            ArkTSRuntime.handleKind(ArkTSRuntime.retain(context.number(1.0).toJSValue(), receiver: receiver)), "Imm")
+    ])
 }
 
-/** `evalPayload(retain(v))` is `v` itself (JS `===`). */
+/** `evalPayload(retain(v))` is `v` itself (JS `===`); a method gives its function. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func payloadRoundTrip(context: JSContext, fixtures: Array<JSValue>): String {
-    firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
-        let (name, value, _) = entry
-        expectEqual("${name} === after round trip", unwrap(ArkTSRuntime.retain(value)).strictEqual(value), true)
-    }))
+    let function = context.function({ ctx, _ => ctx.undefined().toJSValue() }).toJSValue()
+    let method = ArkTSRuntime.retain(function, receiver: ArkTSRuntime.retain(fixture(fixtures, 0)))
+    firstFailure([
+        firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
+            let (name, value, _) = entry
+            expectEqual("${name} === after round trip", unwrap(ArkTSRuntime.retain(value)).strictEqual(value), true)
+        })),
+        expectEqual("method === its function after round trip", unwrap(method).strictEqual(function), true)
+    ])
 }
 
 /** Values retained inside a scope stay usable after it closes and many others come and go. */
@@ -99,17 +109,17 @@ func retainedValueOutlivesScope(context: JSContext): String {
 /** Payloads not made by `retain` are rejected, including a bare JSValue. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func rejectsForeignPayload(context: JSContext): String {
-    let notOurs = Extern<ArkTSRuntime>.ExternPayload(42)
+    let notOurs = Extern<ArkTSRuntime>(42)
     firstFailure([
         expectThrows<ExternConversionException>("Int64 payload", FOREIGN_PAYLOAD,
             { => ArkTSRuntime.evalPayload(42) }),
         expectThrows<ExternConversionException>("bare JSValue payload", FOREIGN_PAYLOAD,
             { => ArkTSRuntime.evalPayload(context.number(1.0).toJSValue()) }),
-        expectThrows<ExternConversionException>("ExternPayload(42)", FOREIGN_PAYLOAD,
+        expectThrows<ExternConversionException>("Extern(42)", FOREIGN_PAYLOAD,
             { => unwrap(notOurs) }),
-        expectEqual("kind of ExternPayload(42)", ArkTSRuntime.handleKind(notOurs), "foreign payload"),
-        expectEqual("kind of an unevaluated node",
-            ArkTSRuntime.handleKind(Extern<ArkTSRuntime>.ExternMemberAccess(notOurs, "f")), "not a payload")
+        expectThrows<ExternConversionException>("Extern(42) called", FOREIGN_PAYLOAD,
+            { => notOurs(1.0) }),
+        expectEqual("kind of Extern(42)", ArkTSRuntime.handleKind(notOurs), "foreign payload")
     ])
 }
 

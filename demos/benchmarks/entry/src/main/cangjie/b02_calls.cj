@@ -46,7 +46,7 @@ func callBenchmarks(): Array<Benchmark> {
                 { n: Int64 => for (_ in 0..n) { sink += f.call([context.number(1.0).toJSValue()]).toNumber() } }
             },
             { =>
-                let f = ArkTSRuntime.eval(runtimeBench().f1)
+                let f = runtimeBench().f1
                 { n: Int64 => for (_ in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(f(1.0)) } }
             }, false)
     ]

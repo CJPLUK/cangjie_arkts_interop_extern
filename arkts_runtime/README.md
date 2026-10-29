@@ -14,8 +14,12 @@ blob.width = width + 2.0
 let area: Float64 = ArkTSRuntime.fromExtern<Float64>(blob.area())
 ```
 
-Compound assignment (`blob.width += 2.0`, `e[i] &&= v`, ...) is not supported: it throws
-`ExternCompoundAssignmentException`.
+Compound assignment (`blob.width += 2.0`, `e[i] &&= v`, ...) is not supported: the compiler
+reads the operator as a member of the current value (`+` of `blob.width`), so on a number,
+string or boolean it throws `ExternMemberAccessException`.
+
+A function read as a member or an element keeps its receiver: `let f = e.m; f()` calls it with
+`this` = `e`, like `e.m()`. A function obtained any other way is called with `this` = `undefined`.
 
 Member and index access behave as in `ark_interop`:
 - `e.f` works only on objects (arrays and functions included). On a string, number, symbol,

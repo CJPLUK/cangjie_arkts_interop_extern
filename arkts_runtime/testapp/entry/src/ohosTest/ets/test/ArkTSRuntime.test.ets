@@ -18,7 +18,7 @@ export default function arkTSRuntimeTest() {
         'step0.expectThrowsHelper',
         'step1.notBoundExceptionNames',
         'step1.alreadyBoundExceptionNames',
-        'step1.dynamicSyntaxReachesEval',
+        'step1.dynamicSyntaxReachesRuntime',
         'step1.extendHelperReachable',
         'step1.internalVisibleToSubpackage',
         'step2.runtimeIsBound',
@@ -42,7 +42,7 @@ export default function arkTSRuntimeTest() {
         'step5.memberUpdate',
         'step5.memberOfUndefinedOrNull',
         'step5.methodCallThis',
-        'step5.freeCallThisUndefined',
+        'step5.extractedMethodKeepsThis',
         'step5.indexCallThis',
         'step5.receiverEvaluatedOnce',
         'step5.argumentTypes',
@@ -55,8 +55,6 @@ export default function arkTSRuntimeTest() {
         'step5.numberKeys',
         'step5.compoundAssignmentUnsupported',
         'step5.variableCompoundIsMethodCall',
-        'step5.evalPayloadUnchanged',
-        'step5.derivedConstructor',
         'step5.longChainLoop',
         'step6.toExternTypes',
         'step6.fromExternTypes',
@@ -90,7 +88,7 @@ export default function arkTSRuntimeTest() {
         'step3.runFromManyThreads',
         'step4.retainedValueCrossesThreads',
         'step4.releaseHandlesFromOtherThread',
-        'step5.evalFromOtherThread',
+        'step5.operationsFromOtherThread',
         'step6.conversionsFromOtherThread',
         'step7.jsExceptionFromOtherThread',
         'step8.helpersFromOtherThread',
@@ -145,8 +143,8 @@ export default function arkTSRuntimeTest() {
       expect(runArkTSTest('step1.alreadyBoundExceptionNames')).assertEqual('');
     });
 
-    it('dynamicSyntaxReachesEval', 0, () => {
-      expect(runArkTSTest('step1.dynamicSyntaxReachesEval')).assertEqual('');
+    it('dynamicSyntaxReachesRuntime', 0, () => {
+      expect(runArkTSTest('step1.dynamicSyntaxReachesRuntime')).assertEqual('');
     });
 
     it('extendHelperReachable', 0, () => {
@@ -324,10 +322,12 @@ export default function arkTSRuntimeTest() {
       expect(callLog.calls).assertEqual(1);
     });
 
-    it('freeCallThisUndefined', 0, () => {
+    it('extractedMethodKeepsThis', 0, () => {
+      const t = new Target();
       resetCallLog();
-      expect(runArkTSTest('step5.freeCallThisUndefined', new Target(), callLog)).assertEqual('');
-      expect(callLog.self === undefined).assertTrue();
+      expect(runArkTSTest('step5.extractedMethodKeepsThis', t, callLog)).assertEqual('');
+      expect(callLog.self === t).assertTrue();
+      expect(callLog.calls).assertEqual(2);
     });
 
     it('indexCallThis', 0, () => {
@@ -404,23 +404,12 @@ export default function arkTSRuntimeTest() {
       expect(runArkTSTest('step5.variableCompoundIsMethodCall', new Target())).assertEqual('');
     });
 
-    it('evalPayloadUnchanged', 0, () => {
-      expect(runArkTSTest('step5.evalPayloadUnchanged', new Rectangle(1, 2))).assertEqual('');
-    });
-
-    it('derivedConstructor', 0, () => {
-      const t = new Target();
-      expect(runArkTSTest('step5.derivedConstructor', t)).assertEqual('');
-      expect(t.num).assertEqual(2);
-      expect(t.zero).assertEqual(3);
-    });
-
     it('longChainLoop', 0, () => {
       expect(runArkTSTest('step5.longChainLoop', new Target())).assertEqual('');
     });
 
-    it('evalFromOtherThread', 0, async (done: Function) => {
-      expect(await runArkTSTestOffThread('step5.evalFromOtherThread')).assertEqual('');
+    it('operationsFromOtherThread', 0, async (done: Function) => {
+      expect(await runArkTSTestOffThread('step5.operationsFromOtherThread')).assertEqual('');
       done();
     });
   });

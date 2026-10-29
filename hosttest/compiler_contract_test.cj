@@ -42,14 +42,14 @@ class MemberAccessContract {
     func singleMember(): Unit {
         let e = R.named("e")
         let _ = e.f
-        @Expect(logged(), lines(["eval Member(e, f)"]))
+        @Expect(logged(), lines(["memberAccess(e, f)"]))
     }
 
     @TestCase
-    func chainIsOneEval(): Unit {
+    func chainIsOneCallPerMember(): Unit {
         let e = R.named("e")
         let _ = e.a.b.c
-        @Expect(logged(), lines(["eval Member(Member(Member(e, a), b), c)"]))
+        @Expect(logged(), lines(["memberAccess(e, a)", "memberAccess(r1, b)", "memberAccess(r2, c)"]))
     }
 }
 
@@ -59,53 +59,53 @@ class CallContract {
     func setUp(): Unit { R.reset() }
 
     @TestCase
-    func methodCallKeepsReceiverAndRawLeaves(): Unit {
+    func methodCallIsMemberAccessThenCallWithRawLeaves(): Unit {
         let e = R.named("e")
         let _ = e.m(1, "s", 2.5)
-        @Expect(logged(), lines(["eval Call(Member(e, m), [1:Int64, \"s\":String, 2.500000:Float64])"]))
+        @Expect(logged(), lines(["memberAccess(e, m)", "functionCall(r1, [1:Int64, \"s\":String, 2.500000:Float64])"]))
     }
 
     @TestCase
-    func callThroughStoredFunctionHasPayloadCallee(): Unit {
+    func callThroughStoredFunctionIsTheSameCall(): Unit {
         let e = R.named("e")
         let x = e.m
         let _ = x(1)
-        @Expect(logged(), lines(["eval Member(e, m)", "eval Call(r1, [1:Int64])"]))
+        @Expect(logged(), lines(["memberAccess(e, m)", "functionCall(r1, [1:Int64])"]))
     }
 
     @TestCase
-    func externArgumentIsNestedTree(): Unit {
+    func externArgumentIsEvaluatedAfterCallee(): Unit {
         let e = R.named("e")
         let _ = e.f(e.g)
-        @Expect(logged(), lines(["eval Call(Member(e, f), [Member(e, g)])"]))
+        @Expect(logged(), lines(["memberAccess(e, f)", "memberAccess(e, g)", "functionCall(r1, [r2])"]))
     }
 
     @TestCase
     func callThroughIndex(): Unit {
         let e = R.named("e")
         let _ = e.methods[0](1)
-        @Expect(logged(), lines(["eval Call(Index(Member(e, methods), 0:Int64), [1:Int64])"]))
+        @Expect(logged(), lines(["memberAccess(e, methods)", "indexedAccess(r1, 0:Int64)", "functionCall(r2, [1:Int64])"]))
     }
 
     @TestCase
     func callResultCalledAgain(): Unit {
         let e = R.named("e")
         let _ = e.f(1)(2)
-        @Expect(logged(), lines(["eval Call(Call(Member(e, f), [1:Int64]), [2:Int64])"]))
+        @Expect(logged(), lines(["memberAccess(e, f)", "functionCall(r1, [1:Int64])", "functionCall(r2, [2:Int64])"]))
     }
 
     @TestCase
     func binaryOperatorIsMethodCall(): Unit {
         let e = R.named("e")
         let _ = e + 1
-        @Expect(logged(), lines(["eval Call(Member(e, +), [1:Int64])"]))
+        @Expect(logged(), lines(["memberAccess(e, +)", "functionCall(r1, [1:Int64])"]))
     }
 
     @TestCase
     func plainCangjieCallEvaluatesExternArgumentFirst(): Unit {
         let e = R.named("e")
         let _ = plainCangjie(e.a)
-        @Expect(logged(), lines(["eval Member(e, a)", "plainCangjie r1"]))
+        @Expect(logged(), lines(["memberAccess(e, a)", "plainCangjie r1"]))
     }
 }
 
@@ -118,21 +118,21 @@ class IndexContract {
     func integerIndex(): Unit {
         let e = R.named("e")
         let _ = e[0]
-        @Expect(logged(), lines(["eval Index(e, 0:Int64)"]))
+        @Expect(logged(), lines(["indexedAccess(e, 0:Int64)"]))
     }
 
     @TestCase
     func stringIndex(): Unit {
         let e = R.named("e")
         let _ = e["k"]
-        @Expect(logged(), lines(["eval Index(e, \"k\":String)"]))
+        @Expect(logged(), lines(["indexedAccess(e, \"k\":String)"]))
     }
 
     @TestCase
-    func externIndexIsUnevaluatedTree(): Unit {
+    func externIndexIsEvaluatedFirst(): Unit {
         let e = R.named("e")
         let _ = e[e.k]
-        @Expect(logged(), lines(["eval Index(e, Member(e, k))"]))
+        @Expect(logged(), lines(["memberAccess(e, k)", "indexedAccess(e, r1)"]))
     }
 }
 
@@ -145,14 +145,14 @@ class UpdateContract {
     func memberUpdate(): Unit {
         let e = R.named("e")
         e.f = 1
-        @Expect(logged(), lines(["eval MemberUpdate(e, f, 1:Int64)"]))
+        @Expect(logged(), lines(["memberUpdate(e, f, 1:Int64)"]))
     }
 
     @TestCase
     func indexedUpdate(): Unit {
         let e = R.named("e")
         e[0] = 1
-        @Expect(logged(), lines(["eval IndexUpdate(e, 0:Int64, 1:Int64)"]))
+        @Expect(logged(), lines(["indexedUpdate(e, 0:Int64, 1:Int64)"]))
     }
 
     @TestCase
@@ -161,7 +161,13 @@ class UpdateContract {
         let d = R.named("d")
         a.b(42).c = d.e().f()
         @Expect(logged(), lines([
-            "eval MemberUpdate(Call(Member(a, b), [42:Int64]), c, Call(Member(Call(Member(d, e), []), f), []))"
+            "memberAccess(a, b)",
+            "functionCall(r1, [42:Int64])",
+            "memberAccess(d, e)",
+            "functionCall(r3, [])",
+            "memberAccess(r4, f)",
+            "functionCall(r5, [])",
+            "memberUpdate(r2, c, r6)"
         ]))
     }
 
@@ -169,22 +175,32 @@ class UpdateContract {
     func memberCompoundAssignment(): Unit {
         let e = R.named("e")
         e.f += 1
-        @Expect(logged(), lines(["eval Compound(Member(e, f), +, 1:Int64)"]))
+        @Expect(logged(), lines([
+            "memberAccess(e, f)",
+            "memberAccess(r1, +)",
+            "functionCall(r2, [1:Int64])",
+            "memberUpdate(e, f, r3)"
+        ]))
     }
 
     @TestCase
     func indexedCompoundAssignment(): Unit {
         let e = R.named("e")
         e[0] += 1
-        @Expect(logged(), lines(["eval Compound(Index(e, 0:Int64), +, 1:Int64)"]))
+        @Expect(logged(), lines([
+            "indexedAccess(e, 0:Int64)",
+            "memberAccess(r1, +)",
+            "functionCall(r2, [1:Int64])",
+            "indexedUpdate(e, 0:Int64, r3)"
+        ]))
     }
 
     @TestCase
     func variableCompoundAssignmentIsMethodCall(): Unit {
         var x = R.named("x")
         x += 1
-        @Expect(logged(), lines(["eval Call(Member(x, +), [1:Int64])"]))
-        @Expect(R.render(x), "r1")
+        @Expect(logged(), lines(["memberAccess(x, +)", "functionCall(r1, [1:Int64])"]))
+        @Expect(R.render(x), "r2")
     }
 }
 
@@ -208,12 +224,10 @@ class ConversionContract {
         @Expect(logged(), lines(["toExtern 1:Int64", "toExtern 2:Int64"]))
     }
 
-    // Known compiler bug: with a wildcard binding the initializer runs but `toExtern` is
-    // skipped. Flip this expectation to ["side", "toExtern 1:Int64"] once cjc is fixed.
     @TestCase
-    func wildcardBindingSkipsToExtern(): Unit {
+    func wildcardBindingConverts(): Unit {
         let _: Extern<R> = sideEffect()
-        @Expect(logged(), lines(["side"]))
+        @Expect(logged(), lines(["side", "toExtern 1:Int64"]))
     }
 
     @TestCase
@@ -233,6 +247,6 @@ class ConversionContract {
     func explicitFromExternReceivesEvaluatedValue(): Unit {
         let e = R.named("e")
         let _ = R.fromExtern<Float64>(e.a.b)
-        @Expect(logged(), lines(["eval Member(Member(e, a), b)", "fromExtern r1"]))
+        @Expect(logged(), lines(["memberAccess(e, a)", "memberAccess(r1, b)", "fromExtern r2"]))
     }
 }

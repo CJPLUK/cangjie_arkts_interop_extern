@@ -59,9 +59,7 @@ func jsThrowsBecomeForeignRuntimeException(fixtures: Array<JSValue>): String {
         fails("t.boom()", "boom", { => t.boom() }),
         fails("t.throwString()", "boom string", { => t.throwString() }),
         fails("t.typeError()", "missing is not callable", { => t.typeError() }),
-        fails("t.failingGetter", "boom getter", { => t.failingGetter }),
-        fails("fromExtern of a throwing tree", "boom getter", { => from<Float64>(member(t, "failingGetter")) }),
-        fails("toExtern of a throwing tree", "boom getter", { => to(member(t, "failingGetter")) })
+        fails("t.failingGetter", "boom getter", { => t.failingGetter })
     ])
 }
 

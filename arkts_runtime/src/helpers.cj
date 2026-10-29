@@ -5,7 +5,7 @@ import ohos.business_exception.BusinessException
 
 /**
  * ArkTS-specific entry points used directly by applications, outside the compiler contract.
- * Each runs in one `run`; `Extern` operands may be unevaluated trees.
+ * Each runs in one `run`.
  */
 extend ArkTSRuntime {
     public static func undefined(): Extern<ArkTSRuntime> {
@@ -33,25 +33,25 @@ extend ArkTSRuntime {
 
     /** JS `lhs === rhs`. */
     public static func strictEqual(lhs: Extern<ArkTSRuntime>, rhs: Extern<ArkTSRuntime>): Bool {
-        run { evalTree(lhs).strictEqual(evalTree(rhs)) }
+        run { jsValueOf(lhs).strictEqual(jsValueOf(rhs)) }
     }
 
     public static func isNull(value: Extern<ArkTSRuntime>): Bool {
-        run { evalTree(value).isNull() }
+        run { jsValueOf(value).isNull() }
     }
 
     public static func isUndefined(value: Extern<ArkTSRuntime>): Bool {
-        run { evalTree(value).isUndefined() }
+        run { jsValueOf(value).isUndefined() }
     }
 
     /** JS `key in value`: own or inherited. Throws `ExternMemberAccessException` for non-objects. */
     public static func objectHasProperty(value: Extern<ArkTSRuntime>, key: String): Bool {
-        run { objectOf(evalTree(value)).hasProperty(key) }
+        run { objectOf(jsValueOf(value)).hasProperty(key) }
     }
 
     /** JS `Object.keys(value)`: own enumerable string keys. */
     public static func objectKeys(value: Extern<ArkTSRuntime>): Array<String> {
-        run { objectOf(evalTree(value)).keys() }
+        run { objectOf(jsValueOf(value)).keys() }
     }
 
     /**
@@ -68,7 +68,7 @@ extend ArkTSRuntime {
         isConfigurable!: Bool = true
     ): Bool {
         run {
-            let target = objectOf(evalTree(value))
+            let target = objectOf(jsValueOf(value))
             target.defineOwnProperty(key, toJSValue(propertyValue), isWritable: isWritable,
                 isEnumerable: isEnumerable, isConfigurable: isConfigurable)
         }

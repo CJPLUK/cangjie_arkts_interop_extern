@@ -32,12 +32,12 @@ extend<T> TypeTag<T> <: JSReader where T <: FromJS<T> {
 
 extend ArkTSRuntime {
     /**
-     * Converts an assigned value, call argument or index leaf to a `JSValue`. An `Extern` is
-     * reduced with `evalTree`, so it may be unevaluated. Bind thread only.
+     * Converts an assigned value, call argument or array element to a `JSValue`. An `Extern`
+     * gives the value it holds (a method its function). Bind thread only.
      */
     static func toJSValue(value: Any): JSValue {
         match (value) {
-            case external: Extern<ArkTSRuntime> => evalTree(external)
+            case external: Extern<ArkTSRuntime> => jsValueOf(external)
             case convertible: ToJS => convertible.toJS()
             case _ => throw ExternConversionException("Unsupported conversion to ArkTS")
         }

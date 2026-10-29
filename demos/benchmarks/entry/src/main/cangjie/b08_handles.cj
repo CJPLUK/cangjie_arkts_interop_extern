@@ -23,7 +23,7 @@ func handleBenchmarks(): Array<Benchmark> {
                 let t = runtimeTarget()
                 { n: Int64 =>
                     for (_ in 0..n) {
-                        let a = ArkTSRuntime.eval(t.a)
+                        let a = t.a
                         if (ArkTSRuntime.objectHasProperty(a, "b")) { sink += 1.0 }
                     }
                 }

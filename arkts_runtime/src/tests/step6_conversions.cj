@@ -175,23 +175,28 @@ func largeValues(fixtures: Array<JSValue>): String {
 }
 
 /**
- * fixtures: Target. An unevaluated tree is evaluated by `toExtern` and `fromExtern`; an evaluated
- * `Extern` converted to an `Extern` is returned with its own handle.
+ * fixtures: Target. An `Extern` converted to an `Extern` is returned with its own handle, a
+ * method too; inside an array it gives its value.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func externInputs(fixtures: Array<JSValue>): String {
     let e = ext(fixtures, 0)
-    let tree = member(member(member(e, "a"), "b"), "c")
-    let a = ArkTSRuntime.eval(member(e, "a"))
+    let c = e.a.b.c
+    let a = e.a
+    let m = e.record
     firstFailure([
-        expectEqual("fromExtern of a tree", from<Float64>(tree), 42.0),
-        expectEqual("toExtern of a tree", from<Float64>(to(tree)), 42.0),
-        expectEqual("toExtern of a tree is a payload", ArkTSRuntime.handleKind(to(tree)), "Imm"),
-        expectEqual("fromExtern<E> of a tree is a payload", ArkTSRuntime.handleKind(from<E>(member(e, "a"))), "Ref"),
+        expectEqual("fromExtern of a member read", from<Float64>(c), 42.0),
+        expectEqual("toExtern of a member read", from<Float64>(to(c)), 42.0),
+        expectEqual("toExtern of a number read is an immediate", ArkTSRuntime.handleKind(to(c)), "Imm"),
+        expectEqual("fromExtern<E> of an object read", ArkTSRuntime.handleKind(from<E>(e.a)), "Ref"),
         expectEqual("toExtern(a) keeps a's handle", ArkTSRuntime.sameHandle(to(a), a), true),
         expectEqual("fromExtern<E>(a) keeps a's handle", ArkTSRuntime.sameHandle(from<E>(a), a), true),
         expectEqual("a retained again is a new handle", ArkTSRuntime.sameHandle(ArkTSRuntime.retain(unwrap(a)), a), false),
-        expectEqual("tree inside an array", from<Array<Float64>>(to([tree, member(e, "num")])), [42.0, 1.5])
+        expectEqual("toExtern(method) keeps its handle", ArkTSRuntime.sameHandle(to(m), m), true),
+        expectEqual("toExtern(method) is still a method", ArkTSRuntime.handleKind(to(m)), "Method"),
+        expectEqual("Externs inside an array", from<Array<Float64>>(to([c, e.num])), [42.0, 1.5]),
+        expectEqual("method inside an array is its function",
+            unwrap(to([m])[0]).strictEqual(fixture(fixtures, 0).getProperty("record")), true)
     ])
 }
 

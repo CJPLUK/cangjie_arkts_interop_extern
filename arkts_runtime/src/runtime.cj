@@ -32,9 +32,9 @@ private enum ArkTSIndex {
 }
 
 /**
- * The ArkTS foreign runtime: evaluates `Extern<ArkTSRuntime>` trees built by the compiler
- * from dynamic syntax (`e.f`, `e(...)`, `e[i]`, updates) and converts values between Cangjie
- * and ArkTS. Backed by `ohos.ark_interop`.
+ * The ArkTS foreign runtime: runs the operations the compiler generates for dynamic syntax on
+ * `Extern<ArkTSRuntime>` (`e.f`, `e(...)`, `e[i]`, updates), one `run` each, and converts values
+ * between Cangjie and ArkTS. Backed by `ohos.ark_interop`.
  *
  * All members are static; the class is never instantiated.
  */
@@ -91,7 +91,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         get() { undefinedPair()[0] }
     }
 
-    /** `undefinedValue` as an evaluated `Extern`, shared by the whole runtime. Bind thread only. */
+    /** `undefinedValue` as an `Extern`, shared by the whole runtime. Bind thread only. */
     static prop undefinedExtern: Extern<ArkTSRuntime> {
         get() { undefinedPair()[1] }
     }
@@ -163,52 +163,34 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /**
-     * Evaluates a tree built by the compiler: one `run`, one engine scope, and only the final
-     * result is retained. Payloads are already evaluated; derived constructors go through
-     * `Extern.evalDerived`.
-     */
-    public static func eval(tree: Extern<ArkTSRuntime>): Extern<ArkTSRuntime> {
-        match (tree) {
-            case ExternPayload(_) => tree
-            case ExternMemberAccess(target, field) =>
-                run { ArkTSRuntime.retain(readMember(evalTree(target), field)) }
-            case ExternIndexedAccess(target, index) =>
-                run { ArkTSRuntime.retain(readIndex(evalTree(target), index)) }
-            case ExternMemberUpdate(target, field, value) =>
-                run {
-                    evalMemberUpdate(target, field, value)
-                    undefinedExtern
-                }
-            case ExternIndexedUpdate(target, index, value) =>
-                run {
-                    evalIndexedUpdate(target, index, value)
-                    undefinedExtern
-                }
-            case ExternFunctionCall(callee, arguments) =>
-                run { ArkTSRuntime.retain(call(callee, arguments)) }
-            case ExternCompoundAssignment(_, _, _) => evalCompoundAssignment()
-            case _ => Extern<ArkTSRuntime>.evalDerived(tree)
-        }
+    /** `e.f`. A function keeps `e` as the `this` of a later `functionCall`. */
+    public static func memberAccess(e: Extern<ArkTSRuntime>, field: String): Extern<ArkTSRuntime> {
+        run { ArkTSRuntime.retain(readMember(ArkTSRuntime.jsValueOf(e), field), receiver: e) }
     }
 
-    /** The same operations as `eval`, recursively, without `run` or `retain`. Bind thread only. */
-    static func evalTree(tree: Extern<ArkTSRuntime>): JSValue {
-        match (tree) {
-            case ExternPayload(handle) => ArkTSRuntime.evalPayload(handle)
-            case ExternMemberAccess(target, field) =>
-                readMember(evalTree(target), field)
-            case ExternIndexedAccess(target, index) =>
-                readIndex(evalTree(target), index)
-            case ExternMemberUpdate(target, field, value) =>
-                evalMemberUpdate(target, field, value)
-            case ExternIndexedUpdate(target, index, value) =>
-                evalIndexedUpdate(target, index, value)
-            case ExternFunctionCall(callee, arguments) =>
-                call(callee, arguments)
-            case ExternCompoundAssignment(_, _, _) => evalCompoundAssignment()
-            case _ =>
-                evalTree(Extern<ArkTSRuntime>.evalDerived(tree))
+    /** `e[arg]`. A function keeps `e` as the `this` of a later `functionCall`. */
+    public static func indexedAccess(e: Extern<ArkTSRuntime>, arg: Any): Extern<ArkTSRuntime> {
+        run { ArkTSRuntime.retain(readIndex(ArkTSRuntime.jsValueOf(e), arg), receiver: e) }
+    }
+
+    /** `e.f = value`. */
+    public static func memberUpdate(e: Extern<ArkTSRuntime>, field: String, value: Any): Unit {
+        run { writeMember(ArkTSRuntime.jsValueOf(e), field, ArkTSRuntime.toJSValue(value)) }
+    }
+
+    /** `e[field] = value`. */
+    public static func indexedUpdate(e: Extern<ArkTSRuntime>, field: Any, value: Any): Unit {
+        run { writeIndex(ArkTSRuntime.jsValueOf(e), field, value) }
+    }
+
+    /**
+     * `e(args)`. `this` is the receiver a member or element read kept, `undefined` for any
+     * other function.
+     */
+    public static func functionCall(e: Extern<ArkTSRuntime>, args: Array<Any>): Extern<ArkTSRuntime> {
+        run {
+            let (function, receiver) = ArkTSRuntime.calleeOf(e)
+            ArkTSRuntime.retain(invoke(function, args, receiver ?? undefinedValue))
         }
     }
 
@@ -234,12 +216,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    private static func evalMemberUpdate(target: Extern<ArkTSRuntime>, field: String, value: Any): JSValue {
-        let receiver = evalTree(target)
-        writeMember(receiver, field, ArkTSRuntime.toJSValue(value))
-        undefinedValue
-    }
-
     static func memberError(e: BusinessException): Exception {
         if (e.code == TYPE_MISMATCH_CODE) {
             return ExternMemberAccessException(e.message)
@@ -252,12 +228,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             return ExternIndexedAccessException(e.message)
         }
         e
-    }
-
-    private static func evalIndexedUpdate(target: Extern<ArkTSRuntime>, index: Any, value: Any): JSValue {
-        let receiver = evalTree(target)
-        writeIndex(receiver, index, value)
-        undefinedValue
     }
 
     private static func readIndex(target: JSValue, index: Any): JSValue {
@@ -288,8 +258,8 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     /**
      * The Cangjie types `ark_interop` accepts: `Int64` is an element position; `String`,
-     * `Utf16String` and `Float64` are property keys. An `Extern` (possibly unevaluated) holding
-     * a number, a string or a symbol is a property key, the number as a `Float64`.
+     * `Utf16String` and `Float64` are property keys. An `Extern` holding a number, a string or a
+     * symbol is a property key, the number as a `Float64`.
      */
     private static func toIndex(index: Any): ArkTSIndex {
         match (index) {
@@ -298,7 +268,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             case number: Float64 => Key(number)
             case name: Utf16String => Key(name)
             case external: Extern<ArkTSRuntime> =>
-                let value = evalTree(external)
+                let value = ArkTSRuntime.jsValueOf(external)
                 let t = value.typeof()
                 match {
                     case t == JSType.NUMBER => Key(value.toNumber())
@@ -310,20 +280,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** `this` is the target of a member or index callee, `undefined` otherwise; evaluated once. */
-    private static func call(callee: Extern<ArkTSRuntime>, arguments: Array<Any>): JSValue {
-        match (callee) {
-            case ExternMemberAccess(receiver, field) =>
-                let target = evalTree(receiver)
-                invoke(readMember(target, field), arguments, target)
-            case ExternIndexedAccess(receiver, index) =>
-                let target = evalTree(receiver)
-                invoke(readIndex(target, index), arguments, target)
-            case _ =>
-                invoke(evalTree(callee), arguments, undefinedValue)
-        }
-    }
-
     private static func invoke(function: JSValue, arguments: Array<Any>, thisArg: JSValue): JSValue {
         if (!function.isFunction()) {
             throw ExternFunctionAccessException("ArkTS value is not a function")
@@ -332,28 +288,22 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         function.asFunction().call(converted, thisArg: thisArg)
     }
 
-    /** ArkTS does not support compound assignment (`e.f += 1`, `e[i] &&= v`, ...). */
-    private static func evalCompoundAssignment(): Nothing {
-        throw ExternCompoundAssignmentException("Compound assignment not supported in ArkTS foreign runtime!")
-    }
-
     /**
      * Converts a Cangjie value to ArkTS (type mapping in `conversion.cj`). An `Extern` is
-     * evaluated with `eval`, so an evaluated one is returned as is.
+     * returned as is.
      */
     public static func toExtern<R>(value: R): Extern<ArkTSRuntime> {
         if (let Some(external) <- (value as Extern<ArkTSRuntime>)) {
-            return eval(external)
+            return external
         }
         run { ArkTSRuntime.retain(ArkTSRuntime.toJSValue(value)) }
     }
 
     /**
-     * Evaluates `value` and reads it as `R`; wrong JS types throw `ExternConversionException`.
-     * The compiler passes dynamic expressions already evaluated, so a number, boolean,
-     * `undefined` or `null` arrives as an immediate: on the bind thread it is read without
-     * `run`, since reading it creates no engine handle and runs no JS code. Read as an `Extern`,
-     * `value` goes through `eval`, so an evaluated one is returned as is.
+     * Reads `value` as `R`; wrong JS types throw `ExternConversionException`. A number, boolean,
+     * `undefined` or `null` is an immediate: on the bind thread it is read without `run`, since
+     * reading it creates no engine handle and runs no JS code. Read as an `Extern`, `value` is
+     * returned as is.
      */
     public static func fromExtern<R>(value: Extern<ArkTSRuntime>): R {
         if (let Some(immediate) <- ArkTSRuntime.immediateOf(value)) {
@@ -362,9 +312,9 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             }
         }
         match (None<R>) {
-            case _: Option<Extern<ArkTSRuntime>> => return (eval(value) as R).getOrThrow()
+            case _: Option<Extern<ArkTSRuntime>> => return (value as R).getOrThrow()
             case _ => ()
         }
-        run { ArkTSRuntime.fromJSValue<R>(evalTree(value)) }
+        run { ArkTSRuntime.fromJSValue<R>(ArkTSRuntime.jsValueOf(value)) }
     }
 }

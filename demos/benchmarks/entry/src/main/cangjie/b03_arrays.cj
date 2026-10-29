@@ -11,7 +11,7 @@ func arrayBenchmarks(): Array<Benchmark> {
                 { n: Int64 => for (i in 0..n) { sink += items[i % 1000].toNumber() } }
             },
             { =>
-                let items = ArkTSRuntime.eval(runtimeTarget().items)
+                let items = runtimeTarget().items
                 { n: Int64 => for (i in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(items[i % 1000]) } }
             }, false),
         Benchmark("array.readFloat64Index", 30000,
@@ -20,7 +20,7 @@ func arrayBenchmarks(): Array<Benchmark> {
                 { n: Int64 => for (i in 0..n) { sink += items.getProperty(Float64(i % 1000)).toNumber() } }
             },
             { =>
-                let items = ArkTSRuntime.eval(runtimeTarget().items)
+                let items = runtimeTarget().items
                 { n: Int64 => for (i in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(items[Float64(i % 1000)]) } }
             }, false),
         Benchmark("array.readExternIndex", 30000,
@@ -30,7 +30,7 @@ func arrayBenchmarks(): Array<Benchmark> {
                 { n: Int64 => for (i in 0..n) { sink += items.getProperty(keys[i % 1000].toNumber()).toNumber() } }
             },
             { =>
-                let items = ArkTSRuntime.eval(runtimeTarget().items)
+                let items = runtimeTarget().items
                 let keys = Array<Extern<ArkTSRuntime>>(1000) { k => ArkTSRuntime.toExtern(Float64(k)) }
                 { n: Int64 => for (i in 0..n) { sink += ArkTSRuntime.fromExtern<Float64>(items[keys[i % 1000]]) } }
             }, false),
@@ -42,7 +42,7 @@ func arrayBenchmarks(): Array<Benchmark> {
                 }
             },
             { =>
-                let items = ArkTSRuntime.eval(runtimeTarget().items)
+                let items = runtimeTarget().items
                 { n: Int64 => for (i in 0..n) { items[i % 1000] = Float64(i % 1000) * 0.5 } }
             }, false),
         Benchmark("array.loop1000", 30,
@@ -55,7 +55,7 @@ func arrayBenchmarks(): Array<Benchmark> {
                 }
             },
             { =>
-                let items = ArkTSRuntime.eval(runtimeTarget().items)
+                let items = runtimeTarget().items
                 { n: Int64 =>
                     for (_ in 0..n) {
                         for (j in 0..1000) { sink += ArkTSRuntime.fromExtern<Float64>(items[j]) }

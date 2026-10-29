@@ -131,9 +131,9 @@ func interopTarget(context: JSContext): JSObject {
 }
 
 func runtimeBench(): Extern<ArkTSRuntime> {
-    ArkTSRuntime.eval(ArkTSRuntime.global().Bench)
+    ArkTSRuntime.global().Bench
 }
 
 func runtimeTarget(): Extern<ArkTSRuntime> {
-    ArkTSRuntime.eval(ArkTSRuntime.global().Bench.target)
+    ArkTSRuntime.global().Bench.target
 }

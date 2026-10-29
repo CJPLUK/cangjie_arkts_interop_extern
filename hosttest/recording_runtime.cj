@@ -1,11 +1,12 @@
 import std.collection.*
 
 /**
- * A foreign runtime that evaluates nothing. It records every tree passed to `eval` and
- * `fromExtern`, and every value passed to `toExtern`, as strings in `log`.
+ * A foreign runtime that evaluates nothing. It records every call the compiler generates
+ * (`memberAccess`, `indexedAccess`, `memberUpdate`, `indexedUpdate`, `functionCall`), and every
+ * value passed to `toExtern` and `fromExtern`, as strings in `log`.
  *
- * Payloads are strings naming the value, e.g. `ExternPayload("e")` renders as `e`. `eval`
- * returns a fresh payload `r1`, `r2`, ... so later trees show which result they consumed.
+ * Payloads are strings naming the value, e.g. `Extern<RecordingRuntime>("e")` renders as `e`. Each read or call
+ * returns a fresh payload `r1`, `r2`, ... so later calls show which result they consumed.
  */
 public class RecordingRuntime <: ForeignRuntime<RecordingRuntime> {
     public static let log = ArrayList<String>()
@@ -17,13 +18,35 @@ public class RecordingRuntime <: ForeignRuntime<RecordingRuntime> {
     }
 
     public static func named(name: String): Extern<RecordingRuntime> {
-        Extern<RecordingRuntime>.ExternPayload(name)
+        Extern<RecordingRuntime>(name)
     }
 
-    public static func eval(tree: Extern<RecordingRuntime>): Extern<RecordingRuntime> {
-        log.add("eval ${render(tree)}")
+    private static func result(): Extern<RecordingRuntime> {
         results++
         named("r${results}")
+    }
+
+    public static func memberAccess(e: Extern<RecordingRuntime>, field: String): Extern<RecordingRuntime> {
+        log.add("memberAccess(${render(e)}, ${field})")
+        result()
+    }
+
+    public static func indexedAccess(e: Extern<RecordingRuntime>, arg: Any): Extern<RecordingRuntime> {
+        log.add("indexedAccess(${render(e)}, ${renderLeaf(arg)})")
+        result()
+    }
+
+    public static func memberUpdate(e: Extern<RecordingRuntime>, field: String, value: Any): Unit {
+        log.add("memberUpdate(${render(e)}, ${field}, ${renderLeaf(value)})")
+    }
+
+    public static func indexedUpdate(e: Extern<RecordingRuntime>, field: Any, value: Any): Unit {
+        log.add("indexedUpdate(${render(e)}, ${renderLeaf(field)}, ${renderLeaf(value)})")
+    }
+
+    public static func functionCall(e: Extern<RecordingRuntime>, args: Array<Any>): Extern<RecordingRuntime> {
+        log.add("functionCall(${render(e)}, [${joinLeaves(args)}])")
+        result()
     }
 
     public static func toExtern<R>(value: R): Extern<RecordingRuntime> {
@@ -41,22 +64,11 @@ public class RecordingRuntime <: ForeignRuntime<RecordingRuntime> {
         }
     }
 
-    public static func render(tree: Extern<RecordingRuntime>): String {
-        match (tree) {
-            case ExternPayload(p) => (p as String) ?? "<payload>"
-            case ExternMemberAccess(t, f) => "Member(${render(t)}, ${f})"
-            case ExternIndexedAccess(t, i) => "Index(${render(t)}, ${renderLeaf(i)})"
-            case ExternMemberUpdate(t, f, v) => "MemberUpdate(${render(t)}, ${f}, ${renderLeaf(v)})"
-            case ExternIndexedUpdate(t, i, v) =>
-                "IndexUpdate(${render(t)}, ${renderLeaf(i)}, ${renderLeaf(v)})"
-            case ExternFunctionCall(t, args) =>
-                "Call(${render(t)}, [${joinLeaves(args)}])"
-            case ExternCompoundAssignment(t, op, v) => "Compound(${render(t)}, ${op}, ${renderLeaf(v)})"
-            case _ => "<derived>"
-        }
+    public static func render(e: Extern<RecordingRuntime>): String {
+        (Extern<RecordingRuntime>.getPayload(e) as String) ?? "<payload>"
     }
 
-    /** Renders an operand with its runtime type, e.g. `1:Int64`, or a nested tree. */
+    /** Renders an operand with its runtime type, e.g. `1:Int64`, or a payload's name. */
     public static func renderLeaf(value: Any): String {
         match (value) {
             case e: Extern<RecordingRuntime> => render(e)

@@ -65,7 +65,7 @@ func undefinedAndNull(context: JSContext, fixtures: Array<JSValue>): String {
     })
     firstFailure([
         firstFailure(table),
-        expectEqual("isUndefined of a tree", ArkTSRuntime.isUndefined(member(sink, "u")), true),
+        expectEqual("isUndefined of a member read", ArkTSRuntime.isUndefined(sink.u), true),
         foreignPayloadFails("isUndefined(foreign payload)", { => ArkTSRuntime.isUndefined(payload()) }),
         foreignPayloadFails("isNull(foreign payload)", { => ArkTSRuntime.isNull(payload()) })
     ])
@@ -116,7 +116,7 @@ func symbols(fixtures: Array<JSValue>): String {
 
 /**
  * fixtures: pairs (array of [a, b]), expected (ArkTS `a === b` for each pair), Rectangle.
- * Then pairs made in Cangjie, and trees as operands.
+ * Then pairs made in Cangjie, and member reads as operands.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func strictEqualTable(fixtures: Array<JSValue>): String {
@@ -131,8 +131,8 @@ func strictEqualTable(fixtures: Array<JSValue>): String {
         expectEqual("\"a\" === \"a\" (Cangjie strings)", ArkTSRuntime.strictEqual(to("a"), to("a")), true),
         expectEqual("1n === 1n (Int64)", ArkTSRuntime.strictEqual(to(1), to(1)), true),
         expectEqual("1n === 1 (Int64, Float64)", ArkTSRuntime.strictEqual(to(1), to(1.0)), false),
-        expectEqual("rect.width === rect.width (trees)",
-            ArkTSRuntime.strictEqual(member(rect, "width"), member(rect, "width")), true),
+        expectEqual("rect.width === rect.width (two reads)", ArkTSRuntime.strictEqual(rect.width, rect.width), true),
+        expectEqual("rect.area === rect.area (methods)", ArkTSRuntime.strictEqual(rect.area, rect.area), true),
         foreignPayloadFails("strictEqual(foreign payload)", { => ArkTSRuntime.strictEqual(rect, payload()) })
     ])
 }
@@ -159,8 +159,7 @@ func objectProperties(fixtures: Array<JSValue>): String {
         expectEqual("keys skip non-enumerable and symbols", ArkTSRuntime.objectKeys(o), ["visible"]),
         expectEqual("keys of an array", ArkTSRuntime.objectKeys(items), ["0", "1"]),
         expectEqual("has '1' on an array", ArkTSRuntime.objectHasProperty(items, "1"), true),
-        expectEqual("keys of a tree (globalThis.JSON)",
-            ArkTSRuntime.objectKeys(member(ArkTSRuntime.global(), "JSON")).size, 0),
+        expectEqual("keys of globalThis.JSON", ArkTSRuntime.objectKeys(ArkTSRuntime.global().JSON).size, 0),
         notObject("objectHasProperty(1.5)", "number", { => ArkTSRuntime.objectHasProperty(to(1.5), "x") }),
         notObject("objectKeys(\"s\")", "string", { => ArkTSRuntime.objectKeys(to("s")) }),
         notObject("objectKeys(undefined)", "undefined", { => ArkTSRuntime.objectKeys(ArkTSRuntime.undefined()) }),

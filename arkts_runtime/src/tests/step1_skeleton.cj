@@ -8,7 +8,7 @@ func step1Scenarios(): Array<(String, Scenario)> {
     [
         ("step1.notBoundExceptionNames", { _, _ => notBoundExceptionNames() }),
         ("step1.alreadyBoundExceptionNames", { _, _ => alreadyBoundExceptionNames() }),
-        ("step1.dynamicSyntaxReachesEval", { _, _ => dynamicSyntaxReachesEval() }),
+        ("step1.dynamicSyntaxReachesRuntime", { _, _ => dynamicSyntaxReachesRuntime() }),
         ("step1.extendHelperReachable", { _, _ => extendHelperReachable() }),
         ("step1.internalVisibleToSubpackage", { _, _ => internalVisibleToSubpackage() })
     ]
@@ -16,7 +16,7 @@ func step1Scenarios(): Array<(String, Scenario)> {
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func payload(): Extern<ArkTSRuntime> {
-    Extern<ArkTSRuntime>.ExternPayload(1)
+    Extern<ArkTSRuntime>(1)
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -42,11 +42,11 @@ func alreadyBoundExceptionNames(): String {
 }
 
 /**
- * `e.f` must be compiled into a call of `ArkTSRuntime.eval` on the device toolchain: on a
- * payload the runtime did not make, only our `evalPayload` throws this.
+ * `e.f` must be compiled into a call of `ArkTSRuntime.memberAccess` on the device toolchain: on
+ * a payload the runtime did not make, only our `evalPayload` throws this.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func dynamicSyntaxReachesEval(): String {
+func dynamicSyntaxReachesRuntime(): String {
     let e = payload()
     expectThrows<ExternConversionException>("e.f", "Extern payload was not produced by ArkTSRuntime", { => e.f })
 }

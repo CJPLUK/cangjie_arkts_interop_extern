@@ -78,13 +78,11 @@ emulator.
 | `case x: Extern<ArkTSRuntime>` type patterns work | Used in `toJSValue` / `readIndex` |
 | `std.reflect` is not available | Not used |
 | `JSKeyable` is only `String`, `JSString`, `JSSymbol` (not `Float64`) | Numeric indices become property names (their JS string form, `"5"`) instead of `getProperty(Float64)` (deviation from the design) |
-| `--enable-extern-sequence` exists | Used to test `ExternSequence` in step 12 |
 | `std.unittest` is available for macOS | Host tests in layer 1 below |
-| Compiler bug: `let _: Extern<R> = expr` runs `expr` but skips `toExtern` (named bindings, assignments and arguments are fine) | Pinned by `wildcardBindingSkipsToExtern` in `hosttest/compiler_contract_test.cj`; flip it when cjc is fixed |
-| Without the forced cast, `R.fromExtern<U>(e.a.b)` receives the already evaluated `r1`, not the tree (the argument is desugared like any call argument) | `fromExtern` cannot avoid retaining the result until `(U)e` is supported; pinned by `explicitFromExternReceivesEvaluatedValue` |
+| `let _: Extern<R> = expr` calls `toExtern` (it skipped it until the simple-model cjc) | Pinned by `wildcardBindingConverts` in `hosttest/compiler_contract_test.cj` |
+| `R.fromExtern<U>(e.a.b)` receives the `Extern` returned by the last `memberAccess` (every dynamic operation returns a retained value) | `fromExtern` cannot avoid retaining the result until `(U)e` is supported; pinned by `explicitFromExternReceivesEvaluatedValue` |
 | Default (`internal`) members are visible to subpackages but not to the parent package; `extend` in another file can add `public static` functions | Device scenarios live in the subpackage `arkts.tests` and can use internal hooks; `index.cj` and user code cannot (checked by a deliberate failing build, step 1) |
 | A user exception class prints as `Exception: ...` unless it overrides `getClassName` | Our exceptions override it; tested in step 1 |
-| Bare `ExternPayload(x)` fails to infer `T` even in non-generic code with a known return type | Written as `Extern<ArkTSRuntime>.ExternPayload(x)` |
 | `foreign` is a keyword | Not used as an identifier |
 | ArkTS: allocating garbage triggers only young collections, which never cleared a `WeakRef` (16 collections, 1.8 GB freed); `hidebug.dumpJsHeapData` runs a full one (0.5–0.9 s) | GC tests force collections with a heap dump; memory is measured with `hidebug.getAppVMObjectUsedSize()` after one, not with PSS (too noisy: ±40 MB) |
 | Engine values kept past their scope without a global handle still read correctly until a full GC | Lifetime tests must force a full GC and observe it (`WeakRef`) |
@@ -535,6 +533,29 @@ emulator.
   table, built by `write_chart` in `run.sh` from every `.csv` of the same device in `results/`,
   oldest first: one line per benchmark, `arkts_runtime` ns/op on a logarithmic axis, inline
   SVG (hover highlights a line and shows a point's value). First in `*-2026-10-16-1523.html`.
+- **Simple Extern model** (2026-10-28). The compiler and `std.core` moved from the enum
+  `Extern<T>` with `eval` (`extern_architecture.md`) to `extern_architecture_simple_model.md`:
+  `Extern<T>` is a struct holding a payload, and every dynamic operation calls one of
+  `memberAccess`, `indexedAccess`, `memberUpdate`, `indexedUpdate`, `functionCall` (a method
+  call is `functionCall(memberAccess(e, "m"), args)`; compound assignment reads the operator as
+  a member and calls it). The runtime implements the five functions, each in its own `run`,
+  each read or call returning a retained value; `eval`, `evalTree` and the tree code are gone.
+  A function read as a member or element is kept as `ArkTSHandle.Method(function, receiver)`,
+  so `functionCall` calls it with that `this`; consequence: `let f = e.m; f()` now has
+  `this` = `e` (`step5.extractedMethodKeepsThis`, was `freeCallThisUndefined`). Compound
+  assignment on a primitive throws `ExternMemberAccessException` ("expect: object, given:
+  number"), no longer `ExternCompoundAssignmentException` (removed from `std.core`). Removed
+  scenarios: `step5.evalPayloadUnchanged`, `step5.derivedConstructor` (no `eval`, no
+  `ExternSequence`), the tree checks of `step6.externInputs`, `step7` and `step8`;
+  `step5.evalFromOtherThread` renamed `operationsFromOtherThread`. The host contract tests
+  record the new calls; the wildcard-binding bug is fixed (`wildcardBindingConverts`). The
+  runtime and std libraries in `dependencies_libs/base` were recopied from the new SDK. 24 host
+  and 87 device tests pass on both devices; the hello and rectangle demos work on both.
+  Benchmarks `ohos-2026-10-28-1747` / `emulator-2026-10-29-0951` against
+  `*-2026-10-16-1810` / `-1811`, `arkts_runtime`: `property.readChain` 2.07 / 2.16 (three
+  `run`s instead of one), `call.method0/1/3` 1.28–1.32 / 1.43–1.63 (two `run`s), the rest
+  within the noise (`thread.readNumber` alternates between about 145 and 430 µs on the phone
+  in every earlier run).
 
 ## Testing strategy
 
@@ -545,12 +566,13 @@ check.
 
 `ark_interop` cannot run on macOS, so this layer covers only what does not need a VM:
 
-- **Compiler contract.** A `RecordingRuntime <: ForeignRuntime<RecordingRuntime>` whose `eval`,
-  `toExtern` and `fromExtern` record the trees and values they receive. Tests write ordinary
-  dynamic syntax and assert the exact tree shape and leaf types. This pins down what the ArkTS
-  evaluator relies on (receiver shape for `this`, compound-assignment shape, `Int64` literals
-  as leaves, one `eval` per chain) and catches compiler changes before they show up as device
-  failures.
+- **Compiler contract.** A `RecordingRuntime <: ForeignRuntime<RecordingRuntime>` whose
+  `memberAccess`, `indexedAccess`, `memberUpdate`, `indexedUpdate`, `functionCall`, `toExtern`
+  and `fromExtern` record the calls and values they receive. Tests write ordinary dynamic
+  syntax and assert the exact sequence of calls and the argument types. This pins down what
+  the runtime relies on (a method call is `functionCall(memberAccess(e, "m"), args)`, the
+  expansion of compound assignment, `Int64` literals passed as they are, evaluation order) and
+  catches compiler changes before they show up as device failures.
 
 Location: `hosttest/` at the project root (outside the DevEco build), one `*_test.cj` per
 topic, `@Test` classes from `std.unittest`. Run with:
@@ -639,8 +661,9 @@ arkts_runtime/
 ├── README.md       for apps using the library
 ├── src/
 │   ├── exceptions.cj   ArkTSContextNotBoundException, ArkTSContextAlreadyBoundException
-│   ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, eval, evalTree, call, index
-│   ├── handle.cj       ArkTSHandle (Imm / Ref), retain, evalPayload
+│   ├── runtime.cj      ArkTSRuntime: bind, context, run, ArkTSResult, memberAccess, indexedAccess,
+│   │                   memberUpdate, indexedUpdate, functionCall, call, index
+│   ├── handle.cj       ArkTSHandle (Imm / Ref / Method), retain, jsValueOf, evalPayload, calleeOf
 │   ├── conversion.cj   toJSValue, toExtern, fromExtern, array helpers
 │   ├── helpers.cj      undefined, null, object, global, symbol, strictEqual, isNull, isUndefined,
 │   │                   objectHasProperty, objectKeys, objectDefineOwnProperty,
@@ -660,7 +683,7 @@ demo.sh                               build, install and start one demo
 ```
 
 All runtime files declare `package arkts_runtime`. The class body lives in
-`runtime.cj`. Members shared across files (`context`, `run`, `evalTree`, `retain`,
+`runtime.cj`. Members shared across files (`context`, `run`, `jsValueOf`, `retain`,
 `toJSValue`) use the default `internal` visibility. Public helpers in `helpers.cj` are added
 with `extend ArkTSRuntime { public static func ... }`. Both points are verified in step 1.
 `handle.cj` also uses an `extend` (internal `retain`, `evalPayload`, `handleKind`) so the
