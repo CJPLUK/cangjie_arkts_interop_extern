@@ -30,51 +30,6 @@ extend<T> TypeTag<T> <: JSReader where T <: FromJS<T> {
     }
 }
 
-extend ArkTSRuntime {
-    /**
-     * Converts an assigned value, call argument or array element to a `JSValue`. An `Extern`
-     * gives the value it holds (a method its function). Bind thread only.
-     */
-    static func toJSValue(value: Any): JSValue {
-        match (value) {
-            case external: Extern<ArkTSRuntime> => jsValueOf(external)
-            case convertible: ToJS => convertible.toJS()
-            case _ => throw ExternConversionException("Unsupported conversion to ArkTS")
-        }
-    }
-
-    /** Reads `value` as a Cangjie `R`; `Extern<ArkTSRuntime>` is the identity. Bind thread only. */
-    static func fromJSValue<R>(value: JSValue): R {
-        // Concrete types skip the `TypeTag` allocation and the interface cast; only `Array<T>` and
-        // `Option<T>` need them, to reach the element type's `fromJS`.
-        match (None<R>) {
-            case _: Option<Float64> => return (Float64.fromJS(value) as R).getOrThrow()
-            case _: Option<Bool> => return (Bool.fromJS(value) as R).getOrThrow()
-            case _: Option<String> => return (String.fromJS(value) as R).getOrThrow()
-            case _: Option<Int64> => return (Int64.fromJS(value) as R).getOrThrow()
-            case _: Option<Int32> => return (Int32.fromJS(value) as R).getOrThrow()
-            case _: Option<Int16> => return (Int16.fromJS(value) as R).getOrThrow()
-            case _: Option<Int8> => return (Int8.fromJS(value) as R).getOrThrow()
-            case _: Option<UInt64> => return (UInt64.fromJS(value) as R).getOrThrow()
-            case _: Option<UInt32> => return (UInt32.fromJS(value) as R).getOrThrow()
-            case _: Option<UInt16> => return (UInt16.fromJS(value) as R).getOrThrow()
-            case _: Option<UInt8> => return (UInt8.fromJS(value) as R).getOrThrow()
-            case _: Option<Float32> => return (Float32.fromJS(value) as R).getOrThrow()
-            case _: Option<Float16> => return (Float16.fromJS(value) as R).getOrThrow()
-            case _: Option<BigInt> => return (BigInt.fromJS(value) as R).getOrThrow()
-            case _: Option<Unit> => return (Unit.fromJS(value) as R).getOrThrow()
-            case _ => ()
-        }
-        match (TypeTag<R>() as JSReader) {
-            case Some(reader) => (reader.read(value) as R).getOrThrow()
-            case None => match (None<R>) {
-                case _: Option<Extern<ArkTSRuntime>> => (retain(value) as R).getOrThrow()
-                case _ => throw ExternConversionException("Unsupported conversion from ArkTS")
-            }
-        }
-    }
-}
-
 private func jsNumber(n: Float64): JSValue {
     ArkTSRuntime.context.number(n).toJSValue()
 }

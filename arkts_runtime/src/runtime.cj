@@ -1,8 +1,12 @@
 package arkts_runtime
 
+import std.math.numeric.BigInt
 import std.sync.Mutex
 import std.sync.Condition
 import ohos.ark_interop.JSContext
+import ohos.ark_interop.JSHeapObject
+import ohos.ark_interop.JSFunction
+import ohos.ark_interop.JSObject
 import ohos.ark_interop.JSValue
 import ohos.ark_interop.JSKeyable
 import ohos.ark_interop.JSType
@@ -17,6 +21,13 @@ const INDEX_OUT_OF_RANGE_CODE: Int32 = 34300001
 
 /** `BusinessException.code` of `ark_interop`'s "The ArkTS data types do not match". */
 const TYPE_MISMATCH_CODE: Int32 = 34300005
+
+/** What an `Extern<ArkTSRuntime>` made by the runtime holds as its payload. */
+private enum ArkTSHandle {
+    | Imm(JSValue)      // undefined / null / boolean / number
+    | Ref(JSHeapObject) // string / bigint / symbol / object (arrays too) / function / external
+    | Method(JSFunction, ArkTSHandle) // a function read as a member or element, with its receiver
+}
 
 /** Outcome of an operation run on the JS thread, carried back to the waiting thread. */
 private enum ArkTSResult<R> {
@@ -316,5 +327,251 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             case _ => ()
         }
         run { ArkTSRuntime.fromJSValue<R>(ArkTSRuntime.jsValueOf(value)) }
+    }
+
+    /**
+     * Wraps a `JSValue` produced by the engine as an `Extern`. Heap values become engine-global
+     * handles, so the result outlives the current scope. A function read from `receiver` keeps
+     * it, as the `this` of a later `functionCall`. Bind thread only.
+     */
+    static func retain(value: JSValue, receiver!: ?Extern<ArkTSRuntime> = None): Extern<ArkTSRuntime> {
+        // `JSType` constants are not patterns, hence `match` without a selector.
+        let t = value.typeof()
+        let handle = match {
+            case t == JSType.NUMBER || t == JSType.UNDEFINED || t == JSType.NULL || t == JSType.BOOLEAN => Imm(value)
+            case t == JSType.STRING => Ref(value.asString())
+            case t == JSType.OBJECT => Ref(value.asObject())
+            case t == JSType.FUNCTION => match (receiver) {
+                case Some(target) => Method(value.asFunction(), handleOf(target))
+                case None => Ref(value.asFunction())
+            }
+            case t == JSType.SYMBOL => Ref(value.asSymbol())
+            case t == JSType.BIGINT => Ref(value.asBigInt())
+            case t == JSType.EXTERNAL => Ref(value.asExternal())
+            case _ => throw ExternConversionException("Unknown ArkTS value type ${t.toString()}")
+        }
+        Extern<ArkTSRuntime>(handle)
+    }
+
+    /**
+     * The `JSValue` held by an `Extern` made by `retain`, valid in the current scope; a method
+     * gives its function. Throws `ExternConversionException` for any other payload. Bind thread only.
+     */
+    static func jsValueOf(value: Extern<ArkTSRuntime>): JSValue {
+        evalPayload(Extern<ArkTSRuntime>.getPayload(value))
+    }
+
+    /** `jsValueOf` for a payload. */
+    static func evalPayload(handle: Any): JSValue {
+        match (handle as ArkTSHandle) {
+            case Some(h) => valueOfHandle(h)
+            case None => throw foreignPayload()
+        }
+    }
+
+    /** The function and, for a method, its receiver. Bind thread only. */
+    static func calleeOf(callee: Extern<ArkTSRuntime>): (JSValue, ?JSValue) {
+        match (Extern<ArkTSRuntime>.getPayload(callee) as ArkTSHandle) {
+            case Some(Method(function, receiver)) => (function.toJSValue(), valueOfHandle(receiver))
+            case Some(h) => (valueOfHandle(h), None)
+            case None => throw foreignPayload()
+        }
+    }
+
+    private static func valueOfHandle(handle: ArkTSHandle): JSValue {
+        match (handle) {
+            case Imm(value) => value
+            case Ref(owner) => owner.toJSValue()
+            case Method(function, _) => function.toJSValue()
+        }
+    }
+
+    private static func handleOf(value: Extern<ArkTSRuntime>): ArkTSHandle {
+        match (Extern<ArkTSRuntime>.getPayload(value) as ArkTSHandle) {
+            case Some(handle) => handle
+            case None => throw foreignPayload()
+        }
+    }
+
+    private static func foreignPayload(): ExternConversionException {
+        ExternConversionException("Extern payload was not produced by ArkTSRuntime")
+    }
+
+    /** The `JSValue` of a payload holding an immediate, `None` for anything else. */
+    static func immediateOf(value: Extern<ArkTSRuntime>): ?JSValue {
+        match (Extern<ArkTSRuntime>.getPayload(value) as ArkTSHandle) {
+            case Some(Imm(immediate)) => immediate
+            case _ => None
+        }
+    }
+
+    /** Test hook: whether `a` and `b` hold the same engine handle (a method's function). */
+    static func sameHandle(a: Extern<ArkTSRuntime>, b: Extern<ArkTSRuntime>): Bool {
+        match ((Extern<ArkTSRuntime>.getPayload(a) as ArkTSHandle, Extern<ArkTSRuntime>.getPayload(b) as ArkTSHandle)) {
+            case (Some(Ref(p)), Some(Ref(q))) => refEq(p, q)
+            case (Some(Method(p, _)), Some(Method(q, _))) => refEq(p, q)
+            case _ => false
+        }
+    }
+
+    /** Test hook: "Imm", "Ref" or "Method" for a payload made by `retain`, otherwise "foreign payload". */
+    static func handleKind(value: Extern<ArkTSRuntime>): String {
+        match (Extern<ArkTSRuntime>.getPayload(value) as ArkTSHandle) {
+            case Some(Imm(_)) => "Imm"
+            case Some(Ref(_)) => "Ref"
+            case Some(Method(_, _)) => "Method"
+            case None => "foreign payload"
+        }
+    }
+
+    /**
+     * Converts an assigned value, call argument or array element to a `JSValue`. An `Extern`
+     * gives the value it holds (a method its function). Bind thread only.
+     */
+    static func toJSValue(value: Any): JSValue {
+        match (value) {
+            case external: Extern<ArkTSRuntime> => jsValueOf(external)
+            case convertible: ToJS => convertible.toJS()
+            case _ => throw ExternConversionException("Unsupported conversion to ArkTS")
+        }
+    }
+
+    /** Reads `value` as a Cangjie `R`; `Extern<ArkTSRuntime>` is the identity. Bind thread only. */
+    static func fromJSValue<R>(value: JSValue): R {
+        // Concrete types skip the `TypeTag` allocation and the interface cast; only `Array<T>` and
+        // `Option<T>` need them, to reach the element type's `fromJS`.
+        match (None<R>) {
+            case _: Option<Float64> => return (Float64.fromJS(value) as R).getOrThrow()
+            case _: Option<Bool> => return (Bool.fromJS(value) as R).getOrThrow()
+            case _: Option<String> => return (String.fromJS(value) as R).getOrThrow()
+            case _: Option<Int64> => return (Int64.fromJS(value) as R).getOrThrow()
+            case _: Option<Int32> => return (Int32.fromJS(value) as R).getOrThrow()
+            case _: Option<Int16> => return (Int16.fromJS(value) as R).getOrThrow()
+            case _: Option<Int8> => return (Int8.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt64> => return (UInt64.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt32> => return (UInt32.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt16> => return (UInt16.fromJS(value) as R).getOrThrow()
+            case _: Option<UInt8> => return (UInt8.fromJS(value) as R).getOrThrow()
+            case _: Option<Float32> => return (Float32.fromJS(value) as R).getOrThrow()
+            case _: Option<Float16> => return (Float16.fromJS(value) as R).getOrThrow()
+            case _: Option<BigInt> => return (BigInt.fromJS(value) as R).getOrThrow()
+            case _: Option<Unit> => return (Unit.fromJS(value) as R).getOrThrow()
+            case _ => ()
+        }
+        match (TypeTag<R>() as JSReader) {
+            case Some(reader) => (reader.read(value) as R).getOrThrow()
+            case None => match (None<R>) {
+                case _: Option<Extern<ArkTSRuntime>> => (retain(value) as R).getOrThrow()
+                case _ => throw ExternConversionException("Unsupported conversion from ArkTS")
+            }
+        }
+    }
+
+    // ArkTS-specific entry points. Each runs in one `run`.
+    public static func undefined(): Extern<ArkTSRuntime> {
+        run { undefinedExtern }
+    }
+
+    public static func null(): Extern<ArkTSRuntime> {
+        run { retain(context.null().toJSValue()) }
+    }
+
+    /** A fresh empty object. */
+    public static func object(): Extern<ArkTSRuntime> {
+        run { retain(context.object().toJSValue()) }
+    }
+
+    /** `globalThis`. */
+    public static func global(): Extern<ArkTSRuntime> {
+        run { retain(context.global.toJSValue()) }
+    }
+
+    /** A new symbol; two calls never give the same symbol. */
+    public static func symbol(description!: String = ""): Extern<ArkTSRuntime> {
+        run { retain(context.symbol(description: description).toJSValue()) }
+    }
+
+    /** JS `lhs === rhs`. */
+    public static func strictEqual(lhs: Extern<ArkTSRuntime>, rhs: Extern<ArkTSRuntime>): Bool {
+        run { jsValueOf(lhs).strictEqual(jsValueOf(rhs)) }
+    }
+
+    public static func isNull(value: Extern<ArkTSRuntime>): Bool {
+        run { jsValueOf(value).isNull() }
+    }
+
+    public static func isUndefined(value: Extern<ArkTSRuntime>): Bool {
+        run { jsValueOf(value).isUndefined() }
+    }
+
+    /** JS `key in value`: own or inherited. Throws `ExternMemberAccessException` for non-objects. */
+    public static func objectHasProperty(value: Extern<ArkTSRuntime>, key: String): Bool {
+        run { objectOf(jsValueOf(value)).hasProperty(key) }
+    }
+
+    /** JS `Object.keys(value)`: own enumerable string keys. */
+    public static func objectKeys(value: Extern<ArkTSRuntime>): Array<String> {
+        run { objectOf(jsValueOf(value)).keys() }
+    }
+
+    /**
+     * Defines (or redefines) an own data property. As with JS `Object.defineProperty`, a refusal
+     * (frozen object, read-only non-configurable property) throws: a `ForeignRuntimeException`
+     * with "TypeError Cannot define property".
+     */
+    public static func objectDefineOwnProperty(
+        value: Extern<ArkTSRuntime>,
+        key: String,
+        propertyValue: Any,
+        isWritable!: Bool = true,
+        isEnumerable!: Bool = true,
+        isConfigurable!: Bool = true
+    ): Bool {
+        run {
+            let target = objectOf(jsValueOf(value))
+            target.defineOwnProperty(key, toJSValue(propertyValue), isWritable: isWritable,
+                isEnumerable: isEnumerable, isConfigurable: isConfigurable)
+        }
+    }
+
+    /**
+     * Loads an ArkTS module, e.g. `"entry/src/main/ets/Utils"` (no extension; the file must be
+     * listed in `arkOptions.runtimeOnly.sources`), `"@ohos.hilog"` or `"libfoo.so"`. Works only
+     * while ArkTS code is on the stack: from a spawned thread (the call then runs in a posted
+     * JS task) it throws `ForeignRuntimeException` ("Unable to get recordName ..."). A missing
+     * module throws `BusinessException` 34300006 from `ark_interop`.
+     */
+    public static func requireArkModule(specifier: String): Extern<ArkTSRuntime> {
+        run { retain(context.requireArkModule(specifier)) }
+    }
+
+    /** Loads a system NAPI module, e.g. `"hilog"`; `undefined` when it cannot be loaded. */
+    public static func requireSystemNativeModule(moduleName: String, prefix: ?String): Extern<ArkTSRuntime> {
+        run { retain(context.requireSystemNativeModule(moduleName, prefix: prefix)) }
+    }
+
+    /**
+     * An ArkTS function that runs `body` when called (on the JS thread), with the arguments as
+     * `Extern` values; the result is converted like any value passed to ArkTS. `this` is not
+     * passed. An exception thrown by `body` reaches ArkTS as an `Error` whose message is the
+     * exception's text (`ark_interop` does this).
+     */
+    public static func function(body: (Array<Extern<ArkTSRuntime>>) -> Extern<ArkTSRuntime>): Extern<ArkTSRuntime> {
+        run {
+            let function = context.function { _, callInfo =>
+                let arguments = Array<Extern<ArkTSRuntime>>(callInfo.count) { i => retain(callInfo[i]) }
+                toJSValue(body(arguments))
+            }
+            retain(function.toJSValue())
+        }
+    }
+
+    /** As member access, a non-object throws `ExternMemberAccessException` with `ark_interop`'s message. */
+    private static func objectOf(value: JSValue): JSObject {
+        try {
+            value.asObject()
+        } catch (e: BusinessException) {
+            throw memberError(e)
+        }
     }
 }
