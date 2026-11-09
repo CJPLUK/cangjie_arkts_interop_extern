@@ -8,6 +8,11 @@
 # longer ships). Build log: .devicetest/build-<demo>.log
 set -e
 
+if [ -z "$1" ]; then
+    echo "usage: ./demo.sh demos/<name>" >&2
+    exit 1
+fi
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PROJECT="$(cd "$1" && pwd)"
 NAME="$(basename "$PROJECT")"
