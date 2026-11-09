@@ -135,55 +135,74 @@ write_code() {
     } > "$CODE/shared.html"
 }
 
-# Prints an SVG line chart of arkts_runtime ns/op (logarithmic axis) across the given .csv files,
-# oldest first: one line per benchmark, one point per file. Then a legend.
+# Render a separate chart for each benchmark, grouped by its name prefix.
 write_chart() {
     awk -F, '
-        function label(k,    unit) {
-            unit = k < 3 ? "ns" : k < 6 ? "µs" : k < 9 ? "ms" : "s"
-            return (10 ^ (k % 3)) " " unit
-        }
-        function x(r) { return L + (runs == 1 ? PW / 2 : (r - 1) * PW / (runs - 1)) }
-        function y(l) { return T + (hi - l) * PH / (hi - lo) }
+        function esc(s) { gsub(/\&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); gsub(/"/, "\\&quot;", s); return s }
+        function x(r) { return 60 + (runs == 1 ? 240 : (r - 1) * 480 / (runs - 1)) }
+        function y(v) { return 15 + (maxv - v) * 140 / (maxv - minv) }
         FNR == 1 { runs++; next }
         {
-            stamp[runs] = $1; v = $7 + 0
-            if (!($4 in idx)) { idx[$4] = ++nb; names[nb] = $4 }
-            if (v <= 0) next
-            val[idx[$4], runs] = $7
-            l = log(v) / log(10)
-            if (!seen || l < lo) lo = l
-            if (!seen || l > hi) hi = l
-            seen = 1
+            stamp[runs] = $1
+            if (!($4 in idx)) {
+                idx[$4] = ++nb; names[nb] = $4
+                group = $4; sub(/\..*/, "", group)
+                groups[nb] = group
+                if (!(group in groupidx)) { groupidx[group] = ++ng; groupnames[ng] = group }
+            }
+            b = idx[$4]
+            if ($6 != "" && $6 + 0 > 0) values[b, runs, 1] = $6 + 0
+            if ($7 != "" && $7 + 0 > 0) values[b, runs, 2] = $7 + 0
         }
         END {
-            if (!seen) exit
-            L = 70; T = 15; PW = 1000; PH = 460; W = L + PW + 20; H = T + PH + 80
-            lo = int(lo); hi = (hi > int(hi)) ? int(hi) + 1 : int(hi); if (hi == lo) hi = lo + 1
-            printf "<svg class=\"history\" viewBox=\"0 0 %d %d\" width=\"%d\" height=\"%d\">\n", W, H, W, H
-            for (k = lo; k <= hi; k++) {
-                printf "<line class=\"grid\" x1=\"%d\" x2=\"%d\" y1=\"%.1f\" y2=\"%.1f\"/>", L, L + PW, y(k), y(k)
-                printf "<text class=\"axis\" x=\"%d\" y=\"%.1f\" text-anchor=\"end\">%s</text>\n", L - 6, y(k) + 4, label(k)
-                if (k < hi) for (m = 2; m <= 5; m += 3)
-                    printf "<line class=\"minor\" x1=\"%d\" x2=\"%d\" y1=\"%.1f\" y2=\"%.1f\"/>\n", L, L + PW, y(k + log(m) / log(10)), y(k + log(m) / log(10))
+            for (g = 1; g <= ng; g++) {
+                group = groupnames[g]
+                printf "<section class=\"chart-group\"><h3>%s</h3><div class=\"chart-grid\">\n", esc(group)
+                for (b = 1; b <= nb; b++) {
+                    if (groups[b] != group) continue
+                    seen = 0; latest = 0; previous = 0
+                    for (r = 1; r <= runs; r++) {
+                        if ((b, r, 2) in values) { previous = latest; latest = r }
+                        for (series = 1; series <= 2; series++) if ((b, r, series) in values) {
+                            v = values[b, r, series]
+                            if (!seen || v < minv) minv = v
+                            if (!seen || v > maxv) maxv = v
+                            seen = 1
+                        }
+                    }
+                    if (!seen) continue
+                    pad = (maxv - minv) * 0.1
+                    if (pad == 0) pad = maxv * 0.1
+                    minv = minv - pad; if (minv < 0) minv = 0
+                    maxv += pad
+                    printf "<article class=\"chart-card\" data-name=\"%s\"><h4>%s</h4>", esc(names[b]), esc(names[b])
+                    if (latest) {
+                        printf "<p>Latest arkts_runtime: <strong>%.1f ns/op</strong>", values[b, latest, 2]
+                        if (previous) printf " (%+.1f%% vs previous result)", 100 * (values[b, latest, 2] / values[b, previous, 2] - 1)
+                        else printf " (no previous result)"
+                        print "</p>"
+                    } else print "<p>No arkts_runtime result</p>"
+                    printf "<svg class=\"history\" viewBox=\"0 0 560 195\" role=\"img\" aria-label=\"%s timing history, nanoseconds per operation\">", esc(names[b])
+                    for (i = 0; i <= 2; i++) {
+                        v = minv + (maxv - minv) * i / 2
+                        printf "<line class=\"grid\" x1=\"60\" x2=\"540\" y1=\"%.1f\" y2=\"%.1f\"/><text class=\"axis\" x=\"55\" y=\"%.1f\" text-anchor=\"end\">%.1f</text>", y(v), y(v), y(v)+4, v
+                    }
+                    for (series = 1; series <= 2; series++) {
+                        cls = series == 1 ? "interop" : "runtime"
+                        prev = 0
+                        for (r = 1; r <= runs; r++) {
+                            if (!((b, r, series) in values)) { prev = 0; continue }
+                            v = values[b, r, series]
+                            if (prev) printf "<line class=\"%s line\" x1=\"%.1f\" y1=\"%.1f\" x2=\"%.1f\" y2=\"%.1f\"/>", cls, x(prev), y(values[b, prev, series]), x(r), y(v)
+                            prev = r
+                        }
+                        for (r = 1; r <= runs; r++) if ((b, r, series) in values)
+                            printf "<circle class=\"%s point\" cx=\"%.1f\" cy=\"%.1f\" r=\"4\"><title>%s — %s: %.1f ns/op</title></circle>", cls, x(r), y(values[b, r, series]), (cls == "interop" ? "ark_interop" : "arkts_runtime"), esc(stamp[r]), values[b, r, series]
+                    }
+                    printf "<text class=\"axis\" x=\"60\" y=\"180\">%s</text><text class=\"axis\" x=\"540\" y=\"180\" text-anchor=\"end\">%s</text></svg></article>\n", esc(stamp[1]), esc(stamp[runs])
+                }
+                print "</div></section>"
             }
-            for (r = 1; r <= runs; r++) {
-                s = stamp[r]
-                printf "<text class=\"axis\" transform=\"translate(%.1f %d) rotate(-40)\" text-anchor=\"end\">%s</text>\n", x(r), T + PH + 16, substr(s, 6, 5) " " substr(s, 12, 2) ":" substr(s, 14, 2)
-            }
-            for (b = 1; b <= nb; b++) {
-                color[b] = sprintf("hsl(%d, 70%%, %d%%)", (b * 137.5) % 360, b % 2 ? 38 : 52)
-                printf "<g class=\"series\"><title>%s</title><polyline stroke=\"%s\" points=\"", names[b], color[b]
-                for (r = 1; r <= runs; r++) if ((b, r) in val) printf "%.1f,%.1f ", x(r), y(log(val[b, r]) / log(10))
-                printf "\"/>"
-                for (r = 1; r <= runs; r++) if ((b, r) in val)
-                    printf "<circle fill=\"%s\" r=\"3\" cx=\"%.1f\" cy=\"%.1f\"><title>%s, %s: %s ns</title></circle>", color[b], x(r), y(log(val[b, r]) / log(10)), names[b], stamp[r], val[b, r]
-                printf "</g>\n"
-            }
-            print "</svg>"
-            printf "<div class=\"legend\">"
-            for (b = 1; b <= nb; b++) printf "<span><i style=\"background: %s\"></i>%s</span>", color[b], names[b]
-            print "</div>"
         }
     ' "$@"
 }
@@ -213,15 +232,19 @@ tr.code > td { background: #fafafa; }
 .variants { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
 h3 { margin: 0.8em 0 0.3em; font-size: 1em; }
 pre { margin: 0; padding: 8px; background: #fff; border: 1px solid #ddd; overflow-x: auto; font-size: 12px; }
-svg.history { font-size: 11px; }
-svg.history .grid { stroke: #ccc; }
-svg.history .minor { stroke: #eee; }
+svg.history { width: 100%; font-size: 11px; overflow: visible; }
+svg.history .grid { stroke: #ddd; }
 svg.history .axis { fill: #555; }
-svg.history .series polyline { fill: none; stroke-width: 1.5; }
-svg.history:has(.series:hover) .series:not(:hover) { opacity: 0.15; }
-svg.history .series:hover polyline { stroke-width: 3; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; max-width: 1090px; font-size: 12px; }
-.legend i { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -1px; }
+svg.history .line { stroke-width: 2; }
+svg.history .interop.line { stroke: #1976a3; }
+svg.history .runtime.line { stroke: #bd4b20; }
+svg.history .interop.point { fill: #1976a3; }
+svg.history .runtime.point { fill: #bd4b20; }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 1em; }
+.chart-card { border: 1px solid #ddd; border-radius: 6px; padding: 1em; min-width: 0; }
+.chart-card h4, .chart-card p { margin: 0 0 0.5em; }
+.chart-group { margin: 1.5em 0; }
+.legend-runtime { color: #bd4b20; } .legend-interop { color: #1976a3; }
 </style></head><body>
 <h1>arkts_runtime against ark_interop</h1>
 <p>Date: $stamp<br>Device: $device<br>Build: $BUILD_MODE<br>
@@ -240,13 +263,25 @@ EOF
         done < "$lines"
         echo "</table>"
         echo "<h2>arkts_runtime across runs</h2>"
-        echo "<p>Every result file of $device in results/, oldest first: arkts_runtime ns/op on a"
-        echo "logarithmic axis. Point at a line to highlight it, at a point for its value.</p>"
+        echo '<p>Each chart has its own linear vertical scale in ns/op; lower is faster. Hover over a point for the exact value and run date. Gaps indicate missing results.</p>'
+        echo '<p><span class="legend-runtime">● arkts_runtime</span> &nbsp; <span class="legend-interop">● ark_interop</span></p>'
+        echo '<label>Search benchmarks: <input id="chart-search" type="search" placeholder="Name or category"></label>'
         write_chart "$RESULTS/$device"-*.csv
         echo "<h2 id=\"shared\">Fixtures and helpers</h2>"
         cat "$CODE/shared.html"
         cat <<'EOF'
 <script>
+document.getElementById('chart-search').addEventListener('input', function () {
+  var query = this.value.toLowerCase().trim();
+  document.querySelectorAll('.chart-group').forEach(function (group) {
+    var visible = 0;
+    group.querySelectorAll('.chart-card').forEach(function (card) {
+      card.hidden = !card.dataset.name.toLowerCase().includes(query);
+      if (!card.hidden) visible++;
+    });
+    group.hidden = visible === 0;
+  });
+});
 document.querySelectorAll('td.name').forEach(function (cell) {
   cell.addEventListener('click', function () {
     var row = cell.parentElement.nextElementSibling;
