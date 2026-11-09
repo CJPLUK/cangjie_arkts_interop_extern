@@ -7,11 +7,11 @@
         "material": {
           "certpath": "/Users/claudio/.ohos/config/default_testapp_04AQFnMhe9ig6dRmcG2MbiDOzdo78wD0zaRrkiS6fEk=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001BB825969B4AE65F6686069548DEE9CCAFF4543DA9BCADB07481B962D4D418640DB6E755A145B4D2",
+          "keyPassword": "0000001B0CA583C286574FF255D505BD336A2A73291DFEE01CF741C08F0F52C0A89D41D0C64598EB5A373E",
           "profile": "/Users/claudio/.ohos/config/default_testapp_04AQFnMhe9ig6dRmcG2MbiDOzdo78wD0zaRrkiS6fEk=.p7b",
           "signAlg": "SHA256withECDSA",
           "storeFile": "/Users/claudio/.ohos/config/default_testapp_04AQFnMhe9ig6dRmcG2MbiDOzdo78wD0zaRrkiS6fEk=.p12",
-          "storePassword": "0000001BF8CEE174FDD012D9336D781E4361870E20DA61D2B54F29884AE1512B15CD6E95CF9265A594239C"
+          "storePassword": "0000001B7CC6B844CDF8C0927FCE792D0265E2C2943C3D682EE3FB86D7486768AB4C6A525BEA11DF2641BD"
         }
       }
     ],
