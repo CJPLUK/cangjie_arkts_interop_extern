@@ -1,4 +1,4 @@
-# `arkts_runtime` architecture
+# `arkts_runtime` implementation architecture
 
 This document describes the current implementation.
 Paths are relative to the repository root.

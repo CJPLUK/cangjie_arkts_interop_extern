@@ -14,8 +14,11 @@ let area: Float64 = ArkTSRuntime.fromExtern<Float64>(blob.area())
 ```
 
 The library is the product. Everything else in the repository exists to test it or to show
-it in use. The compiler contract is `docs/extern_architecture_simple_model.md` in
-`cangjie_interop_architecture`. The direct C API backend is described in
+it in use. The compiler contract is described in the
+[Extern simple model](https://github.com/CJPLUK/cangjie_extern/blob/main/docs/extern_architecture_simple_model.md).
+The library's layers, ownership and execution flow are described in
+[implementation_architecture.md](implementation_architecture.md).
+The direct C API backend is described in
 [arkts_runtime/native/README.md](arkts_runtime/native/README.md).
 
 ## Structure
