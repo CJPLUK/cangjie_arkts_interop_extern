@@ -182,7 +182,7 @@ write_chart() {
                         else printf " (no previous result)"
                         print "</p>"
                     } else print "<p>No arkts_runtime result</p>"
-                    printf "<svg class=\"history\" viewBox=\"0 0 560 195\" role=\"img\" aria-label=\"%s timing history, nanoseconds per operation\">", esc(names[b])
+                    printf "<svg class=\"history\" viewBox=\"0 0 560 195\" role=\"group\" tabindex=\"0\" aria-label=\"%s timing history, nanoseconds per operation. Use left and right arrows to inspect runs.\">", esc(names[b])
                     for (i = 0; i <= 2; i++) {
                         v = minv + (maxv - minv) * i / 2
                         printf "<line class=\"grid\" x1=\"60\" x2=\"540\" y1=\"%.1f\" y2=\"%.1f\"/><text class=\"axis\" x=\"55\" y=\"%.1f\" text-anchor=\"end\">%.1f</text>", y(v), y(v), y(v)+4, v
@@ -198,6 +198,15 @@ write_chart() {
                         }
                         for (r = 1; r <= runs; r++) if ((b, r, series) in values)
                             printf "<circle class=\"%s point\" cx=\"%.1f\" cy=\"%.1f\" r=\"4\"><title>%s — %s: %.1f ns/op</title></circle>", cls, x(r), y(values[b, r, series]), (cls == "interop" ? "ark_interop" : "arkts_runtime"), esc(stamp[r]), values[b, r, series]
+                    }
+                    # Full-height hit areas make dense and overlapping points easy to inspect.
+                    for (r = 1; r <= runs; r++) {
+                        if (!((b, r, 1) in values) && !((b, r, 2) in values)) continue
+                        left = r == 1 ? 52 : (x(r-1) + x(r)) / 2
+                        right = r == runs ? 548 : (x(r) + x(r+1)) / 2
+                        runtime = (b, r, 2) in values ? sprintf("%.1f ns/op", values[b, r, 2]) : "No result"
+                        interop = (b, r, 1) in values ? sprintf("%.1f ns/op", values[b, r, 1]) : "No result"
+                        printf "<rect class=\"hover-target\" x=\"%.1f\" y=\"8\" width=\"%.1f\" height=\"152\" data-date=\"%s\" data-runtime=\"%s\" data-interop=\"%s\"/>", left, right-left, esc(stamp[r]), runtime, interop
                     }
                     printf "<text class=\"axis\" x=\"60\" y=\"180\">%s</text><text class=\"axis\" x=\"540\" y=\"180\" text-anchor=\"end\">%s</text></svg></article>\n", esc(stamp[1]), esc(stamp[runs])
                 }
@@ -240,7 +249,11 @@ svg.history .interop.line { stroke: #1976a3; }
 svg.history .runtime.line { stroke: #bd4b20; }
 svg.history .interop.point { fill: #1976a3; }
 svg.history .runtime.point { fill: #bd4b20; }
-.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 1em; }
+svg.history .hover-target { fill: transparent; pointer-events: all; cursor: crosshair; }
+svg.history .hover-target.active { fill: rgba(25, 118, 163, 0.1); }
+svg.history:focus-visible { outline: 2px solid #1976a3; outline-offset: 3px; }
+.chart-tooltip { position: fixed; z-index: 1000; pointer-events: none; width: max-content; white-space: pre-line; padding: 8px 12px; border-radius: 5px; background: #17212b; color: #fff; font-size: 13px; line-height: 1.5; box-shadow: 0 2px 8px #0003; max-width: calc(100vw - 16px); }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 600px)); gap: 1em; }
 .chart-card { border: 1px solid #ddd; border-radius: 6px; padding: 1em; min-width: 0; }
 .chart-card h4, .chart-card p { margin: 0 0 0.5em; }
 .chart-group { margin: 1.5em 0; }
@@ -263,15 +276,70 @@ EOF
         done < "$lines"
         echo "</table>"
         echo "<h2>arkts_runtime across runs</h2>"
-        echo '<p>Each chart has its own linear vertical scale in ns/op; lower is faster. Hover over a point for the exact value and run date. Gaps indicate missing results.</p>'
+        echo '<p>Each chart has its own linear vertical scale in ns/op; lower is faster. Hover over a chart to see both timings and the run date, or focus it and use the arrow keys. Gaps indicate missing results.</p>'
         echo '<p><span class="legend-runtime">● arkts_runtime</span> &nbsp; <span class="legend-interop">● ark_interop</span></p>'
         echo '<label>Search benchmarks: <input id="chart-search" type="search" placeholder="Name or category"></label>'
         write_chart "$RESULTS/$device"-*.csv
         echo "<h2 id=\"shared\">Fixtures and helpers</h2>"
         cat "$CODE/shared.html"
         cat <<'EOF'
+<div id="chart-tooltip" class="chart-tooltip" role="tooltip" hidden></div>
 <script>
+var chartTooltip = document.getElementById('chart-tooltip');
+var activeTarget = null;
+function hideChartTooltip() {
+  chartTooltip.hidden = true;
+  if (activeTarget) {
+    activeTarget.classList.remove('active');
+    activeTarget.ownerSVGElement.removeAttribute('aria-describedby');
+    activeTarget = null;
+  }
+}
+function showChartTooltip(target, clientX, clientY) {
+  if (activeTarget && activeTarget !== target) {
+    activeTarget.classList.remove('active');
+    activeTarget.ownerSVGElement.removeAttribute('aria-describedby');
+  }
+  activeTarget = target;
+  target.classList.add('active');
+  target.ownerSVGElement.setAttribute('aria-describedby', chartTooltip.id);
+  chartTooltip.textContent = target.dataset.date + '\narkts_runtime: ' + target.dataset.runtime +
+    '\nark_interop: ' + target.dataset.interop;
+  chartTooltip.hidden = false;
+  var bounds = chartTooltip.getBoundingClientRect();
+  chartTooltip.style.left = Math.max(8, Math.min(clientX + 12, window.innerWidth - bounds.width - 8)) + 'px';
+  chartTooltip.style.top = Math.max(8, Math.min(clientY + 12, window.innerHeight - bounds.height - 8)) + 'px';
+}
+document.querySelectorAll('svg.history').forEach(function (chart) {
+  var targets = Array.from(chart.querySelectorAll('.hover-target'));
+  var selected = targets.length - 1;
+  function inspectSelected() {
+    if (!targets.length) return;
+    var rect = targets[selected].getBoundingClientRect();
+    showChartTooltip(targets[selected], rect.left + rect.width / 2, rect.top);
+  }
+  chart.addEventListener('pointermove', function (event) {
+    if (!event.target.classList.contains('hover-target')) { hideChartTooltip(); return; }
+    selected = targets.indexOf(event.target);
+    showChartTooltip(event.target, event.clientX, event.clientY);
+  });
+  chart.addEventListener('pointerleave', hideChartTooltip);
+  chart.addEventListener('focus', inspectSelected);
+  chart.addEventListener('blur', hideChartTooltip);
+  chart.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') { hideChartTooltip(); return; }
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') selected = 0;
+    else if (event.key === 'End') selected = targets.length - 1;
+    else selected = Math.max(0, Math.min(targets.length - 1, selected + (event.key === 'ArrowLeft' ? -1 : 1)));
+    inspectSelected();
+  });
+});
+window.addEventListener('scroll', hideChartTooltip, true);
+window.addEventListener('resize', hideChartTooltip);
 document.getElementById('chart-search').addEventListener('input', function () {
+  hideChartTooltip();
   var query = this.value.toLowerCase().trim();
   document.querySelectorAll('.chart-group').forEach(function (group) {
     var visible = 0;
@@ -333,7 +401,10 @@ for device in $DEVICES; do
     wait $reader 2>/dev/null || true
     "$HDC" -t "$device" shell "hilog -Q pidon; hilog -Q domainon" > /dev/null
     echo "== finished in ${waited}s"
-    grep 'ERROR|' "$log" | sed 's/.*ERROR|/  ERROR /' || true
+    if grep -q 'ERROR|' "$log"; then
+        grep 'ERROR|' "$log" | sed 's/.*ERROR|/  ERROR /'
+        FAILED=1
+    fi
 
     model="$("$HDC" -t "$device" shell param get const.product.model | tr -d '\r' | sed 's/[[:space:]]*$//' | tr -c 'A-Za-z0-9\n-' '_')"
     stamp="$(date +%Y-%m-%d-%H%M)"
@@ -342,6 +413,17 @@ for device in $DEVICES; do
     sed -n 's/.*RESULT|//p' "$log" | tr -d '\r' | awk '!seen[$0]++' > "$lines"
     base="$RESULTS/$model-$stamp"
     write_results "$lines" "$model" "$stamp" "$base"
+    # Keep complete sample groups alongside the report, outside chart-history CSVs.
+    sed -n -e 's/.*SAMPLE|/I|/p' -e 's/.*SAMPLES|/A|/p' "$log" | tr -d '\r' | awk -F'|' '
+        BEGIN { OFS="\t"; print "benchmark", "variant", "sample", "iterations", "total_ns" }
+        !seen[$0]++ {
+            if ($1 == "I") print $2, $3, $4, $5, $6
+            else {
+                count = split($5, values, ",")
+                for (i = 1; i <= count; i++) print $2, $3, i - 1, $4, values[i]
+            }
+        }
+    ' > "$base.samples.tsv"
     echo "== $(wc -l < "$lines" | tr -d ' ') results: $base.csv, $base.html"
     column -t -s '|' "$lines" | sed 's/^/  /'
 done
