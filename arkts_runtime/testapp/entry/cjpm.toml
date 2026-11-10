@@ -1,6 +1,6 @@
 [package]
   cjc-version = "0.0.1"
-  compile-option = "--dy-std --cfg=\"${COMPILE_CONDITION_ENTRY}\""
+  compile-option = "--dy-std --cfg=\"${COMPILE_CONDITION_ENTRY}\" --link-options=\"-lace_napi.z -L ${ARKTS_RUNTIME_NATIVE_LIB} -larkts_runtime_native\""
   description = "CangjieUI Application"
   name = "ohos_app_cangjie_entry"
   output-type = "dynamic"
@@ -17,7 +17,7 @@
     lto = ""
   [profile.customized-option]
     debug = "-g -Woff all -Won apilevel-check"
-    release = "--fast-math -O2 -s -Woff all -Won apilevel-check"
+    release = "-O2 -s -Woff all -Won apilevel-check"
   [profile.test]
 
 [target.aarch64-linux-ohos]

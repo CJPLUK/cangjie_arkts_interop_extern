@@ -1,8 +1,7 @@
 package arkts_runtime.tests
 
 import std.collection.*
-import ohos.ark_interop.*
-import ohos.business_exception.BusinessException
+
 import arkts_runtime.*
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -38,7 +37,7 @@ func foreignPayloadFails(what: String, block: () -> Any): String {
  * isNull are true only for their own kind.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func undefinedAndNull(context: JSContext, fixtures: Array<JSValue>): String {
+func undefinedAndNull(context: NativeContext, fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     sink.u = ArkTSRuntime.undefined()
     sink.n = ArkTSRuntime.null()
@@ -73,7 +72,7 @@ func undefinedAndNull(context: JSContext, fixtures: Array<JSValue>): String {
 
 /** fixtures: sink. ArkTS checks o1 and o2 are distinct empty objects. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func objectIsFresh(fixtures: Array<JSValue>): String {
+func objectIsFresh(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     let o1 = ArkTSRuntime.object()
     let o2 = ArkTSRuntime.object()
@@ -87,7 +86,7 @@ func objectIsFresh(fixtures: Array<JSValue>): String {
 
 /** fixtures: ArkTS's `Math`, reached from the page's global object. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func globalIsGlobalThis(fixtures: Array<JSValue>): String {
+func globalIsGlobalThis(fixtures: Array<NativeJSValue>): String {
     let g = ArkTSRuntime.global()
     firstFailure([
         expectEqual("global().Math === Math", ArkTSRuntime.strictEqual(g.Math, ext(fixtures, 0)), true),
@@ -100,7 +99,7 @@ func globalIsGlobalThis(fixtures: Array<JSValue>): String {
  * `String(symbol)`. ArkTS checks String(s1) === "Symbol(d)", s1 !== s2, and the default description.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func symbols(fixtures: Array<JSValue>): String {
+func symbols(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     let s1 = ArkTSRuntime.symbol(description: "d")
     let s2 = ArkTSRuntime.symbol(description: "d")
@@ -119,7 +118,7 @@ func symbols(fixtures: Array<JSValue>): String {
  * Then pairs made in Cangjie, and member reads as operands.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func strictEqualTable(fixtures: Array<JSValue>): String {
+func strictEqualTable(fixtures: Array<NativeJSValue>): String {
     let pairs = from<Array<Array<E>>>(ext(fixtures, 0))
     let expected = from<Array<Bool>>(ext(fixtures, 1))
     let rect = ext(fixtures, 2)
@@ -139,7 +138,7 @@ func strictEqualTable(fixtures: Array<JSValue>): String {
 
 /** fixtures: Rectangle, [1, 2]. `objectHasProperty` follows JS `in`; `objectKeys` is `Object.keys`. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func objectProperties(fixtures: Array<JSValue>): String {
+func objectProperties(fixtures: Array<NativeJSValue>): String {
     let rect = ext(fixtures, 0)
     let items = ext(fixtures, 1)
     let o = ArkTSRuntime.object()
@@ -174,7 +173,7 @@ func objectProperties(fixtures: Array<JSValue>): String {
  * `Object.getOwnPropertyDescriptor`; ArkTS checks the values and which keys are enumerable.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func defineOwnProperty(fixtures: Array<JSValue>): String {
+func defineOwnProperty(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     let jsObject = ArkTSRuntime.global().Object
     let frozen = jsObject.freeze(ArkTSRuntime.object())
@@ -213,7 +212,7 @@ func requireArkModule(): String {
     let missing = try {
         ArkTSRuntime.requireArkModule("entry/src/main/ets/arkts/Missing")
         "missing module: expected an exception"
-    } catch (e: BusinessException) {
+    } catch (e: ArkTSNativeException) {
         expectEqual("missing module: code", e.code, 34300006)
     }
     firstFailure([

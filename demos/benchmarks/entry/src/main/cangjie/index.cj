@@ -6,7 +6,7 @@ import arkts_runtime.ArkTSRuntime
 let EXPORT_MODULE = JSModule.registerModule {
     context, exports =>
     if (!ArkTSRuntime.isBound()) {
-        ArkTSRuntime.bind(context)
+        ArkTSRuntime.bind(context.getNapiEnv())
     }
     exports["benchmarkNames"] = context.function(benchmarkNames).toJSValue()
     exports["iterations"] = context.function(iterationsOf).toJSValue()

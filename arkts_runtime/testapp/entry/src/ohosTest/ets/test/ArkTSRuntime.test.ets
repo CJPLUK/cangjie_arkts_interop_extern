@@ -3,6 +3,42 @@ import { runArkTSTest, runArkTSTestOffThread, listArkTSTests } from 'libohos_app
 import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
 import { Rectangle, Target, CallLog, callLog, CountingHolder, OrderLog, Values, Thrower } from './fixtures';
 export default function arkTSRuntimeTest() {
+  describe('Step12_Native', () => {
+    it('nativeBinding', 0, () => {
+      expect(runArkTSTest('step12.nativeBinding')).assertEqual('');
+    });
+    it('immediateLifetime', 0, () => {
+      expect(runArkTSTest('step12.immediateLifetime')).assertEqual('');
+    });
+    it('scalarFromOtherThread', 0, () => {
+      expect(runArkTSTest('step12.scalarFromOtherThread')).assertEqual('');
+    });
+    it('stringBoundaries', 0, () => {
+      expect(runArkTSTest('step12.stringBoundaries')).assertEqual('');
+    });
+    it('numberArrayAccessors', 0, () => {
+      const reads: number[] = [];
+      expect(runArkTSTest('step12.numberArrayRead', () => {
+        reads.push(0);
+        expect(runArkTSTest('step0.trivial')).assertEqual('');
+        hidebug.dumpJsHeapData('numeric-array-accessor-gc');
+      })).assertEqual('');
+      expect(reads.join(',')).assertEqual('0');
+      expect(runArkTSTest('step12.numberArrayThrows')).assertEqual('');
+      expect(runArkTSTest('step12.numberArrayShrinks')).assertEqual('');
+      expect(runArkTSTest('step12.numberArraySnapshot')).assertEqual('');
+    });
+    it('callbackLifetime', 0, async () => {
+      const weak = createNativeCallbackWeakRef();
+      expect(await collectUntil(() => weak.deref() === undefined &&
+        runArkTSTest('step12.callbackLifetimeCount') === '1')).assertTrue();
+      expect(runArkTSTest('step12.callbackLifetimeCount')).assertEqual('1');
+    });
+    it('nativeDispatch', 0, async () => {
+      expect(await runArkTSTestOffThread('step12.nativeDispatch')).assertEqual('');
+    });
+  });
+
   describe('Step0_Infrastructure', () => {
     it('trivialScenarioPasses', 0, () => {
       expect(runArkTSTest('step0.trivial')).assertEqual('');
@@ -20,6 +56,7 @@ export default function arkTSRuntimeTest() {
         'step1.alreadyBoundExceptionNames',
         'step1.dynamicSyntaxReachesRuntime',
         'step1.extendHelperReachable',
+        'step1.directNapiProbe',
         'step1.internalVisibleToSubpackage',
         'step2.runtimeIsBound',
         'step2.runtimeBoundToCallerContext',
@@ -63,7 +100,7 @@ export default function arkTSRuntimeTest() {
         'step6.externInputs',
         'step6.conversionFailures',
         'step6.implicitConversion',
-        'step7.arkInteropJSException',
+        'step7.nativeJSException',
         'step7.jsThrowsBecomeForeignRuntimeException',
         'step7.ownExceptionsNotWrapped',
         'step7.usableAfterJSException',
@@ -80,6 +117,16 @@ export default function arkTSRuntimeTest() {
         'step9.mixedScenario',
         'step10.functionCalls',
         'step10.functionThrows',
+        'step12.nativeBinding',
+        'step12.immediateLifetime',
+        'step12.scalarFromOtherThread',
+        'step12.stringBoundaries',
+        'step12.numberArrayRead',
+        'step12.numberArrayThrows',
+        'step12.numberArrayShrinks',
+        'step12.numberArraySnapshot',
+        'step12.callbackLifetimeCreate',
+        'step12.callbackLifetimeCount',
         'step3.runOffThreadReturnsValue',
         'step3.runOffThreadUsesEngine',
         'step3.runOffThreadRethrows',
@@ -93,7 +140,8 @@ export default function arkTSRuntimeTest() {
         'step7.jsExceptionFromOtherThread',
         'step8.helpersFromOtherThread',
         'step9.mixedScenarioOffThread',
-        'step10.functionFromOtherThread'
+        'step10.functionFromOtherThread',
+        'step12.nativeDispatch'
       ]));
     });
 
@@ -149,6 +197,10 @@ export default function arkTSRuntimeTest() {
 
     it('extendHelperReachable', 0, () => {
       expect(runArkTSTest('step1.extendHelperReachable')).assertEqual('');
+    });
+
+    it('directNapiProbe', 0, () => {
+      expect(runArkTSTest('step1.directNapiProbe')).assertEqual('');
     });
 
     it('internalVisibleToSubpackage', 0, () => {
@@ -360,6 +412,7 @@ export default function arkTSRuntimeTest() {
       expect(runArkTSTest('step5.indexReadWrite', t)).assertEqual('');
       expect(JSON.stringify(t.items)).assertEqual(JSON.stringify([55, 77, 99]));
       expect(t.str).assertEqual('via string');
+      expect(Object.keys(t).includes('\uD800')).assertTrue();
       expect(t.num).assertEqual(4);
     });
 
@@ -513,8 +566,8 @@ export default function arkTSRuntimeTest() {
   });
 
   describe('Step7_VMExceptions', () => {
-    it('arkInteropJSException', 0, () => {
-      expect(runArkTSTest('step7.arkInteropJSException', new Thrower())).assertEqual('');
+    it('nativeJSException', 0, () => {
+      expect(runArkTSTest('step7.nativeJSException', new Thrower())).assertEqual('');
     });
 
     it('jsThrowsBecomeForeignRuntimeException', 0, () => {
@@ -714,4 +767,20 @@ async function collectUntil(done: () => boolean): Promise<boolean> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+class NativeCallbackHolder {
+  callback: ((value: number) => number) | undefined = undefined;
+}
+
+function createNativeCallbackWeakRef(): WeakRef<(value: number) => number> {
+  const holder = new NativeCallbackHolder();
+  expect(runArkTSTest('step12.callbackLifetimeCreate', holder)).assertEqual('');
+  const callback = holder.callback as (value: number) => number;
+  expect(callback(41)).assertEqual(42);
+  expect(callback(40)).assertEqual(42);
+  expect(runArkTSTest('step12.callbackLifetimeCount')).assertEqual('0');
+  const weak = new WeakRef(callback);
+  holder.callback = undefined;
+  return weak;
 }

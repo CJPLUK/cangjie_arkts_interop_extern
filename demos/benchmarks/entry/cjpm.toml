@@ -1,6 +1,6 @@
 [package]
   cjc-version = "0.0.1"
-  compile-option = "--dy-std --cfg=\"${COMPILE_CONDITION_ENTRY}\""
+  compile-option = "--link-options=\"-lace_napi.z -L ${ARKTS_RUNTIME_NATIVE_LIB} -larkts_runtime_native\" --dy-std --cfg=\"${COMPILE_CONDITION_ENTRY}\""
   description = "CangjieUI Application"
   name = "ohos_app_cangjie_entry"
   output-type = "dynamic"

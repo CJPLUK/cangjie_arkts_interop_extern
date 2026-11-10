@@ -1,7 +1,8 @@
 package arkts_runtime.tests
 
 import std.collection.*
-import ohos.ark_interop.*
+import arkts_runtime.*
+
 
 // Every top-level declaration in this package carries the `@When` below, so the package is
 // empty unless the library is built by testapp (bundle com.example.testArkTSForeignRuntime).
@@ -11,12 +12,12 @@ import ohos.ark_interop.*
  * returns "" on success or a failure message.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-public type Scenario = (JSContext, Array<JSValue>) -> String
+type Scenario = (NativeContext, Array<NativeJSValue>) -> String
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func allScenarios(): Array<(String, Scenario)> {
     concat([step0Scenarios(), step1Scenarios(), step2Scenarios(), step3Scenarios(), step4Scenarios(), step5Scenarios(),
-        step6Scenarios(), step7Scenarios(), step8Scenarios(), step9Scenarios(), step10Scenarios()])
+        step6Scenarios(), step7Scenarios(), step8Scenarios(), step9Scenarios(), step10Scenarios(), step12Scenarios()])
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -38,7 +39,7 @@ public type OffThreadScenario = () -> String
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func allOffThreadScenarios(): Array<(String, OffThreadScenario)> {
     concat([step3OffThreadScenarios(), step4OffThreadScenarios(), step5OffThreadScenarios(), step6OffThreadScenarios(), step7OffThreadScenarios(),
-        step8OffThreadScenarios(), step9OffThreadScenarios(), step10OffThreadScenarios()])
+        step8OffThreadScenarios(), step9OffThreadScenarios(), step10OffThreadScenarios(), step12OffThreadScenarios()])
 }
 
 /** Names of all scenarios: those run on the JS thread first, then the off-thread ones. */
@@ -51,7 +52,7 @@ public func scenarioNames(): Array<String> {
 
 /** Runs the scenario called `name`. Exceptions become failure messages. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-public func runScenario(context: JSContext, name: String, fixtures: Array<JSValue>): String {
+func runScenario(context: NativeContext, name: String, fixtures: Array<NativeJSValue>): String {
     for ((scenarioName, scenario) in allScenarios()) {
         if (scenarioName == name) {
             return try {
@@ -116,9 +117,20 @@ func firstFailure(results: Array<String>): String {
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func fixture(fixtures: Array<JSValue>, index: Int64): JSValue {
+func fixture(fixtures: Array<NativeJSValue>, index: Int64): NativeJSValue {
     if (index >= fixtures.size) {
         throw IllegalArgumentException("scenario expects fixture #${index}, got ${fixtures.size} fixtures")
     }
     fixtures[index]
+}
+
+/** Consumer adapter: ArkTS fixtures are transferred through a JS-owned array in this env. */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
+public func runNativeScenario(env: CPointer<Unit>, name: String): String {
+    let context = ArkTSRuntime.context
+    if (context.session.env.toUIntNative() != env.toUIntNative()) {
+        return "Runtime is bound to a different host environment"
+    }
+    let fixtures = context.global.getProperty("__arkts_test_fixtures")
+    runScenario(context, name, Array<NativeJSValue>(fixtures.size) { i => fixtures[i] })
 }

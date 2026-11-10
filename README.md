@@ -14,8 +14,9 @@ let area: Float64 = ArkTSRuntime.fromExtern<Float64>(blob.area())
 ```
 
 The library is the product. Everything else in the repository exists to test it or to show
-it in use. The design it implements is `docs/arkts_runtime_design.md` in
-`cangjie_interop_architecture`.
+it in use. The compiler contract is `docs/extern_architecture_simple_model.md` in
+`cangjie_interop_architecture`. The direct C API backend is described in
+[arkts_runtime/native/README.md](arkts_runtime/native/README.md).
 
 ## Structure
 
@@ -35,7 +36,9 @@ plan.md             implementation plan, status and findings of every step
 ```
 cjpm.toml           static library "arkts_runtime" (sources in src/ only)
 README.md           how an app uses the library (setup, shipped libraries, limitations)
-src/                package arkts_runtime: runtime, handles, conversions, helpers
+src/                package arkts_runtime: runtime, conversions and private N-API backend
+native/             C++ scope/reference/dispatch bridge and its build script
+standalone/         independent native consumer and lifecycle validation
 src/tests/          package arkts_runtime.tests: device test scenarios (compiled for testapp only)
 testapp/            test app (DevEco project): runs the device test suite and a smoke page
 devicetest.sh       builds testapp and runs the device suite on connected devices
@@ -86,6 +89,7 @@ The phone's own Cangjie libraries cannot be used:
 ./hosttest/run.sh                                  # host tests
 ./arkts_runtime/devicetest.sh                      # device suite on the first connected device
 ./arkts_runtime/devicetest.sh --all                # ... on every connected device
+BUILD_MODE=release ./arkts_runtime/devicetest.sh --all  # optimized device tests
 DEVICE=127.0.0.1:5555 ./arkts_runtime/devicetest.sh -s class Step10_Function   # one test class
 ./demo.sh demos/hello                              # build, install and start a demo
 ./demos/benchmarks/run.sh --all                    # benchmarks on every connected device

@@ -1,7 +1,7 @@
 package arkts_runtime.tests
 
 import std.math.numeric.BigInt
-import ohos.ark_interop.*
+
 import arkts_runtime.*
 
 // The step 9 scenarios need no test-package fixtures beyond a plain sink object, so the smoke
@@ -25,7 +25,7 @@ func step9OffThreadScenarios(): Array<(String, OffThreadScenario)> {
  * the rectangle as sink.rect; the caller checks from ArkTS that width == 5 and area() == 25.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func designExample(fixtures: Array<JSValue>): String {
+func designExample(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
 
     let api: Extern<ArkTSRuntime> = ArkTSRuntime.requireArkModule(TEST_MODULE)

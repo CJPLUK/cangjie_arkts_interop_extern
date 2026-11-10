@@ -22,7 +22,7 @@ import arkts_runtime.ArkTSRuntime
 let EXPORT_MODULE = JSModule.registerModule {
     runtime, _ =>
     if (!ArkTSRuntime.isBound()) {
-        ArkTSRuntime.bind(runtime)
+        ArkTSRuntime.bind(runtime.getNapiEnv())
     }
 }
 

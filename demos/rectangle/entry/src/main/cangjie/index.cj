@@ -36,7 +36,7 @@ func initRectangle(runtime: JSContext, _: JSCallInfo): JSValue {
 let EXPORT_MODULE = JSModule.registerModule {
     runtime, exports =>
     if (!ArkTSRuntime.isBound()) {
-        ArkTSRuntime.bind(runtime)
+        ArkTSRuntime.bind(runtime.getNapiEnv())
     }
     exports["init"] = runtime.function(initRectangle).toJSValue()
 }

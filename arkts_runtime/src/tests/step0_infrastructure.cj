@@ -1,6 +1,8 @@
 package arkts_runtime.tests
 
-import ohos.ark_interop.*
+import arkts_runtime.*
+
+
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func step0Scenarios(): Array<(String, Scenario)> {
@@ -33,7 +35,7 @@ func expectThrowsHelper(): String {
 
 /** fixtures[0] is a Rectangle(3, 4); reads it with plain ark_interop. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func readFixture(_: JSContext, fixtures: Array<JSValue>): String {
+func readFixture(_: NativeContext, fixtures: Array<NativeJSValue>): String {
     let rect = fixture(fixtures, 0).asObject()
     firstFailure([
         expectEqual("width", rect["width"].toNumber(), 3.0),
@@ -43,7 +45,7 @@ func readFixture(_: JSContext, fixtures: Array<JSValue>): String {
 
 /** fixtures[0] is a Rectangle; sets width = 5 with plain ark_interop. ArkTS checks the effect. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func writeFixture(context: JSContext, fixtures: Array<JSValue>): String {
+func writeFixture(context: NativeContext, fixtures: Array<NativeJSValue>): String {
     fixture(fixtures, 0).asObject()["width"] = context.number(5.0).toJSValue()
     ""
 }

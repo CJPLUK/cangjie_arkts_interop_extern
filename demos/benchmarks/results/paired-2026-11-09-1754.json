@@ -1,0 +1,36 @@
+{
+  "baseline": "cbdc32f80da7d6af5efee8ee9a8913dcc765402c",
+  "method": "Both backends in one process; five warmed timed samples each; variant order alternates forward/reverse",
+  "source_sha256": {
+    "arkts_runtime/src/native_api.cj": "ca70211e0939aebe28278a014da277b2ad6a9be6ff4e96bec2b009e75bc3a547",
+    "arkts_runtime/src/native_context.cj": "0dadeeeb866ff40e88a53fffb3ba0d12b0440c7e7c35307542258df17f770467",
+    "arkts_runtime/src/exceptions.cj": "d864ef6606cc18c72cf5ae2709736eb4d4f474f19de4d7f02ff2ab3b640dcf99",
+    "arkts_runtime/src/conversion.cj": "99ef4ecbeb460fe585aaa47a90121089eedf552597a52a7025e302a8ecb9b4af",
+    "arkts_runtime/src/runtime.cj": "4fdf90a4e438b17c2acf4abefb7495046884e118629c125760c9b567fe480fd0",
+    "arkts_runtime/src/native_values.cj": "254203d52d577e1b1930d28109c266b934c417295886a797865af081ef21309b",
+    "arkts_runtime/src/native_session.cj": "a6ce220bd744f94e5a7a7f205a16a0fb3ab01c321052a22178ba5dcd63194612",
+    "arkts_runtime/src/tests/step4_handles.cj": "e934627f3c6cee0454ec0dd3c2862e4a3ff57e7b87c5756e323e50a7c890c52d",
+    "arkts_runtime/src/tests/step6_conversions.cj": "ed62f12748487183f1ea393c4b79d2852aef959640981d1d59a44ada94c094b5",
+    "arkts_runtime/src/tests/step2_binding.cj": "93c6d6f4ddd20215afa5e753119eb6131e08916e792566c601563afd2502db30",
+    "arkts_runtime/src/tests/step0_infrastructure.cj": "bfd9043fd114797273df147dfdef05d362dd30dfc24317d0dc3f9fe2f93df73e",
+    "arkts_runtime/src/tests/step8_helpers.cj": "d2d45ca3b2193f546904c77ac36776a903be9b406ce6622b7149b0d9c1b39474",
+    "arkts_runtime/src/tests/step10_function.cj": "a16a6a518944dfe0cc0e561b572bc1f1bf2243bbc6303132519a7300805b5604",
+    "arkts_runtime/src/tests/step3_run.cj": "926360f046d6c97c5554b27317b088fad1d1b6c8293a8f46c34ec9f082254e81",
+    "arkts_runtime/src/tests/registry.cj": "d39035640248a322605ef649607b10df3352dac19677df443dc9a96b6d16c007",
+    "arkts_runtime/src/tests/step5_evaluation.cj": "6e87c626045b42aac6bace2c4f43204ea5573493872de46a746cb9f7d7106c75",
+    "arkts_runtime/src/tests/step1_skeleton.cj": "83a97ce39e77369c3a9acf0c310c8e97b9c6d60fc574423f07026e3f10a048f8",
+    "arkts_runtime/src/tests/step12_native.cj": "90e7c4e98287a903c44e0a990a9e00258143eca39c8a401bdd36c1f93533c877",
+    "arkts_runtime/src/tests/step7_vm_exceptions.cj": "947a53bcb577c41edd29e96c7eaaa7f867505f9266b5d2cd67d91a67b23d888c",
+    "arkts_runtime/src/tests/step9_end_to_end.cj": "126a331b798252d62b0a0d8bd254f909a4bf24b97779ec30ae813530b5a89ee5",
+    "arkts_runtime/native/backend.cpp": "a38073b3aaeb116bbfc9a676c7ada9af76c4f02889e92176a8bcc0c9d8338303",
+    "arkts_runtime/native/backend.h": "debe885f9e15105d6a0923bf715c9cd45c9a80d8c95b5310658c5bddc1e302b0",
+    "arkts_runtime/native/build.sh": "6d138dce4c3408c35b544cac5b2fc98d4fa3c4467be8dcbbf23123053ee0bb09",
+    "arkts_runtime/cjpm.toml": "0989ca7e6fbdaec772119990a3838b1fe8af5d70e9149f7e7eb492f8a6d752b6",
+    "demos/benchmarks/entry/cjpm.toml": "92392047afe46e87dbb9fe0ae29ce9181a30e9e98b972c815afbe2b3986487d0",
+    "demos/benchmarks/compare_backends.py": "62f23c11157e6b541f0486f7c141b85da24e0c9da878c5cd533525c1269f3283"
+  },
+  "samples": [
+    "ohos-2026-11-09-1754.samples.tsv",
+    "emulator-2026-11-09-1754.samples.tsv"
+  ]
+}

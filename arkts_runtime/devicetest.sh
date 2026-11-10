@@ -4,6 +4,7 @@
 #   ./devicetest.sh                 # first connected device
 #   DEVICE=127.0.0.1:5555 ./devicetest.sh
 #   ./devicetest.sh --all           # every connected device, one after the other
+#   BUILD_MODE=release ./devicetest.sh --all  # validate optimized libraries too
 #   ./devicetest.sh -s class Step0_Infrastructure   # extra `aa test` arguments
 #
 # Exits non-zero if the build fails or any test fails on any device.
@@ -17,6 +18,7 @@ HDC="$DEVECO/sdk/default/openharmony/toolchains/hdc"
 HVIGORW="$DEVECO/tools/hvigor/bin/hvigorw"
 BUNDLE=com.example.testArkTSForeignRuntime
 WORK="$ROOT/.devicetest"
+BUILD_MODE="${BUILD_MODE:-debug}"
 
 ALL=false
 if [ "$1" = "--all" ]; then
@@ -49,8 +51,8 @@ fi
 
 cd "$ROOT/testapp"
 for target in default ohosTest; do
-    echo "== build entry@$target"
-    if ! "$HVIGORW" --mode module -p module=entry@$target -p product=default \
+    echo "== build entry@$target ($BUILD_MODE)"
+    if ! "$HVIGORW" --mode module -p module=entry@$target -p product=default -p buildMode="$BUILD_MODE" \
             -p requiredDeviceType=phone assembleHap --no-daemon > "$WORK/build-$target.log" 2>&1; then
         tail -40 "$WORK/build-$target.log"
         exit 1

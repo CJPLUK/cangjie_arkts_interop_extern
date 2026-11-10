@@ -90,9 +90,11 @@ struct Index {
           for (let i = 0; i < RUNS; i++) {
             // Untimed run right before each timed one: the CPU slows down during the pause.
             await measure(name, variant);
-            runs.push(await measure(name, variant));
+            const elapsed = await measure(name, variant);
+            runs.push(elapsed);
             await sleep(PAUSE_MS);
           }
+          hilog.info(DOMAIN, TAG, 'SAMPLES|%{public}s', `${name}|${variant}|${n}|${runs.join(',')}`);
           perOp.push(median(runs) / n);
         }
         const heap = name.startsWith('handles.');

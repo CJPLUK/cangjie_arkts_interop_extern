@@ -1,7 +1,7 @@
 package arkts_runtime.tests
 
 import std.sync.AtomicInt64
-import ohos.ark_interop.*
+
 import arkts_runtime.*
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -27,7 +27,7 @@ class Counter {
  * `Array.prototype.map` and from a timer) and checks the results.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func functionCalls(fixtures: Array<JSValue>): String {
+func functionCalls(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     sink.concat = ArkTSRuntime.function { args => to(from<String>(args[0]) + "|" + from<String>(args[1])) }
     sink.count = ArkTSRuntime.function { args => to(Float64(args.size)) }
@@ -52,7 +52,7 @@ func functionCalls(fixtures: Array<JSValue>): String {
 
 /** fixtures: sink. `fails` throws a Cangjie exception; ArkTS records what it sees. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func functionThrows(fixtures: Array<JSValue>): String {
+func functionThrows(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     sink.fails = ArkTSRuntime.function { _ => throw IllegalStateException("cangjie boom") }
     ""

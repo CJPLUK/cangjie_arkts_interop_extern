@@ -1,7 +1,7 @@
 package arkts_runtime.tests
 
 import std.math.numeric.BigInt
-import ohos.ark_interop.*
+
 import arkts_runtime.*
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -37,7 +37,7 @@ func to<T>(value: T): E {
  * ArkTS checks the `typeof` and value of each.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func toExternTypes(fixtures: Array<JSValue>): String {
+func toExternTypes(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     let rect = ext(fixtures, 1)
     let rows: Array<(String, E)> = [
@@ -79,7 +79,7 @@ func toExternTypes(fixtures: Array<JSValue>): String {
 
 /** fixtures: Values. Each field read as its Cangjie type. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func fromExternTypes(fixtures: Array<JSValue>): String {
+func fromExternTypes(fixtures: Array<NativeJSValue>): String {
     let v = ext(fixtures, 0)
     let negZero = from<Float64>(v.negZero)
     let mixed = from<Array<E>>(v.mixed)
@@ -159,7 +159,7 @@ func roundTrips(): String {
 
 /** fixtures: sink. A 1 MB string and a 100 000-element array; ArkTS checks the stored ones. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func largeValues(fixtures: Array<JSValue>): String {
+func largeValues(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     let text = String(Array<Rune>(1 << 20, repeat: r'é'))
     let numbers = Array<Int32>(100000) { i => Int32(i) }
@@ -179,7 +179,7 @@ func largeValues(fixtures: Array<JSValue>): String {
  * method too; inside an array it gives its value.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func externInputs(fixtures: Array<JSValue>): String {
+func externInputs(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let c = e.a.b.c
     let a = e.a
@@ -202,7 +202,7 @@ func externInputs(fixtures: Array<JSValue>): String {
 
 /** fixtures: Values. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func conversionFailures(fixtures: Array<JSValue>): String {
+func conversionFailures(fixtures: Array<NativeJSValue>): String {
     let v = ext(fixtures, 0)
     let external = ArkTSRuntime.run {
         ArkTSRuntime.retain(ArkTSRuntime.context.external(ExternalProbe()).toJSValue())
@@ -239,7 +239,7 @@ func conversionFailures(fixtures: Array<JSValue>): String {
  * `toExtern`. ArkTS checks implicit === 42n and implicitArray is [1n, "a"].
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func implicitConversion(fixtures: Array<JSValue>): String {
+func implicitConversion(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     let v: E = 42
     let items: Array<E> = [1, "a"]

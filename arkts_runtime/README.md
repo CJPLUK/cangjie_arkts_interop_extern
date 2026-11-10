@@ -55,7 +55,7 @@ Member and index access behave as in `ark_interop`:
    let EXPORT_MODULE = JSModule.registerModule {
        runtime, exports =>
        if (!ArkTSRuntime.isBound()) {
-           ArkTSRuntime.bind(runtime)
+           ArkTSRuntime.bind(runtime.getNapiEnv())
        }
        // exports ...
    }
@@ -73,6 +73,36 @@ Member and index access behave as in `ark_interop`:
    fs.rmSync(libs, { recursive: true, force: true });
    fs.cpSync(path.resolve(__dirname, '<repository root>/dependencies_libs/base'), libs, { recursive: true });
    ```
+
+## Direct native backend
+
+The library calls the public HarmonyOS N-API C interface directly. Its core package has no
+`ohos.ark_interop` or helper dependency. `bind(env: CPointer<Unit>)` borrows a valid `napi_env`;
+call it on that environment's JS thread while the environment is alive. Only the first bind
+succeeds. An existing app can obtain the pointer through `JSContext.getNapiEnv()` (API 22),
+as above; the app's registration adapter still uses `ark_interop`. The library creates its
+own scopes, references, callback registry and thread-safe dispatch queue. It cancels pending
+work and rejects further engine access when the environment is destroyed.
+
+Build `native/backend.cpp` with `sh native/build.sh <native library output directory>`, and
+package `libarkts_runtime_native.so` and the SDK's `libc++_shared.so` from that directory.
+The supplied apps do this in their `entry/hvigorfile.ts`. Their Cangjie compile options link
+`-lace_napi.z -L ${ARKTS_RUNTIME_NATIVE_LIB} -larkts_runtime_native`, where the environment
+variable names the generated native library directory. The supplied build script currently
+targets `aarch64-linux-ohos`, used by both validated devices.
+
+The public `Extern*` exceptions and `ForeignRuntimeException` keep their roles. Errors formerly
+exposed as `BusinessException` by the old backend are now `ArkTSNativeException`, with a public
+`code` field retaining the relevant 34300001/34300005/34300006 categories. JS exceptions are
+cleared and translated to `ForeignRuntimeException` with the message and available JS stack.
+For UTF-16 property keys use `arkts_runtime.Utf16String`, constructed from a `String` or raw
+`Array<UInt16>` code units, including unpaired surrogates.
+
+`standalone/run.sh` builds an independent native-module consumer using the Cangjie runtime's
+C initialization and library-loading APIs. It packages no Cangjie interop library, checks
+native dependencies, and validates binding, callbacks and Worker teardown on the selected
+device. It temporarily uses the signed benchmark app identity; restore the benchmark with
+`demos/benchmarks/run.sh` from the repository root afterwards. See `standalone/README.md`.
 
 ## Shipped libraries
 
@@ -142,7 +172,8 @@ exception thrown in it reaches ArkTS as an `Error` with the exception's text.
 ## Tests
 
 `arkts_runtime.tests` holds the device scenarios, run by `testapp/` through `./devicetest.sh`.
-They are compiled only when testapp builds the library. `cjpm.toml` passes the app's bundle
+Set `BUILD_MODE=release` to validate optimized code as well. The library release profile
+retains IEEE floating-point semantics. They are compiled only when testapp builds the library. `cjpm.toml` passes the app's bundle
 name as `--cfg` key `bundle`, and every top-level declaration in `src/tests` carries
 `@When[bundle == "com.example.testArkTSForeignRuntime"]`, testapp's bundle name. Other apps get an empty
 package. New declarations in `src/tests` need the same annotation. `testapp/` and

@@ -1,7 +1,7 @@
 package arkts_runtime.tests
 
 import std.math.numeric.BigInt
-import ohos.ark_interop.*
+
 import arkts_runtime.*
 
 // Fixtures are classes from fixtures.ets; ArkTS checks the effects after each scenario.
@@ -40,7 +40,7 @@ type E = Extern<ArkTSRuntime>
 
 /** fixtures[index] as an Extern. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func ext(fixtures: Array<JSValue>, index: Int64): E {
+func ext(fixtures: Array<NativeJSValue>, index: Int64): E {
     ArkTSRuntime.retain(fixture(fixtures, index))
 }
 
@@ -52,7 +52,7 @@ func text(e: E): String { unwrap(e).toString() }
 
 /** fixtures: Target. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func memberRead(fixtures: Array<JSValue>): String {
+func memberRead(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     firstFailure([
         expectEqual("e.num", number(e.num), 1.5),
@@ -67,7 +67,7 @@ func memberRead(fixtures: Array<JSValue>): String {
  * on arrays: on primitives both throw. ArkTS checks str is unchanged.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func primitiveReceivers(fixtures: Array<JSValue>): String {
+func primitiveReceivers(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let notObject = "The ArkTS data types do not match, expect: object, given: "
     firstFailure([
@@ -85,7 +85,7 @@ func primitiveReceivers(fixtures: Array<JSValue>): String {
 
 /** fixtures: Target. ArkTS checks num == 7, a.b.c == 99, str == "set". */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func memberUpdate(fixtures: Array<JSValue>): String {
+func memberUpdate(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     e.num = 7.0
     e.a.b.c = 99.0
@@ -99,7 +99,7 @@ func memberUpdate(fixtures: Array<JSValue>): String {
 
 /** fixtures: Target. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func memberOfUndefinedOrNull(fixtures: Array<JSValue>): String {
+func memberOfUndefinedOrNull(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let notObject = "The ArkTS data types do not match, expect: object, given: "
     firstFailure([
@@ -113,7 +113,7 @@ func memberOfUndefinedOrNull(fixtures: Array<JSValue>): String {
 
 /** fixtures: Target, callLog. ArkTS checks callLog.self === target. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func methodCallThis(fixtures: Array<JSValue>): String {
+func methodCallThis(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let log = ext(fixtures, 1)
     let result = e.record(1.0, 2.0)
@@ -129,7 +129,7 @@ func methodCallThis(fixtures: Array<JSValue>): String {
  * callLog.self === target.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func extractedMethodKeepsThis(fixtures: Array<JSValue>): String {
+func extractedMethodKeepsThis(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let log = ext(fixtures, 1)
     let unbound = ArkTSRuntime.retain(fixture(fixtures, 0).getProperty("record"))
@@ -149,7 +149,7 @@ func extractedMethodKeepsThis(fixtures: Array<JSValue>): String {
  * method stored in the array, has `this` = the array. ArkTS checks the second.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func indexCallThis(context: JSContext, fixtures: Array<JSValue>): String {
+func indexCallThis(context: NativeContext, fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let log = ext(fixtures, 1)
     e["record"](1.0)
@@ -164,7 +164,7 @@ func indexCallThis(context: JSContext, fixtures: Array<JSValue>): String {
 
 /** fixtures: CountingHolder around a Target. ArkTS checks the getter ran once. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func receiverEvaluatedOnce(fixtures: Array<JSValue>): String {
+func receiverEvaluatedOnce(fixtures: Array<NativeJSValue>): String {
     let h = ext(fixtures, 0)
     expectEqual("return value", number(h.target.record(1.0)), 1.0)
 }
@@ -174,7 +174,7 @@ func receiverEvaluatedOnce(fixtures: Array<JSValue>): String {
  * bigint, number, boolean, string, bigint, number, object.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func argumentTypes(fixtures: Array<JSValue>): String {
+func argumentTypes(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let rect = ext(fixtures, 2)
     let count = e.record(1, 2.5, true, "s", BigInt(3), Int32(4), rect)
@@ -187,7 +187,7 @@ func argumentTypes(fixtures: Array<JSValue>): String {
 
 /** fixtures: Target. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func callNonFunction(fixtures: Array<JSValue>): String {
+func callNonFunction(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let v = e.num
     firstFailure([
@@ -206,7 +206,7 @@ func callNonFunction(fixtures: Array<JSValue>): String {
  * ArkTS checks items == [55, 77, 99] (length 3), str == "via string", num == 4.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func indexReadWrite(context: JSContext, fixtures: Array<JSValue>): String {
+func indexReadWrite(context: NativeContext, fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let symbol = ArkTSRuntime.retain(context.symbol(description: "k").toJSValue())
     let readChecks = [
@@ -225,8 +225,11 @@ func indexReadWrite(context: JSContext, fixtures: Array<JSValue>): String {
     e[e.half] = "fraction"
     e[0.25] = "quarter"
     e[symbol] = 8.0
+    let surrogate = Utf16String([0xD800u16])
+    e[surrogate] = "surrogate"
     firstFailure([
         firstFailure(readChecks),
+        expectEqual("raw UTF-16 key", text(e[surrogate]), "surrogate"),
         expectEqual("e[e.half] (Extern fractional number)", text(e[e.half]), "fraction"),
         expectEqual("property \"1.5\"", fixture(fixtures, 0).getProperty("1.5").toString(), "fraction"),
         expectEqual("property \"0.25\" (Float64 key)", fixture(fixtures, 0).getProperty("0.25").toString(), "quarter"),
@@ -244,7 +247,7 @@ func indexReadWrite(context: JSContext, fixtures: Array<JSValue>): String {
  * `undefined` past the end. ArkTS checks items.length == 0.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func indexBoundaries(context: JSContext, fixtures: Array<JSValue>): String {
+func indexBoundaries(context: NativeContext, fixtures: Array<NativeJSValue>): String {
     let a = ext(fixtures, 0)
     func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
     let reads = [
@@ -284,7 +287,7 @@ func indexBoundaries(context: JSContext, fixtures: Array<JSValue>): String {
  * [1, 2, 3, 4].
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func nonArrayIndexing(fixtures: Array<JSValue>): String {
+func nonArrayIndexing(fixtures: Array<NativeJSValue>): String {
     let m = ext(fixtures, 0)
     let u8 = ext(fixtures, 1)
     let notArray = "expect: array, given: object"
@@ -301,7 +304,7 @@ func nonArrayIndexing(fixtures: Array<JSValue>): String {
 
 /** fixtures: Target. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func unsupportedIndex(fixtures: Array<JSValue>): String {
+func unsupportedIndex(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     firstFailure([
         expectThrows<ExternIndexedAccessException>("e.items[Int32(0)]", "Unsupported ArkTS index type",
@@ -321,7 +324,7 @@ func unsupportedIndex(fixtures: Array<JSValue>): String {
 
 /** fixtures: OrderLog. ArkTS checks the getter order target, index, value and stored[1] == 5. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func indexWriteOrder(fixtures: Array<JSValue>): String {
+func indexWriteOrder(fixtures: Array<NativeJSValue>): String {
     let l = ext(fixtures, 0)
     l.target[l.index] = l.value
     ""
@@ -332,7 +335,7 @@ func indexWriteOrder(fixtures: Array<JSValue>): String {
  * not Cangjie's "1.500000"), integral or not: -0 is "0".
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func numberKeys(context: JSContext, fixtures: Array<JSValue>): String {
+func numberKeys(context: NativeContext, fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
     e[num(1e21)] = "huge"
@@ -350,7 +353,7 @@ func numberKeys(context: JSContext, fixtures: Array<JSValue>): String {
  * on a primitive it throws, before anything is written.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func compoundAssignmentUnsupported(fixtures: Array<JSValue>): String {
+func compoundAssignmentUnsupported(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let notObject = "The ArkTS data types do not match, expect: object, given: "
     firstFailure([
@@ -367,7 +370,7 @@ func compoundAssignmentUnsupported(fixtures: Array<JSValue>): String {
  * member `+` of a number fails.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func variableCompoundIsMethodCall(fixtures: Array<JSValue>): String {
+func variableCompoundIsMethodCall(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     var x = e.num
     try {
@@ -380,7 +383,7 @@ func variableCompoundIsMethodCall(fixtures: Array<JSValue>): String {
 
 /** fixtures: Target. Every link of the chain is retained, then released by the Cangjie GC. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func longChainLoop(fixtures: Array<JSValue>): String {
+func longChainLoop(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     for (i in 0..100000) {
         let c = e.a.b.c

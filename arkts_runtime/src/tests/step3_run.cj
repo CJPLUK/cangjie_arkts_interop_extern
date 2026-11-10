@@ -2,7 +2,7 @@ package arkts_runtime.tests
 
 import std.collection.*
 import std.sync.*
-import ohos.ark_interop.*
+
 import arkts_runtime.*
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -82,7 +82,10 @@ func runPropagatesException(): String {
 func runOffThreadRethrowsError(): String {
     let caller = spawn {
         try {
-            "returned ${ArkTSRuntime.run { Array<Int64>(Int64.Max / 16, repeat: 0).size }}"
+            // Return the array across the dispatch boundary. Reading .size inside
+            // the closure lets release optimization remove the allocation entirely.
+            let impossible = ArkTSRuntime.run { Array<Int64>(Int64.Max / 16, repeat: 0) }
+            "returned ${impossible.size}"
         } catch (e: Error) {
             e.toString()
         }

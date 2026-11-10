@@ -16,7 +16,8 @@ func testCJ(runtime: JSContext, callInfo: JSCallInfo): JSValue {
 func runArkTSTest(runtime: JSContext, callInfo: JSCallInfo): JSValue {
     let name = callInfo[0].toString()
     let fixtures = Array<JSValue>(callInfo.count - 1) { i => callInfo[i + 1] }
-    runtime.string(runScenario(runtime, name, fixtures)).toJSValue()
+    runtime.global["__arkts_test_fixtures"] = runtime.array(fixtures).toJSValue()
+    runtime.string(runNativeScenario(runtime.getNapiEnv(), name)).toJSValue()
 }
 
 /**
@@ -48,7 +49,7 @@ let EXPORT_MODULE = JSModule.registerModule {
     // Registration can run for each JS engine instance that loads the library; the runtime is
     // bound to the first one.
     if (!ArkTSRuntime.isBound()) {
-        ArkTSRuntime.bind(runtime)
+        ArkTSRuntime.bind(runtime.getNapiEnv())
     }
     exports["testCJ"] = runtime.function(testCJ).toJSValue()
     exports["runArkTSTest"] = runtime.function(runArkTSTest).toJSValue()

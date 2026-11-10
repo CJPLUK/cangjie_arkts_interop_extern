@@ -1,13 +1,12 @@
 package arkts_runtime.tests
 
-import ohos.ark_interop.*
-import ohos.business_exception.BusinessException
+
 import arkts_runtime.*
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func step7Scenarios(): Array<(String, Scenario)> {
     [
-        ("step7.arkInteropJSException", { _, f => arkInteropJSException(f) }),
+        ("step7.nativeJSException", { _, f => nativeJSException(f) }),
         ("step7.jsThrowsBecomeForeignRuntimeException", { _, f => jsThrowsBecomeForeignRuntimeException(f) }),
         ("step7.ownExceptionsNotWrapped", { _, f => ownExceptionsNotWrapped(f) }),
         ("step7.usableAfterJSException", { _, f => usableAfterJSException(f) })
@@ -20,24 +19,24 @@ func step7OffThreadScenarios(): Array<(String, OffThreadScenario)> {
 }
 
 /**
- * fixtures: Thrower. Pins what `ark_interop` itself throws for a JS throw, called directly
- * (without `run`): a `BusinessException` with code 34300002 whose message contains the JS text.
+ * fixtures: Thrower. Pins what the direct native backend throws for a JS throw, called directly
+ * (without `run`): an `ArkTSNativeException` with code 34300002 whose message contains the JS text.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func arkInteropJSException(fixtures: Array<JSValue>): String {
+func nativeJSException(fixtures: Array<NativeJSValue>): String {
     let thrower = fixture(fixtures, 0)
-    func raw(what: String, fragment: String, block: () -> JSValue): String {
+    func raw(what: String, fragment: String, block: () -> NativeJSValue): String {
         try {
             block()
             "${what}: expected an exception"
-        } catch (e: BusinessException) {
+        } catch (e: ArkTSNativeException) {
             firstFailure([
                 expectEqual("${what}: code", e.code, 34300002),
                 expectEqual("${what}: message contains '${fragment}' ('${e.message}')", e.message.contains(fragment), true)
             ])
         }
     }
-    func callRaw(method: String): JSValue {
+    func callRaw(method: String): NativeJSValue {
         thrower.asObject()[method].asFunction().call(thisArg: thrower)
     }
     firstFailure([
@@ -50,7 +49,7 @@ func arkInteropJSException(fixtures: Array<JSValue>): String {
 
 /** fixtures: Thrower. Every public entry point turns a JS throw into a ForeignRuntimeException. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func jsThrowsBecomeForeignRuntimeException(fixtures: Array<JSValue>): String {
+func jsThrowsBecomeForeignRuntimeException(fixtures: Array<NativeJSValue>): String {
     let t = ext(fixtures, 0)
     func fails(what: String, fragment: String, block: () -> Any): String {
         expectThrows<ForeignRuntimeException>(what, fragment, block)
@@ -64,16 +63,16 @@ func jsThrowsBecomeForeignRuntimeException(fixtures: Array<JSValue>): String {
 }
 
 /**
- * fixtures: Target. Our exceptions, and `ark_interop` errors that are not JS throws (type
+ * fixtures: Target. Our exceptions, and native backend errors that are not JS throws (type
  * mismatch, 34300005), keep their type.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func ownExceptionsNotWrapped(fixtures: Array<JSValue>): String {
+func ownExceptionsNotWrapped(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let mismatch = try {
         ArkTSRuntime.run { unwrap(e.num).toString() }
         "toString of a number: expected an exception"
-    } catch (ex: BusinessException) {
+    } catch (ex: ArkTSNativeException) {
         expectEqual("toString of a number: code", ex.code, 34300005)
     }
     firstFailure([
@@ -89,7 +88,7 @@ func ownExceptionsNotWrapped(fixtures: Array<JSValue>): String {
 
 /** fixtures: Thrower. ArkTS checks calls == 2: the second call after a JS exception ran too. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func usableAfterJSException(fixtures: Array<JSValue>): String {
+func usableAfterJSException(fixtures: Array<NativeJSValue>): String {
     let t = ext(fixtures, 0)
     let first = expectThrows<ForeignRuntimeException>("first call", "boom", { => t.boom() })
     let second = expectThrows<ForeignRuntimeException>("second call", "boom", { => t.boom() })

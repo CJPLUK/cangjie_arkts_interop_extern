@@ -227,7 +227,7 @@ emulator.
     and `ALL PASS (n)` / `n FAILED`. Verified on the emulator by tapping the button with
     `uitest`: `ALL PASS (3)`. Times: designExample 1 ms, mixedScenario ×1000 212 ms,
     off-thread ×100 899 ms (about 9 ms per iteration, which is the cost of posting to the JS
-    thread, a target for step 12). Not checked on the phone, which was locked; that has to
+    thread, a target for step 13). Not checked on the phone, which was locked; that has to
     be done by hand.
 
 - **Step 10 done** (2026-10-14). The runtime is the `cjpm` static library `arkts_runtime/`
@@ -356,7 +356,7 @@ emulator.
     watchdog killed the app (`THREAD_BLOCK_6S`); runs are separated by 20 ms. After the pause
     the CPU is slower, so every timed run is preceded by an untimed one.
 
-- **Fewer engine calls per statement** (2026-10-16), by the user's choice, before step 12.
+- **Fewer engine calls per statement** (2026-10-16), by the user's choice, before step 13.
   Every `JSValue.isX()` checks the thread and calls into the engine, and each statement made
   up to a dozen of them. Changes: member and index access recognise an object receiver with
   one `isObject()` before the other checks; `retain` checks numbers and `undefined` first;
@@ -397,7 +397,7 @@ emulator.
     `array.readElement` 2 072 → 1 461, `array.writeElement` 1 851 → 1 174, `array.loop1000`
     2.16 → 1.46 ms; member access unchanged. `string.length` now reads the string into
     Cangjie (`fromExtern<String>(t.str).size`), the same operation as its `ark_interop`
-    variant, so it is not comparable with earlier runs. Step 12's items 4 and 5 are superseded.
+    variant, so it is not comparable with earlier runs. Step 13's items 4 and 5 are superseded.
 - **Every concrete type converted directly** (2026-10-16), by the user's choice: `toJSValue`
   and `fromJSValue` match all integer, float, `Bool`, `String`, `BigInt` and `Unit` types
   directly; only `Array<T>` and `Option<T>` go through the `ToJS` cast / `TypeTag` (their
@@ -556,6 +556,68 @@ emulator.
   `run`s instead of one), `call.method0/1/3` 1.28–1.32 / 1.43–1.63 (two `run`s), the rest
   within the noise (`thread.readNumber` alternates between about 145 and 430 µs on the phone
   in every earlier run).
+
+- **Step 12 done** (2026-11-09): the library core uses public N-API C calls with its own
+  native bridge; it imports no OHOS Cangjie package. `bind` now accepts the borrowed `napi_env`
+  as `CPointer<Unit>`. All existing app adapters pass `getNapiEnv()`; the library owns scopes,
+  direct heap references (with a boxing fallback for restrictive implementations), callback roots,
+  thread-safe dispatch, pending-exception translation and environment cleanup. No private
+  `ARKTS_*` API or competing interop callback table is installed. Native non-JS errors now use
+  the library's `ArkTSNativeException`, preserving the relevant error codes; `Extern*` and
+  `ForeignRuntimeException` retain their roles. UTF-16 keys use the library's own
+  `Utf16String` (String or raw code units).
+  - Validation: 24 host tests pass; 95 device tests pass on phone and emulator in both
+    debug and release mode. New checks
+    cover direct N-API access, native dispatch, callback capture and finalization exactly once,
+    a raw unpaired-surrogate property key independently checked from ArkTS, copied primitive
+    payloads across closed scopes, and retained strings/BigInts/symbols across forced JS GC.
+    Additional checks cover bounded Unicode/NUL strings, numeric-array accessors and shrinkage,
+    reentrant GC/setters, input snapshots, and copied scalar reads from a different native thread
+    while the JS thread is blocked. The end-to-end
+    group passed three repeated runs per device after adding pending-exception checks for
+    JS-executing operations. A mutation bypassing dispatch was caught by off-thread tests.
+    Object/function references use direct `napi_ref`s: boxing these unnecessarily exceeded
+    the unchanged heap-growth test limit on the phone; the corrected lifetime suite and full
+    suite pass on both devices.
+  - `arkts_runtime/standalone/run.sh` builds and runs a consumer with no `JSContext`,
+    `JSModule`, Cangjie interop library or helper in its packaged/dependency graph. It uses
+    the Cangjie runtime C initialization/loading APIs from a regular N-API module. Both
+    devices pass unbound/null-bind checks, binding, property and callback operations, Worker
+    teardown, pending-task cancellation, release of a waiting caller, rejection of dead-env
+    operations and late reference release. The fixture uses the signed benchmark identity;
+    the normal benchmark app was restored afterwards. The vendored public `Cangjie.h` header
+    and its license are recorded in its README. Normal apps retain their registration/UI
+    dependencies; removing the core dependency does not remove platform loader infrastructure.
+  - Both hello and rectangle were rebuilt and exercised with `demos/smoke.py` on both
+    devices: hello shows text/counter, disables the button, then resets; rectangle shows
+    width 5, area 25 and ArkTS confirmation. All 27 benchmark cases completed on each device
+    without errors, in release mode. The standard app was restored and its benchmark suite
+    rerun after the independent-consumer and isolated-comparison checks.
+  - Hot-path follow-up: local values are immutable structs; a small C-compatible result combines
+    type/payload decoding. Callback-free validation, scope/reference operations, queued disposal
+    and nonblocking posting use fast FFI. Unbounded draining, compatibility boxing, long strings
+    and JS-executing operations retain ordinary FFI. Named/numeric key creation is included in
+    each property operation; embedded NULs keep explicit lengths. Short-string copying is bounded
+    to 128 UTF-16 code units. Numeric arrays use copied/pinned buffers, preserving accessor order,
+    exceptions, changing bounds and input snapshots. Copied scalar reads avoid a second JS task;
+    cross-thread completion uses a one-shot `SyncCounter` with publication ordering.
+  - Release checks found `--fast-math` invalidated signed-zero assertions; library and test-app
+    profiles now retain IEEE behavior with `-O2`. The `OutOfMemoryError` test returns the array
+    across dispatch before inspecting its size so optimization cannot elide the allocation.
+    Concurrent rebind still races 8 workers for 50 rounds, collecting explicit outcomes through
+    a completion counter after an intermittent SDK `Future.get()` internal-result error.
+  - Initial direct-backend reports `*-2026-11-09-1610.*` showed substantial regressions. The
+    final comparison loads the old backend from `cbdc32f` and the current backend into one
+    isolated app, alternating five warmed samples per case in forward/reverse variant order.
+    All **27 per-case medians match or improve** on both targets: median optimized/old ratios
+    **0.727 / 0.764**, geometric means **0.697 / 0.710**, and slowest per-case ratios
+    **0.999 / 0.959** (phone / emulator). `property.readChain` is **24% / 46% faster**.
+    Full paired samples are `ohos-2026-11-09-1754.samples.tsv` and
+    `emulator-2026-11-09-1754.samples.tsv` under `demos/benchmarks/results`.
+    `compare_backends.py --baseline cbdc32f --all` reproduces the isolated fixture without
+    changing the core dependency graph. Separate-process intermediate runs are retained as
+    history, with their clock/scheduler variation documented. Full measurements, source hashes
+    and validation are in [the performance follow-up](arkts_runtime/native/performance.md).
 
 ## Testing strategy
 
@@ -1109,7 +1171,7 @@ emulator and the phone, and no app contains runtime code.
 A demo app that times the same operations written twice: with typical `ark_interop` code
 (`JSContext`, `JSObject`, `JSValue`, as a user of `ark_interop` would write it, without
 hand-made caches) and with `Extern<ArkTSRuntime>` syntax. The ratio is the cost of the
-runtime. The same set is rerun after each optimization in step 12 to measure what it gains.
+runtime. The same set is rerun after each optimization in step 13 to measure what it gains.
 
 App: `demos/benchmarks` (`com.example.arkts.benchmarks`). Unlike the other demos it has no
 Cangjie UI (so it ships only `dependencies_libs/base`): an ArkTS page drives the runs and calls
@@ -1169,9 +1231,169 @@ Results files are not ignored, so they stay next to the app and runs before and 
 optimization can be compared.
 
 Done when: all 10 groups run on phone and emulator and a first pair of results files per
-device is saved, as the baseline for step 12.
+device is saved, as the baseline for step 13.
 
-### 12. Optimizations (each behind its own tests)
+### 12. Replace the `ohos.ark_interop` backend with direct C API calls
+
+Implemented and validated on 2026-11-09; see the Step 12 status above. The investigation and
+acceptance criteria below record the migration work.
+
+Goal: `arkts_runtime` itself no longer imports, links to, or requires
+`ohos.ark_interop` or `ohos.ark_interop_helper`. Use the simple `Extern` model's direct
+`ForeignRuntime` operations, retaining the existing public behavior and tests. The test app,
+demos and the benchmark's **comparison** variant may still use `ark_interop`; verify the
+library independently as well, so those consumers cannot conceal a dependency. Do not remove
+libraries from `dependencies_libs` while those applications still need them. Existing public
+`bind(JSContext)` and the tests' JSValue fixtures do depend on `ark_interop`: replacing the
+backend therefore also requires a new initialization boundary and test adapters. It is a
+consumer API migration; document it and update every app, rather than claiming the old binding
+API remains source-compatible.
+
+Implemented binding boundary:
+
+```cangjie
+// Borrow the host napi_env; no ohos.ark_interop type appears in this API.
+public static func bind(env: CPointer<Unit>): Unit
+```
+
+`env` represents a valid N-API `napi_env` belonging to the host ArkTS environment, not a
+`JSContext`, `JSRuntime`, or internal `ARKTS_Env`. The caller invokes `bind` on that
+engine's JS thread while the environment is alive. Binding captures the native thread ID,
+creates the backend's own dispatch and lifecycle state, and preserves the existing first-bind
+and rebind contract. Reject null; define cleanup and pending-call behavior when the environment
+is destroyed. The pointer alone is not a dispatcher or a lifetime guarantee. Do not use it
+for VM operations on arbitrary threads or after teardown. The public pointer representation is the C ABI boundary; callers obtain it from the host
+N-API module callback or the optional registration adapter.
+
+`JSContext` stores `env_` (an internal `JSEnv` / `ARKTS_Env`), the bind-thread ID and disposal
+state, scoped values, cached globals and constants, registries of shared objects, closures and
+async callbacks, and pending JS error state. These are `ark_interop` implementation state, not
+arguments to copy into `bind`; create and manage the state the new backend actually needs.
+Its `getNapiEnv()` obtains the corresponding N-API environment. For an existing app, an
+optional consumer-side transition can be `ArkTSRuntime.bind(runtime.getNapiEnv())` at
+registration on the JS thread, after verifying API 22 availability on the installed SDK and
+OS. Such a caller still depends on `ark_interop`, even though the runtime no longer does. An
+independent native-module callback can instead receive `napi_env` directly, provided Cangjie
+runtime initialization and callback safety are proven. Do not create a new engine just to bind.
+
+Investigation (SDK headers installed with DevEco and the upstream
+[ark_interop implementation](https://github.com/openharmony/arkcompiler_cangjie_ark_interop/blob/master/ohos/ark_interop/jscontext.cj)):
+
+- The SDK's `native/sysroot/usr/include/napi/native_api.h` and `js_native_api.h` expose
+  Node-API: `napi_env`, handle scopes, references, value and property operations, function
+  calls and callbacks, BigInt word operations, exception handling, thread-safe functions,
+  environment cleanup hooks and `napi_load_module`. These are candidates, not proof of
+  equivalent behavior on the target OS. Verify API levels, headers, library names, linking,
+  thread rules and actual device support before relying on each one.
+- Upstream `JSContext` also calls `ARKTS_OpenScope`, `ARKTS_CloseScope`,
+  `ARKTS_CreateAsyncTask`, `ARKTS_RequireArkModule`, `ARKTS_Require`, and
+  `ARKTS_GetGlobalNapiEnv`. Its `JSEnv` / `JSValue_` ABI is distinct from Node-API's types;
+  never cast between them without a documented and tested contract. Investigate whether
+  these symbols are public, supported and present on both devices before using them; do not
+  assume private `ARKTS_*` symbols or the conversion to `napi_env` are available to apps.
+- `napi_load_module` and a thread-safe function are possible alternatives for module loading
+  and thread dispatch; their behavior, lifetime and calling contexts must be tested against
+  `requireArkModule`, `requireSystemNativeModule` and `postJSTask`, not assumed equivalent.
+  The JS thread must never wait for a worker that is synchronously waiting on that thread.
+
+Source-tree findings (local snapshots `arkui_napi` b3c5c835 and
+`arkcompiler_cangjie_ark_interop` 35ccda29; these may differ from the installed SDK and
+phone firmware, so confirm versions and symbols on each target):
+
+- `arkui_napi/interfaces/inner_api/cjffi/ark_interop/ark_interop_napi.h` declares the
+  `ARKTS_*` value, scope, object, call and global-handle APIs. They are **inner APIs**, not
+  automatically a supported app-facing ABI. The corresponding Cangjie declarations and
+  implementation are in `arkcompiler_cangjie_ark_interop/ohos/ark_interop/`. Compare both
+  sides' exact signatures, layouts, exported symbols and library dependencies before using any
+  of them. The SDK's public N-API remains the first candidate for an app-supported backend.
+- `JSContext.getNapiEnv()` is a public API annotated since API 22 in
+  `ohos/ark_interop/jscontext.cj`. This provides a concrete transitional integration path:
+  an **optional consumer-side adapter** can obtain the `napi_env` on the JS thread and pass
+  it into the independent runtime. That adapter still depends on `ark_interop` and must not
+  be included in the core library or mistaken for a dependency-free consumer. Probe whether
+  it exists and works with the installed SDK and deployed OS. Independently prove an
+  initialization path that does not require the adapter for the completion criterion below.
+- `ARKTS_GetGlobalNapiEnv` obtains the N-API environment from the VM in
+  `ark_interop_napi.cpp`. `ARKTS_ToNapiValue` and `ARKTS_FromNapiValue` perform explicit
+  scope-aware conversions; the source confirms that a raw cast between the two value
+  representations is not the interface. They are declared under `inner_api`, so use only
+  in a controlled probe unless their support and availability are established. These helpers
+  may help test adapters, but cannot silently reintroduce the removed library dependency.
+- `ark_interop_global.cpp` creates global handles for heap objects and queues their
+  destruction because a Cangjie destructor can run on an isolate thread and crash JS GC;
+  synchronous deletion is a separate function. `ark_interop_scope.h` tracks scopes per env
+  and thread. Match the lifetime and thread guarantees using the chosen public ABI; test
+  releases during shutdown as well as normal collection.
+- `ark_interop_async.cpp` posts through an integrated uv loop or event handler, while
+  `ARKTS_CreateAsyncTask` routes through the registered Cangjie async callback. In
+  `ark_interop_module.cpp`, `ARKTS_SetCJModuleCallback` installs a single process-global
+  callback table and rejects a second registration. Do **not** register a competing table or
+  assume `ARKTS_CreateAsyncTask` can dispatch our own callbacks independently of the
+  existing `ark_interop`. Probe a supported independent dispatcher and teardown instead.
+- The source's `docs/knowledge/cjffi.md` describes the existing CJ module loader,
+  `cj_envsetup`, runtime/scheduler initialization, cross-runtime callbacks and stack setup.
+  Existing Cangjie apps may still load platform interop infrastructure even if this library
+  never imports it. Distinguish removal of the library's own imports and link dependencies
+  from proving that a whole process or app works without platform loader infrastructure.
+  Do not bypass the established Cangjie initialization/stack protocol; prove a supported
+  bootstrap and coexistence with existing Cangjie UI and benchmark applications.
+
+Probes first, on the phone and emulator, with the actual SDK and shipped runtime:
+
+1. Build a minimal Cangjie/C FFI module initialized by an ArkTS native-module callback with
+   a valid `napi_env`. Prove the Cangjie runtime is initialized and Cangjie code can safely be
+   called from that callback and from JS callbacks. Establish how each existing app obtains
+   and binds the same environment without `JSContext`, including Cangjie UI entry points.
+   Check module registration, native library packaging, symbol visibility and initialization
+   order. Do not rely on extracting private fields from `JSContext`.
+2. Verify a worker can post to the bound JS thread and wait without blocking its event loop;
+   test nested calls, concurrent callers, errors, environment teardown and scheduling failure.
+   Test Cangjie thread migration and native thread identity. Define shutdown behavior so
+   pending callers are released and never use a destroyed environment.
+3. Test scope and reference lifetime for every supported value kind, including strings,
+   symbols, bigints and external values. Establish which types Node-API actually allows in
+   strong references; use safe boxed references or another documented approach where needed.
+   Immediate values must be stored as Cangjie data or recreated in a valid scope, never as
+   stale `napi_value`s. Test releasing the last Cangjie reference off-thread and at shutdown.
+4. Test callback rooting and finalization: `napi_create_function` callback data must keep a
+   Cangjie closure alive safely until JS collects it, and be released exactly once; no
+   Cangjie exception may cross a C ABI boundary. Verify propagation as a JS error, reentry,
+   arguments, return values and calls after the creating scope closes.
+5. Compare module loading and error behavior, including module specifiers, missing modules,
+   JS stack requirements, system native modules, thrown JS values, pending-exception clearing
+   and errors from getters, setters and callbacks. If no supported direct API provides a
+   helper's existing behavior, record the gap and settle the API change before migrating it.
+
+Implementation after the probes:
+
+- Add a small C-compatible bridge only where Cangjie FFI, native callbacks, registration or
+  runtime attachment requires it; use typed declarations and explicit ownership. Link only
+  supported system C APIs, check every status, and translate pending JS exceptions and native
+  errors without leaving an exception pending for the next operation. Preserve Cangjie error
+  propagation across the dispatch boundary.
+- Replace `JSContext`, `JSValue`, `JSHeapObject`, and `JSKeyable` in runtime and conversions
+  with private backend types. Implement binding, scopes, dispatch, references, receiver
+  retention, reads, writes, calls, conversions (including UTF-16 and arbitrary-size BigInt),
+  helpers, module loading and callbacks. Preserve current index bounds/type rules, numeric
+  and string conversion, and error semantics explicitly; raw Node-API behavior may differ.
+- Migrate test fixtures and all consumers to the new binding/interop boundary. Keep the
+  benchmark's `ark_interop` comparison variant intact and ensure both variants use the same
+  engine and equivalent operations. Update consumer instructions, dependency packaging and
+  the architecture documentation to reflect the actual supported API and initialization.
+
+Validation: compile and link the library and a minimal consumer without `ark_interop` or its
+helper as direct or transitive dependencies; separately record platform loader dependencies.
+Inspect final native dynamic dependencies and packaged files, not only source imports. Run all host and device tests on phone and emulator, including the
+lifetime, callback, exception, threading and conversion tests; add tests for the probe cases
+and initialization/teardown. Build and exercise both interactive demos and run all benchmark
+cases on both devices. Save comparable before/after benchmark reports with build, device and
+method unchanged; report behavior differences and performance rather than assuming a speedup.
+A step is complete only when the independent consumer works without either interop library and
+all agreed public behavior and tests pass on both devices. If a required supported C API or
+safe initialization/dispatch mechanism is unavailable, document the blocker and alternatives
+before changing the public contract.
+
+### 13. Optimizations (each behind its own tests)
 
 1. `ExternSequence` handled in `eval` / `evalTree`.
    - Host: with `--enable-extern-sequence`, `RecordingRuntime` sees `ExternSequence` for two
