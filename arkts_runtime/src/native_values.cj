@@ -20,7 +20,7 @@ struct NativeJSValue <: ToString {
     init(session: NativeSession, value: NapiValue) {
         this.session = session
         local = value
-        let decoded = unsafe { ar_decode_value(session.env, value) }
+        let decoded = unsafe { ats_rt_ext_decode_value(session.env, value) }
         nativeCheck(session, decoded.status)
         kind = decoded.kind
         number = decoded.scalar
@@ -77,7 +77,7 @@ struct NativeJSValue <: ToString {
         let env = session.env
         var size: UIntNative = 0
         var capacity: UIntNative = 0
-        nativeCheck(session, unsafe { ar_short_string_capacity(env, raw, inout capacity) })
+        nativeCheck(session, unsafe { ats_rt_ext_short_string_capacity(env, raw, inout capacity) })
         let short = capacity != 0
         if (!short) {
             nativeCheck(session, unsafe { napi_get_value_string_utf8(env, raw, CPointer<UInt8>(), 0, inout size) })
@@ -88,7 +88,7 @@ struct NativeJSValue <: ToString {
             let buffer = acquireArrayRawData(bytes)
             try {
                 let status = if (short) {
-                    ar_copy_short_string(env, raw, buffer.pointer, capacity, inout size)
+                    ats_rt_ext_copy_short_string(env, raw, buffer.pointer, capacity, inout size)
                 } else {
                     napi_get_value_string_utf8(env, raw, buffer.pointer, capacity, inout size)
                 }
@@ -128,19 +128,19 @@ struct NativeJSValue <: ToString {
     func asExternal(): NativeJSValue { this }
     func getData(): Object {
         var id: Int64 = 0
-        nativeCheck(session, unsafe { ar_external_id(session.state, raw, inout id) })
+        nativeCheck(session, unsafe { ats_rt_ext_external_id(session.state, raw, inout id) })
         nativeExternalData(id)
     }
     func toBigInt(): BigInt {
         if (!isBigInt()) { throw ExternConversionException("Expected bigint") }
         var size: UIntNative = 0
-        nativeCheck(session, unsafe { ar_bigint_size(session.state, raw, inout size) })
+        nativeCheck(session, unsafe { ats_rt_ext_bigint_size(session.state, raw, inout size) })
         if (size == 0) { return BigInt(0) }
         let bytes = Array<UInt8>(Int64(size), repeat: 0)
         var negative: Int32 = 0
         unsafe {
             let buffer = acquireArrayRawData(bytes)
-            try { nativeCheck(session, ar_bigint_read(session.state, raw, inout negative, buffer.pointer, size)) }
+            try { nativeCheck(session, ats_rt_ext_bigint_read(session.state, raw, inout negative, buffer.pointer, size)) }
             finally { releaseArrayRawData(buffer) }
         }
         let value = BigInt(true, bytes)
@@ -152,7 +152,7 @@ struct NativeJSValue <: ToString {
         unsafe {
             let buffer = acquireArrayRawData(key.rawData())
             try {
-                nativeCheck(session, ar_get_property_utf8(session.env, raw, buffer.pointer,
+                nativeCheck(session, ats_rt_ext_get_property_utf8(session.env, raw, buffer.pointer,
                     UIntNative(buffer.array.size), inout result), checkPending: true)
             } finally { releaseArrayRawData(buffer) }
         }
@@ -163,7 +163,7 @@ struct NativeJSValue <: ToString {
         unsafe {
             let buffer = acquireArrayRawData(key.rawData())
             try {
-                nativeCheck(session, ar_set_property_utf8(session.env, raw, buffer.pointer,
+                nativeCheck(session, ats_rt_ext_set_property_utf8(session.env, raw, buffer.pointer,
                     UIntNative(buffer.array.size), value.raw), checkPending: true)
             } finally { releaseArrayRawData(buffer) }
         }
@@ -204,7 +204,7 @@ struct NativeJSValue <: ToString {
         var length: UInt32 = 0
         var result = NapiValue()
         // Keep type/bounds semantics, but cross the ordinary FFI boundary once.
-        let status = unsafe { ar_get_array_element(session.env, raw, index, inout length, inout result) }
+        let status = unsafe { ats_rt_ext_get_array_element(session.env, raw, index, inout length, inout result) }
         if (status == AR_INDEX_OUT_OF_RANGE) {
             throw ArkTSNativeException(34300001, "The accessing index is out of range, allowed: [0, ${length}), given: ${index}")
         }
@@ -234,7 +234,7 @@ struct NativeJSValue <: ToString {
         expectObject()
         var result = NapiValue()
         let status = if (key.kind == 3) {
-            unsafe { ar_get_number_property(session.env, raw, key.number, inout result) }
+            unsafe { ats_rt_ext_get_number_property(session.env, raw, key.number, inout result) }
         } else {
             unsafe { napi_get_property(session.env, raw, key.raw, inout result) }
         }
@@ -268,7 +268,7 @@ struct NativeJSValue <: ToString {
         let status = unsafe {
             let buffer = acquireArrayRawData(numbers)
             try {
-                ar_read_number_array(session.env, raw, buffer.pointer, UIntNative(numbers.size),
+                ats_rt_ext_read_number_array(session.env, raw, buffer.pointer, UIntNative(numbers.size),
                     inout index, inout length, inout badValue)
             } finally { releaseArrayRawData(buffer) }
         }
@@ -283,43 +283,116 @@ struct NativeJSValue <: ToString {
         numbers
     }
     func call(args: Array<NativeJSValue>, thisArg!: NativeJSValue): NativeJSValue {
-        let values = args.map({ v => v.raw })
         var result = NapiValue()
-        unsafe {
-            let buffer = acquireArrayRawData(values)
-            try { nativeCheck(session, napi_call_function(session.env, thisArg.raw, raw,
-                UIntNative(values.size), buffer.pointer, inout result), checkPending: true) }
-            finally { releaseArrayRawData(buffer) }
+        let status = if (args.size <= 8) {
+            var values = VArray<NapiValue, $8>(repeat: NapiValue())
+            for (i in 0..args.size) { values[i] = args[i].raw }
+            unsafe { napi_call_function(session.env, thisArg.raw, raw, UIntNative(args.size), inout values, inout result) }
+        } else {
+            let values = args.map({ v => v.raw })
+            unsafe {
+                let buffer = acquireArrayRawData(values)
+                try { napi_call_function(session.env, thisArg.raw, raw, UIntNative(values.size), buffer.pointer, inout result) }
+                finally { releaseArrayRawData(buffer) }
+            }
         }
+        nativeCheck(session, status, checkPending: true)
         NativeJSValue(session, result)
     }
 }
 
-/** Every heap value is rooted through an owned reference; disposal is queued on the JS thread. */
-class NativeReference {
+/**
+ * The last heap result of each (receiver pin, key) read, so a repeated read of the same object
+ * reuses its Pinned instead of creating a reference. Only a hint: the fused op returns it only
+ * when strictly equal to the value read. Written on the owner thread after a successful op;
+ * read before the op, possibly off-thread, where the op then ignores it (AR_NOT_OWNER).
+ */
+class InternTable {
+    private static let SLOTS = 256
+    private let receivers = Array<UIntNative>(SLOTS, repeat: 0)
+    private let keys = Array<String>(SLOTS, repeat: "")
+    private let values = Array<?Pinned>(SLOTS, repeat: None)
+
+    @OverflowWrapping
+    private static func slot(receiver: CPointer<Unit>, key: String): Int64 {
+        let mixed = UInt64(receiver.toUIntNative() >> 4) ^ UInt64(key.hashCode()) * 0x9E3779B97F4A7C15
+        Int64((mixed >> 56) & 0xFF)
+    }
+
+    func hint(receiver: CPointer<Unit>, key: String): ?Pinned {
+        let i = slot(receiver, key)
+        if (receivers[i] == receiver.toUIntNative() && keys[i] == key) { values[i] } else { None }
+    }
+
+    func remember(receiver: CPointer<Unit>, key: String, value: Pinned): Unit {
+        let i = slot(receiver, key)
+        receivers[i] = receiver.toUIntNative()
+        keys[i] = key
+        values[i] = value
+    }
+}
+
+/**
+ * One strong engine reference, owned by exactly one Pinned. Dropping the Pinned queues the
+ * reference for deletion on the JS thread (ats_rt_ext_unpin), so the finalizer runs on any thread.
+ */
+class Pinned {
     let session: NativeSession
-    private let reference: CPointer<Unit>
-    private let kind: Int32
+    let cell: CPointer<Unit>
+    let kind: Int32
     init(value: NativeJSValue) {
         session = value.session
         kind = value.kind
         var result = CPointer<Unit>()
-        let raw = value.raw
-        var status = unsafe { ar_create_reference(session.state, raw, inout result) }
-        if (status == NAPI_INVALID_ARG && kind != 6 && kind != 7) {
-            status = unsafe { ar_create_boxed_reference(session.state, raw, inout result) }
+        nativeCheck(session, unsafe { ats_rt_ext_pin(session.state, value.raw, inout result) })
+        cell = result
+    }
+    /** Adopts a pin a fused op created. */
+    init(session: NativeSession, cell: CPointer<Unit>, kind: Int32) {
+        this.session = session
+        this.cell = cell
+        this.kind = kind
+    }
+    ~init() { unsafe { ats_rt_ext_unpin(cell) } }
+    private var arrayState: Int8 = 0
+
+    /** Whether this is an array, when known or computable here (the bind thread); else false. */
+    func isArrayHere(): Bool {
+        arrayState == 1 || (arrayState == 0 && session.isInBindThread() && isArray())
+    }
+
+    func isArray(): Bool {
+        if (arrayState == 0) {
+            arrayState = if (kind == 6 && unsafe { ats_rt_ext_is_array(session.env, toJSValue().raw) } == 1) { 1 } else { 2 }
+        }
+        arrayState == 1
+    }
+
+    func elementRead(index: Int64): NativeJSValue {
+        var length: UInt32 = 0
+        var result = NapiValue()
+        var info = NativeValueInfo(0.0, 0, 0)
+        let status = unsafe { ats_rt_ext_element_read(session.env, toJSValue().raw, index, inout length, inout result, inout info) }
+        if (status == AR_INDEX_OUT_OF_RANGE) {
+            throw ArkTSNativeException(34300001, "The accessing index is out of range, allowed: [0, ${length}), given: ${index}")
         }
         nativeCheck(session, status)
-        reference = result
+        NativeJSValue(session, result, info.kind, number: info.scalar, boolean: info.kind == 2 && info.scalar != 0.0)
     }
-    ~init() { unsafe { ar_release_reference(session.state, reference) } }
+
+    func elementWrite(index: UInt32, value: NativeJSValue): Unit {
+        let status = if (value.kind == 3) {
+            unsafe { ats_rt_ext_element_write_f64(session.env, toJSValue().raw, index, value.number) }
+        } else {
+            unsafe { ats_rt_ext_element_write(session.env, toJSValue().raw, index, value.raw) }
+        }
+        nativeCheck(session, status)
+    }
+
+    /** The pinned value for the current scope (in alias mode the reference's own slot). */
     func toJSValue(): NativeJSValue {
         var result = NapiValue()
-        var status = unsafe { ar_reference_value(session.state, reference, inout result) }
-        if (status == AR_BOXED_REFERENCE) {
-            status = unsafe { ar_boxed_reference_value(session.state, reference, inout result) }
-        }
-        nativeCheck(session, status)
+        nativeCheck(session, unsafe { ats_rt_ext_pin_value(session.state, cell, inout result) })
         NativeJSValue(session, result, kind)
     }
 }
@@ -343,7 +416,7 @@ func nativeCheck(session: NativeSession, status: Int32, checkPending!: Bool = fa
     if (pending || status == NAPI_PENDING_EXCEPTION) {
         var error = NapiValue()
         unsafe { napi_get_and_clear_last_exception(env, inout error) }
-        if (error.isNull()) { throw ArkTSNativeException(34300002, "ArkTS exception (message unavailable)") }
+        if (error.isNull()) { throw ForeignRuntimeException("ArkTS exception (message unavailable)") }
         var message = NapiValue()
         let converted = unsafe { napi_coerce_to_string(env, error, inout message) }
         if (converted == 0) {
@@ -375,7 +448,7 @@ func nativeCheck(session: NativeSession, status: Int32, checkPending!: Bool = fa
                     }
                 }
             }
-            throw ArkTSNativeException(34300002, detail)
+            throw ForeignRuntimeException(detail)
         }
         unsafe { napi_get_and_clear_last_exception(env, inout error) }
         throw ForeignRuntimeException("ArkTS exception (message unavailable)")

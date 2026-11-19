@@ -53,7 +53,7 @@ public func scenarioNames(): Array<String> {
 /** Runs the scenario called `name`. Exceptions become failure messages. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runScenario(context: NativeContext, name: String, fixtures: Array<NativeJSValue>): String {
-    for ((scenarioName, scenario) in allScenarios()) {
+    for ((scenarioName, scenario) in concat([allScenarios(), lifetimeScenarios()])) {
         if (scenarioName == name) {
             return try {
                 scenario(context, fixtures)

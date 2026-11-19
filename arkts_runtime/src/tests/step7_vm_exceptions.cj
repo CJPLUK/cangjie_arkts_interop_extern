@@ -20,21 +20,13 @@ func step7OffThreadScenarios(): Array<(String, OffThreadScenario)> {
 
 /**
  * fixtures: Thrower. Pins what the direct native backend throws for a JS throw, called directly
- * (without `run`): an `ArkTSNativeException` with code 34300002 whose message contains the JS text.
+ * (without `run`): a `ForeignRuntimeException` whose message contains the JS text.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func nativeJSException(fixtures: Array<NativeJSValue>): String {
     let thrower = fixture(fixtures, 0)
     func raw(what: String, fragment: String, block: () -> NativeJSValue): String {
-        try {
-            block()
-            "${what}: expected an exception"
-        } catch (e: ArkTSNativeException) {
-            firstFailure([
-                expectEqual("${what}: code", e.code, 34300002),
-                expectEqual("${what}: message contains '${fragment}' ('${e.message}')", e.message.contains(fragment), true)
-            ])
-        }
+        expectThrows<ForeignRuntimeException>(what, fragment, { => block() })
     }
     func callRaw(method: String): NativeJSValue {
         thrower.asObject()[method].asFunction().call(thisArg: thrower)

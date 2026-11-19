@@ -4,40 +4,38 @@ import std.collection.HashMap
 import std.sync.Mutex
 import std.sync.SyncCounter
 
-foreign func ar_bind(env: NativeEnv, callback: CFunc<(Int64, Int32) -> Unit>): CPointer<Unit>
+foreign func ats_rt_ext_bind(env: NativeEnv, callback: CFunc<(Int64, Int32) -> Unit>): CPointer<Unit>
 @FastNative
-foreign func ar_release_state(state: CPointer<Unit>): Unit
+foreign func ats_rt_ext_release_state(state: CPointer<Unit>): Unit
 @FastNative
-foreign func ar_is_owner(state: CPointer<Unit>): Int32
+foreign func ats_rt_ext_is_owner(state: CPointer<Unit>): Int32
 @FastNative
-foreign func ar_alive(state: CPointer<Unit>): Int32
+foreign func ats_rt_ext_alive(state: CPointer<Unit>): Int32
 @FastNative
-foreign func ar_access_status(state: CPointer<Unit>): Int32
+foreign func ats_rt_ext_access_status(state: CPointer<Unit>): Int32
 // Nonblocking queue insertion only; callbacks execute later, outside native queue locks.
 @FastNative
-foreign func ar_post(state: CPointer<Unit>, id: Int64): Int32
+foreign func ats_rt_ext_post(state: CPointer<Unit>, id: Int64): Int32
 @FastNative
-foreign func ar_open_scope(state: CPointer<Unit>, scope: CPointer<CPointer<Unit>>): Int32
+foreign func ats_rt_ext_open_scope(state: CPointer<Unit>, scope: CPointer<CPointer<Unit>>, flags: Int32): Int32
 @FastNative
-foreign func ar_close_scope(state: CPointer<Unit>, scope: CPointer<Unit>): Int32
+foreign func ats_rt_ext_close_scope(state: CPointer<Unit>, scope: CPointer<Unit>): Int32
+// Deleting references stays on an ordinary FFI transition: unbounded work.
+foreign func ats_rt_ext_drain(state: CPointer<Unit>): Unit
 @FastNative
-foreign func ar_create_reference(state: CPointer<Unit>, value: NapiValue, reference: CPointer<CPointer<Unit>>): Int32
+foreign func ats_rt_ext_pin(state: CPointer<Unit>, value: NapiValue, pin: CPointer<CPointer<Unit>>): Int32
 @FastNative
-foreign func ar_reference_value(state: CPointer<Unit>, reference: CPointer<Unit>, value: CPointer<NapiValue>): Int32
-// Queue draining and compatibility boxing stay on ordinary FFI transitions.
-foreign func ar_drain_references(state: CPointer<Unit>): Unit
-foreign func ar_create_boxed_reference(state: CPointer<Unit>, value: NapiValue, reference: CPointer<CPointer<Unit>>): Int32
-foreign func ar_boxed_reference_value(state: CPointer<Unit>, reference: CPointer<Unit>, value: CPointer<NapiValue>): Int32
+foreign func ats_rt_ext_pin_value(state: CPointer<Unit>, pin: CPointer<Unit>, value: CPointer<NapiValue>): Int32
 // Only queues deletion (or frees dead-session bookkeeping); never invokes callbacks.
 @FastNative
-foreign func ar_release_reference(state: CPointer<Unit>, reference: CPointer<Unit>): Unit
+foreign func ats_rt_ext_unpin(pin: CPointer<Unit>): Unit
 
 private let taskMutex = Mutex()
 private let nativeTasks = HashMap<Int64, (Bool) -> Unit>()
 private var nextNativeTask: Int64 = 0
 
 @C
-func executeNativeTask(id: Int64, cancelled: Int32): Unit {
+func ats_rt_ext_executeNativeTask(id: Int64, cancelled: Int32): Unit {
     let task = synchronized(taskMutex) { nativeTasks.remove(id) }
     if (let Some(callback) <- task) {
         // Tasks must carry their result or failure back to the waiting caller themselves.
@@ -56,45 +54,64 @@ private enum NativeResult<R> {
 class NativeSession {
     private let environment: NativeEnv
     let state: CPointer<Unit>
+    let intern = InternTable()
 
     init(env: NativeEnv) {
         if (env.isNull()) { throw IllegalArgumentException("ArkTS environment is null") }
         environment = env
-        state = unsafe { ar_bind(env, executeNativeTask) }
+        state = unsafe { ats_rt_ext_bind(env, ats_rt_ext_executeNativeTask) }
         if (state.isNull()) { throw ForeignRuntimeException("Cannot initialize ArkTS dispatch queue") }
     }
 
-    ~init() { unsafe { ar_release_state(state) } }
+    ~init() { unsafe { ats_rt_ext_release_state(state) } }
 
     prop env: NativeEnv {
         get() {
             // One leaf call checks the tombstone and native OS thread together.
-            let status = unsafe { ar_access_status(state) }
+            let status = unsafe { ats_rt_ext_access_status(state) }
             if (status == 1) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
             if (status != 0) { throw ForeignRuntimeException("Thread mismatch") }
             environment
         }
     }
-    func isInBindThread(): Bool { unsafe { ar_is_owner(state) != 0 } }
+    func isInBindThread(): Bool { unsafe { ats_rt_ext_is_owner(state) != 0 } }
     func checkAlive(): Unit {
-        if (unsafe { ar_alive(state) == 0 }) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
+        if (unsafe { ats_rt_ext_alive(state) == 0 }) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
     }
 
-    func newScope<R>(operation: () -> R): R {
+    /** A generic bracket: holds napi_values, so pins are not deleted until it closes. */
+    func scopeOpen(): CPointer<Unit> { bracketOpen(AR_SCOPE_IN_FLIGHT) }
+
+    /** `ArkTSRuntime.newScope`'s bracket: holds no napi_value, pins may drain inside it. */
+    func userScopeOpen(): CPointer<Unit> { bracketOpen(0) }
+
+    private func bracketOpen(flags: Int32): CPointer<Unit> {
         var scope = CPointer<Unit>()
-        let status = unsafe { ar_open_scope(state, inout scope) }
-        if (status != 0 && status != AR_SCOPE_NEEDS_DRAIN) {
+        var status = unsafe { ats_rt_ext_open_scope(state, inout scope, flags | AR_SCOPE_DRAIN_CHECK) }
+        if (status == AR_DRAIN_FIRST) {
+            unsafe { ats_rt_ext_drain(state) }
+            status = unsafe { ats_rt_ext_open_scope(state, inout scope, flags) }
+        }
+        if (status != 0) {
             checkAlive()
             throw ForeignRuntimeException("Cannot open ArkTS handle scope: ${status}")
         }
-        try {
-            if (status == AR_SCOPE_NEEDS_DRAIN) { unsafe { ar_drain_references(state) } }
-            operation()
-        } finally { unsafe { ar_close_scope(state, scope) } }
+        scope
+    }
+
+    func scopeClose(scope: CPointer<Unit>): Unit { unsafe { ats_rt_ext_close_scope(state, scope) } }
+
+    func newScope<R>(operation: () -> R): R {
+        let scope = scopeOpen()
+        try { operation() } finally { scopeClose(scope) }
     }
 
     func run<R>(operation: () -> R): R {
         if (isInBindThread()) { return newScope(operation) }
+        runPosted(operation)
+    }
+
+    func runPosted<R>(operation: () -> R): R {
         let result = Box(None<NativeResult<R>>)
         // One writer, one reader. The counter publishes the result and wakes the
         // caller without a condition-variable mutex handoff/reacquisition.
@@ -128,7 +145,7 @@ class NativeSession {
             nativeTasks.add(nextNativeTask, operation)
             nextNativeTask
         }
-        let status = unsafe { ar_post(state, id) }
+        let status = unsafe { ats_rt_ext_post(state, id) }
         if (status != 0) {
             synchronized(taskMutex) { nativeTasks.remove(id) }
             throw ForeignRuntimeException("Cannot post ArkTS task: ${status}")

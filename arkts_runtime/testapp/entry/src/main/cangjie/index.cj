@@ -55,4 +55,5 @@ let EXPORT_MODULE = JSModule.registerModule {
     exports["runArkTSTest"] = runtime.function(runArkTSTest).toJSValue()
     exports["runArkTSTestOffThread"] = runtime.function(runArkTSTestOffThread).toJSValue()
     exports["listArkTSTests"] = runtime.function(listArkTSTests).toJSValue()
+    registerDiffExports(runtime, exports)
 }

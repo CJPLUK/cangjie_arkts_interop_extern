@@ -22,7 +22,7 @@ func step12Scenarios(): Array<(String, Scenario)> {
         let retained = session.newScope {
             let object = native.object()
             object.setProperty(native.string("answer"), native.number(42.0))
-            NativeReference(object)
+            Pinned(object)
         }
         session.newScope {
             let object = retained.toJSValue()
@@ -91,9 +91,19 @@ func step12Scenarios(): Array<(String, Scenario)> {
         let textResult = firstFailure(samples.map { text =>
             expectEqual("string boundary ${text.size}", context.string(text).toString(), text)
         })
+        let stringClass = context.global.getProperty("String")
+        let lone = stringClass.getProperty("fromCharCode").call(
+            [context.number(97.0), context.number(55296.0), context.number(98.0)], thisArg: stringClass)
+        let loneLong = stringClass.getProperty("prototype").getProperty("repeat").call([context.number(50.0)], thisArg: lone)
+        let loneBytes = lone.toString().toArray()
+        let loneResult = firstFailure([
+            expectEqual("lone surrogate keeps the engine's bytes, short", loneBytes, [97u8, 237, 160, 128, 98]),
+            expectEqual("lone surrogate, long", loneLong.toString().toArray(),
+                Array<UInt8>(loneBytes.size * 50) { i => loneBytes[i % loneBytes.size] })
+        ])
         let object = context.object()
         let names = ["", String.fromUtf8([UInt8(97), UInt8(0), UInt8(98)]), "é漢😀"]
-        firstFailure([textResult, firstFailure(names.map { name =>
+        firstFailure([textResult, loneResult, firstFailure(names.map { name =>
             object.setProperty(name, context.string(name))
             expectEqual("explicit-length property key", object.getProperty(name).toString(), name)
         })])
@@ -127,8 +137,21 @@ func step12Scenarios(): Array<(String, Scenario)> {
             context.number(1.0)
         }
         let array = ArkTSRuntime.retain(values)
-        expectThrows<ArkTSNativeException>("numeric array getter shrink", "allowed: [0, 1), given: 1",
-            { => ArkTSRuntime.fromExtern<Array<Float64>>(array) })
+        let shrinking = context.array([context.number(0.0), context.number(2.0), context.number(3.0)])
+        let descriptor = context.object()
+        descriptor.setProperty("configurable", context.boolean(true))
+        descriptor.setProperty("get", context.function { _, _ =>
+            shrinking.setProperty("length", context.number(1.0))
+            context.undefined()
+        })
+        let object = context.global.getProperty("Object")
+        object.getProperty("defineProperty").call([shrinking, context.string("2"), descriptor], thisArg: object)
+        let element = ArkTSRuntime.indexedAccess(ArkTSRuntime.retain(shrinking), 2)
+        firstFailure([
+            expectThrows<ArkTSNativeException>("numeric array getter shrink", "allowed: [0, 1), given: 1",
+                { => ArkTSRuntime.fromExtern<Array<Float64>>(array) }),
+            expectEqual("element getter that shrinks the array reads undefined", ArkTSRuntime.isUndefined(element), true)
+        ])
     }),
     ("step12.numberArraySnapshot", { context, _ =>
         let numbers = Array<Float64>(2000) { i => Float64(i) }

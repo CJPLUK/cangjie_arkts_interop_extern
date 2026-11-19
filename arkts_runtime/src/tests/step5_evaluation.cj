@@ -178,8 +178,14 @@ func argumentTypes(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let rect = ext(fixtures, 2)
     let count = e.record(1, 2.5, true, "s", BigInt(3), Int32(4), rect)
+    let arrayOf = ArkTSRuntime.memberAccess(ArkTSRuntime.memberAccess(ArkTSRuntime.global(), "Array"), "of")
+    let passed = firstFailure([0, 1, 8, 9, 20].map { n =>
+        let received = from<Array<Float64>>(ArkTSRuntime.functionCall(arrayOf, Array<Any>(n) { i => Float64(i) }))
+        expectEqual("Array.of with ${n} arguments", received, Array<Float64>(n) { i => Float64(i) })
+    })
     firstFailure([
         expectEqual("argument count", number(count), 7.0),
+        passed,
         expectThrows<ExternConversionException>("Rune argument", "Unsupported conversion to ArkTS",
             { => e.record(r'a') })
     ])
@@ -256,6 +262,15 @@ func indexBoundaries(context: NativeContext, fixtures: Array<NativeJSValue>): St
         expectThrows<ExternIndexedAccessException>("a[-1]", "given: -1", { => a[-1] }),
         expectEqual("a[Extern 5] (a key: undefined past the end)", ArkTSRuntime.isUndefined(a[num(5.0)]), true)
     ]
+    let prototype = context.global.getProperty("Array").getProperty("prototype")
+    let reflect = context.global.getProperty("Reflect")
+    prototype.setProperty("5", context.number(7.0).toJSValue())
+    let inherited = try {
+        expectThrows<ExternIndexedAccessException>("a[5] with Array.prototype[5] set", "allowed: [0, 3), given: 5",
+            { => a[5] })
+    } finally {
+        reflect.getProperty("deleteProperty").call([prototype, context.string("5").toJSValue()], thisArg: reflect)
+    }
     func outcome(write: () -> Unit): String {
         try {
             write()
@@ -274,6 +289,7 @@ func indexBoundaries(context: NativeContext, fixtures: Array<NativeJSValue>): St
     ]
     firstFailure([
         firstFailure(reads),
+        inherited,
         afterWrite,
         expectEqual("writes at 3, 6, -1, 4294967295", String.join(writes, delimiter: " | "),
             "ok, length 4 | ok, length 7 | throws The accessing index is out of range, allowed: [0, 7), given: -1 | ok, length 0")

@@ -11,18 +11,18 @@ private let nativeExternals = HashMap<Int64, Object>()
 private var nextExternalId: Int64 = 0
 
 @C
-func nativeExternalDrop(id: Int64): Unit { synchronized(functionMutex) { nativeExternals.remove(id) } }
+func ats_rt_ext_nativeExternalDrop(id: Int64): Unit { synchronized(functionMutex) { nativeExternals.remove(id) } }
 
 func nativeExternalData(id: Int64): Object { synchronized(functionMutex) { nativeExternals.get(id).getOrThrow() } }
 
 @C
-func nativeFunctionDrop(id: Int64): Unit {
+func ats_rt_ext_nativeFunctionDrop(id: Int64): Unit {
     synchronized(functionMutex) { nativeFunctions.remove(id) }
 }
 
 @C
-func nativeFunctionCall(id: Int64, count: UIntNative, values: CPointer<NapiValue>): NapiValue {
-    let entry = synchronized(functionMutex) { nativeFunctions.get(id) }
+func ats_rt_ext_nativeFunctionCall(id: Int64, count: UIntNative, values: CPointer<NapiValue>): NapiValue {
+    let entry = nativeFunctions.get(id)
     if (let Some((context, body)) <- entry) {
         try {
             let args = Array<NativeJSValue>(Int64(count)) { i => NativeJSValue(context.session, unsafe { values.read(i) }) }
@@ -90,7 +90,7 @@ class NativeContext {
             let handles = acquireArrayRawData(locals)
             let payloads = acquireArrayRawData(numbers)
             try {
-                nativeCheck(session, ar_create_array(session.env, UIntNative(elements.size), types.pointer,
+                nativeCheck(session, ats_rt_ext_create_array(session.env, UIntNative(elements.size), types.pointer,
                     handles.pointer, payloads.pointer, inout value), checkPending: true)
             } finally {
                 releaseArrayRawData(payloads)
@@ -107,7 +107,7 @@ class NativeContext {
         unsafe {
             let buffer = acquireArrayRawData(copied)
             try {
-                nativeCheck(session, ar_create_number_array(session.env, buffer.pointer,
+                nativeCheck(session, ats_rt_ext_create_number_array(session.env, buffer.pointer,
                     UIntNative(numbers.size), inout value), checkPending: true)
             } finally { releaseArrayRawData(buffer) }
         }
@@ -128,7 +128,7 @@ class NativeContext {
         var result = NapiValue()
         unsafe {
             let bytes = acquireArrayRawData(digits)
-            try { nativeCheck(session, ar_bigint_create(session.state, if (n.sign < 0) { 1 } else { 0 },
+            try { nativeCheck(session, ats_rt_ext_bigint_create(session.state, if (n.sign < 0) { 1 } else { 0 },
                 bytes.pointer, UIntNative(digits.size), inout result)) }
             finally { releaseArrayRawData(bytes) }
         }
@@ -146,8 +146,8 @@ class NativeContext {
             nextFunctionId
         }
         var value = NapiValue()
-        let status = unsafe { ar_create_function(session.state, id, nativeFunctionCall, nativeFunctionDrop, inout value) }
-        if (status != 0) { unsafe { nativeFunctionDrop(id) }; nativeCheck(session, status) }
+        let status = unsafe { ats_rt_ext_create_function(session.state, id, ats_rt_ext_nativeFunctionCall, ats_rt_ext_nativeFunctionDrop, inout value) }
+        if (status != 0) { unsafe { ats_rt_ext_nativeFunctionDrop(id) }; nativeCheck(session, status) }
         NativeJSValue(session, value, 7)
     }
     func requireArkModule(path: String): NativeJSValue {
@@ -158,7 +158,7 @@ class NativeContext {
                 try { nativeCheck(session, napi_load_module(session.env, name, inout value), checkPending: true) }
                 finally { LibC.free(name) }
             }
-        } catch (e: ArkTSNativeException) {
+        } catch (e: ForeignRuntimeException) {
             if (e.message.contains("cannot find record") || e.message.contains("Cannot find module")) {
                 throw ArkTSNativeException(34300006, "Fail to load module '${path}' which doesn't exist.")
             }
@@ -177,8 +177,8 @@ class NativeContext {
             nextExternalId
         }
         var result = NapiValue()
-        let status = unsafe { ar_create_external(session.state, id, nativeExternalDrop, inout result) }
-        if (status != 0) { unsafe { nativeExternalDrop(id) }; nativeCheck(session, status) }
+        let status = unsafe { ats_rt_ext_create_external(session.state, id, ats_rt_ext_nativeExternalDrop, inout result) }
+        if (status != 0) { unsafe { ats_rt_ext_nativeExternalDrop(id) }; nativeCheck(session, status) }
         NativeJSValue(session, result)
     }
     func throwError(message: String): Unit {
