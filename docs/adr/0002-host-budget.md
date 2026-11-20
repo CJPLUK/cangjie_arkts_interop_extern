@@ -49,6 +49,7 @@ Unseen callers open an outer scope per turn, frames are scopes the runtime sees 
 - random walks;
 - long turns that fill the budget, after which ops run scoped;
 - frame restores, checked directly;
+- admit at capacity (scoped once full), checked directly;
 - a negative control that breaks the scope rule, so ops spill into the root and Sound must be seen to fail.
 
 Run it on the host:

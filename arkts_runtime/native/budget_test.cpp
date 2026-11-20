@@ -1,6 +1,7 @@
 #include "budget.h"
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <random>
 #include <vector>
 
@@ -37,14 +38,33 @@ struct World {
     }
 };
 
-int failures = 0;
-void check(bool ok, const char *what, uint64_t step) {
-    if (!ok && failures++ < 5) std::printf("FAIL %s at step %llu\n", what, (unsigned long long)step);
+// The running case: its name, the seed its walk is on (set by run), and its failed checks.
+struct CaseState {
+    const char *name = "";
+    std::optional<uint64_t> seed;
+    int failures = 0;
+} runningCase;
+
+// At most five FAIL lines per case; the count still covers every failed check.
+void fail(const char *what, std::optional<uint64_t> step) {
+    if (runningCase.failures++ >= 5) return;
+    std::printf("FAIL [%s", runningCase.name);
+    if (runningCase.seed) std::printf(", seed %llu", (unsigned long long)*runningCase.seed);
+    std::printf("] %s", what);
+    if (step) std::printf(" at step %llu", (unsigned long long)*step);
+    std::printf("\n");
 }
+void check(bool ok, const char *what, std::optional<uint64_t> step = std::nullopt) { if (!ok) fail(what, step); }
+
+// Kept: every op runs inside a turn (the outer scope closes before the marker runs), so Sound must
+// hold. Broken: ops also spill into the root scope, which never closes, so Sound must be seen to fail.
+enum class ScopeRule { Kept, Broken };
 
 struct Outcome { bool sound; uint64_t turns, resets, scoped; };
 
-Outcome run(uint64_t seed, uint64_t steps, bool scopeRuleKept, bool expectSound, uint32_t turnEndOdds = 1) {
+Outcome run(uint64_t seed, uint64_t steps, ScopeRule rule, uint32_t turnEndOdds = 1) {
+    runningCase.seed = seed;
+    const bool ruleKept = rule == ScopeRule::Kept;
     std::mt19937_64 rng(seed);
     World w;
     const uint32_t kWorst = 4 + ats_rt_ext::kUnitFreshHeap;
@@ -53,7 +73,7 @@ Outcome run(uint64_t seed, uint64_t steps, bool scopeRuleKept, bool expectSound,
     for (uint64_t step = 0; step < steps; ++step) {
         uint32_t r = rng() % 100;
         if (!w.inTurn && w.scopes.size() == 1) {
-            if (scopeRuleKept || r < 50) { w.turnStart(); ++turns; }
+            if (ruleKept || r < 50) { w.turnStart(); ++turns; }
             else w.op(kWorst, 1 + rng() % 3);
         } else if (r < 60) {
             w.op(kWorst, (rng() % 8 == 0) ? ats_rt_ext::kUnitFreshHeap + 2 : 1 + rng() % 4);
@@ -72,34 +92,72 @@ Outcome run(uint64_t seed, uint64_t steps, bool scopeRuleKept, bool expectSound,
             check(w.markersThisTurn <= 1, "one marker per turn", step);
         }
         if (w.budget.units < w.live()) sound = false;
-        if (expectSound) check(w.budget.units >= w.live(), "Sound", step);
+        if (ruleKept) check(w.budget.units >= w.live(), "Sound", step);
         check(w.budget.units <= ats_rt_ext::kCapacity + kWorst, "Bound", step);
         check(w.budget.framesOpen == w.frames(), "framesOpen == open frames", step);
     }
-    std::printf("seed %llu: %llu turns, %llu marker resets, %llu spilled ops, %llu scoped ops, sound %s\n",
+    std::printf("  seed %llu: %llu turns, %llu marker resets, %llu spilled ops, %llu scoped ops, sound %s\n",
         (unsigned long long)seed, (unsigned long long)turns, (unsigned long long)resets,
         (unsigned long long)w.opsSpilled, (unsigned long long)w.opsScoped, sound ? "yes" : "no");
     return {sound, turns, resets, w.opsScoped};
 }
 
+void randomWalks() {
+    for (uint64_t seed = 1; seed <= 8; ++seed) {
+        Outcome o = run(seed, 3000000, ScopeRule::Kept);
+        check(o.turns > 1000 && o.resets > 100, "walk exercises turns and marker resets");
+    }
+}
+
+void longTurns() {
+    for (uint64_t seed = 11; seed <= 12; ++seed) {
+        Outcome o = run(seed, 3000000, ScopeRule::Kept, 20000);
+        check(o.scoped > 1000 && o.resets > 0, "long turns reach the cap and still reset");
+    }
+}
+
+void frameRestore() {
+    ats_rt_ext::HostBudget b;
+    b.charge(10);
+    { ats_rt_ext::HostBudget::Frame f(b); b.charge(500); check(b.framesOpen == 1, "frames open inside a frame"); }
+    check(b.units == 10 && b.framesOpen == 0, "frame restores units");
+}
+
+void scopedOnceFull() {
+    ats_rt_ext::HostBudget b;
+    b.units = ats_rt_ext::kCapacity - 3;
+    check(b.admit(3) == ats_rt_ext::Placement::Spill, "admit up to capacity spills");
+    check(b.admit(4) == ats_rt_ext::Placement::Scoped, "admit past capacity is scoped");
+}
+
+void negativeControl() {
+    check(!run(99, 3000000, ScopeRule::Broken).sound, "Sound fails once the scope rule is broken");
+}
+
+struct Case { const char *name; void (*body)(); };
+
+const Case kCases[] = {
+    {"random walks", randomWalks},
+    {"long turns", longTurns},
+    {"frame restore", frameRestore},
+    {"scoped once full", scopedOnceFull},
+    {"negative control", negativeControl},
+};
+
 }
 
 int main() {
-    for (uint64_t seed = 1; seed <= 8; ++seed) {
-        Outcome o = run(seed, 3000000, true, true);
-        check(o.turns > 1000 && o.resets > 100, "walk exercises turns and marker resets", seed);
+    int failedCases = 0;
+    for (const Case &c : kCases) {
+        runningCase = CaseState{c.name};
+        std::printf("== %s\n", c.name);
+        c.body();
+        if (runningCase.failures) {
+            ++failedCases;
+            std::printf("  %s FAILED: %d failed checks\n", c.name, runningCase.failures);
+        }
     }
-    for (uint64_t seed = 11; seed <= 12; ++seed) {
-        Outcome o = run(seed, 3000000, true, true, 20000);
-        check(o.scoped > 1000 && o.resets > 0, "long turns reach the cap and still reset", seed);
-    }
-    if (run(99, 3000000, false, false).sound) { std::printf("FAIL negative control stayed sound\n"); ++failures; }
-    ats_rt_ext::HostBudget b;
-    b.charge(10);
-    { ats_rt_ext::HostBudget::Frame f(b); b.charge(500); check(b.framesOpen == 1, "frames open inside a frame", 0); }
-    check(b.units == 10 && b.framesOpen == 0, "frame restores units", 0);
-    b.units = ats_rt_ext::kCapacity - 3;
-    check(b.admit(4) == ats_rt_ext::Placement::Scoped && b.admit(3) == ats_rt_ext::Placement::Spill, "admit at capacity", 0);
-    std::printf(failures ? "FAILED (%d)\n" : "all budget checks passed\n", failures);
-    return failures ? 1 : 0;
+    if (failedCases) std::printf("FAILED: %d of %zu cases\n", failedCases, sizeof kCases / sizeof kCases[0]);
+    else std::printf("all budget cases passed\n");
+    return failedCases ? 1 : 0;
 }
