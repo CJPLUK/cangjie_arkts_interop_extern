@@ -19,17 +19,17 @@ func step12Scenarios(): Array<(String, Scenario)> {
         let native = NativeContext(context.getNapiEnv())
         let session = native.session
         probeSession = session
-        let retained = session.newScope {
+        let retained = session.runtimeFrame {
             let object = native.object()
             object.setProperty(native.string("answer"), native.number(42.0))
             Pinned(object)
         }
-        session.newScope {
+        session.runtimeFrame {
             let object = retained.toJSValue()
             let callback = native.function { _, args => native.number(args[0].toNumber() + 1.0) }
             let result = callback.call([native.number(41.0)], thisArg: native.undefined())
             firstFailure([
-                expectEqual("bound native thread", session.isInBindThread(), true),
+                expectEqual("bound native thread", session.isOnOwnerThread(), true),
                 expectEqual("retained property", object.getProperty(native.string("answer")).toNumber(), 42.0),
                 expectEqual("native callback result", result.toNumber(), 42.0),
                 expectEqual("native string round trip", native.string("héllo 🦀").toString(), "héllo 🦀")
@@ -39,15 +39,15 @@ func step12Scenarios(): Array<(String, Scenario)> {
     ("step12.immediateLifetime", { context, _ =>
         let inputs = [context.undefined(), context.null(), context.boolean(true), context.boolean(false),
             context.number(-0.0), context.number(Float64.NaN), context.number(Float64.Inf), context.number(-Float64.Inf)]
-        let copied = context.newScope {
+        let copied = context.runtimeFrame {
             let array = context.array(inputs)
             Array<NativeJSValue>(inputs.size) { i => array.getElement(UInt32(i)) }
         }
         // Overwrite local handle slots, then materialize both created and read values
         // into a fresh scope. No primitive may depend on the scope that produced it.
-        for (_ in 0..100) { context.newScope { context.object() } }
+        for (_ in 0..100) { context.runtimeFrame { context.object() } }
         gc(heavy: true)
-        context.newScope {
+        context.runtimeFrame {
             let array = context.array(copied)
             firstFailure([
                 expectEqual("undefined after scope", array.getElement(UInt32(0)).isUndefined(), true),
@@ -67,7 +67,7 @@ func step12Scenarios(): Array<(String, Scenario)> {
         // Keep the JS event loop blocked here. Pure copied-payload reads must
         // finish without posting a second task to that event loop.
         let reader = spawn {
-            let offThread = !ArkTSRuntime.context.isInBindThread()
+            let offThread = !ArkTSRuntime.context.isOnOwnerThread()
             (ArkTSRuntime.fromExtern<Float64>(number), ArkTSRuntime.fromExtern<Int32>(number),
                 ArkTSRuntime.fromExtern<Bool>(boolean), offThread)
         }
@@ -200,7 +200,7 @@ func step12OffThreadScenarios(): Array<(String, OffThreadScenario)> {
         let result = Box("callback did not run")
         session.post { cancelled =>
             let report = if (cancelled) { "native task cancelled" } else {
-                session.newScope { expectEqual("native callback thread", session.isInBindThread(), true) }
+                session.runtimeFrame { expectEqual("native callback thread", session.isOnOwnerThread(), true) }
             }
             synchronized(mutex) {
                 result.value = report

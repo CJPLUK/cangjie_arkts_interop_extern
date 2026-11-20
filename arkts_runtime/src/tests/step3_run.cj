@@ -15,7 +15,7 @@ func step3Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
-// Each of these also runs on the JS thread above; here the caller is a spawned thread.
+// Each of these also runs on the owner thread above; here the caller is a spawned thread.
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func step3OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [
@@ -28,22 +28,22 @@ func step3OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     ]
 }
 
-/** The value comes back, and the operation itself ran on the bind thread. */
+/** The value comes back, and the operation itself ran on the owner thread. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runReturnsValue(): String {
-    let callerOnBindThread = ArkTSRuntime.context.isInBindThread()
-    let (insideOnBindThread, value) = ArkTSRuntime.run {
-        (ArkTSRuntime.context.isInBindThread(), 42)
+    let callerOnOwnerThread = ArkTSRuntime.context.isOnOwnerThread()
+    let (insideOnOwnerThread, value) = ArkTSRuntime.run {
+        (ArkTSRuntime.context.isOnOwnerThread(), 42)
     }
     firstFailure([
         expectEqual("value", value, 42),
-        expectEqual("inside run on bind thread", insideOnBindThread, true),
-        expectEqual("after run, caller on bind thread", ArkTSRuntime.context.isInBindThread(),
-            callerOnBindThread)
+        expectEqual("inside run on owner thread", insideOnOwnerThread, true),
+        expectEqual("after run, caller on owner thread", ArkTSRuntime.context.isOnOwnerThread(),
+            callerOnOwnerThread)
     ])
 }
 
-/** Engine calls inside the operation work; they throw "Thread mismatch" off the JS thread. */
+/** Engine calls inside the operation work; they throw "Thread mismatch" off the owner thread. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runUsesEngine(): String {
     let text = ArkTSRuntime.run {
@@ -101,23 +101,23 @@ func runOffThreadRethrowsError(): String {
     ])
 }
 
-/** An operation that calls `run` again completes; the inner call is already on the bind thread. */
+/** An operation that calls `run` again completes; the inner call is already on the owner thread. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runNested(): String {
     let value = ArkTSRuntime.run {
         ArkTSRuntime.run {
-            (ArkTSRuntime.context.isInBindThread(), 7)
+            (ArkTSRuntime.context.isOnOwnerThread(), 7)
         }
     }
     firstFailure([
         expectEqual("inner value", value[1], 7),
-        expectEqual("inner on bind thread", value[0], true)
+        expectEqual("inner on owner thread", value[0], true)
     ])
 }
 
 /**
  * 16 threads call `run` 100 times each, returning their own id. Every result must match, and
- * operations must never overlap, since they all execute on the single JS thread.
+ * operations must never overlap, since they all execute on the single owner thread.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runFromManyThreads(): String {
@@ -131,19 +131,19 @@ func runFromManyThreads(): String {
         futures.add(spawn {
             start.wait()
             for (call in 0..callsPerThread) {
-                let (onBindThread, result) = ArkTSRuntime.run {
+                let (onOwnerThread, result) = ArkTSRuntime.run {
                     if (active.fetchAdd(1) != 0) {
                         overlaps.fetchAdd(1)
                     }
-                    let onBindThread = ArkTSRuntime.context.isInBindThread()
+                    let onOwnerThread = ArkTSRuntime.context.isOnOwnerThread()
                     active.fetchSub(1)
-                    (onBindThread, id)
+                    (onOwnerThread, id)
                 }
                 if (result != id) {
                     return "thread ${id} call ${call}: got ${result}"
                 }
-                if (!onBindThread) {
-                    return "thread ${id} call ${call}: operation not on bind thread"
+                if (!onOwnerThread) {
+                    return "thread ${id} call ${call}: operation not on owner thread"
                 }
             }
             ""

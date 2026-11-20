@@ -36,7 +36,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-/** Dumping a heap snapshot runs a full collection; queued handle releases run in between. */
+/** Dumping a heap snapshot runs a full collection; queued pin releases run in between. */
 async function fullCollection(): Promise<void> {
   for (let i = 0; i < 2; i++) {
     await sleep(100);

@@ -31,7 +31,7 @@ func runtimeBoundToCallerContext(context: NativeContext, _: Array<NativeJSValue>
     let bound = ArkTSRuntime.context
     firstFailure([
         expectEqual("same global object", bound.global.toJSValue().strictEqual(context.global.toJSValue()), true),
-        expectEqual("on bind thread", bound.isInBindThread(), true)
+        expectEqual("on owner thread", bound.isOnOwnerThread(), true)
     ])
 }
 

@@ -27,7 +27,7 @@ extern "C" {
 typedef void (*ats_rt_ext_task_callback)(int64_t id, int32_t cancelled);
 
 /**
- * Borrow a live env on its JS thread. Capture that thread and install dispatch
+ * Borrow a live env on its owner thread. Capture that thread and install dispatch
  * and cleanup hooks. Return an owned state handle, or NULL on initialization
  * failure. callback must remain callable until dispatcher teardown completes.
  */
@@ -173,12 +173,12 @@ int32_t ats_rt_ext_call(void *state, void *function, const ats_rt_ext_arg *this_
 
 /** Counters for tests; owner thread except the pin counters, which are atomic. */
 typedef struct {
-    uint64_t ops_leaked;
+    uint64_t ops_spilled;
     uint64_t ops_scoped;
     uint64_t pins_created;
     uint64_t pins_deleted;
     uint32_t budget_units;
-    uint32_t budget_depth;
+    uint32_t budget_frames_open;
     uint32_t pin_read_alias;
     uint32_t pins_pending;
 } ats_rt_ext_stats_t;
@@ -211,7 +211,7 @@ int32_t ats_rt_ext_get_named(void *state, void *target, const uint8_t *key, size
 #define ATS_RT_EXT_SCOPE_IN_FLIGHT 2
 
 /**
- * Open a scope on the live owner thread: a known frame, whose close restores the host budget.
+ * Open a runtime or user frame on the live owner thread; closing it restores the host budget.
  * With ATS_RT_EXT_SCOPE_IN_FLIGHT it also counts as in flight, so no pin is deleted until it closes.
  * With ATS_RT_EXT_SCOPE_DRAIN_CHECK, returns ATS_RT_EXT_DRAIN_FIRST, having opened nothing, when nothing is in
  * flight and finalized pins are waiting; the open after that drain omits it, as finalizers may
@@ -247,7 +247,7 @@ void ats_rt_ext_unpin(void *pin);
 int32_t ats_rt_ext_pin_read_mode(void *state);
 
 /**
- * Invoke a registered function on its JS thread. argv contains argc borrowed
+ * Invoke a registered function on its owner thread. argv contains argc borrowed
  * local handles. Return a local N-API value. No receiver argument is supplied.
  * The callback must contain its language exceptions before returning to C.
  */

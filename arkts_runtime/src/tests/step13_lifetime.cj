@@ -6,7 +6,7 @@ import arkts_runtime.*
 func lifetimeScenarios(): Array<(String, Scenario)> {
     [
         ("lifetime.pinReadAlias", { _, _ => pinReadAlias() }),
-        ("lifetime.fusedOpsLeak", { _, f => fusedOpsLeak(f) }),
+        ("lifetime.fusedOpsSpill", { _, f => fusedOpsSpill(f) }),
         ("lifetime.budgetFillsThenScoped", { _, f => budgetFillsThenScoped(f) }),
         ("lifetime.budgetIsEmpty", { _, _ => budgetIsEmpty() }),
         ("lifetime.newScopeRestoresBudget", { _, f => newScopeRestoresBudget(f) }),
@@ -26,7 +26,7 @@ func pinReadAlias(): String {
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func fusedOpsLeak(fixtures: Array<NativeJSValue>): String {
+func fusedOpsSpill(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let before = ArkTSRuntime.nativeStats()
     let a = e.a
@@ -34,7 +34,7 @@ func fusedOpsLeak(fixtures: Array<NativeJSValue>): String {
     let num = e.num
     let after = ArkTSRuntime.nativeStats()
     firstFailure([
-        expectEqual("ops leaked", after.opsLeaked - before.opsLeaked, 3),
+        expectEqual("ops spilled", after.opsSpilled - before.opsSpilled, 3),
         expectEqual("ops scoped", after.opsScoped - before.opsScoped, 0),
         expectEqual("pins created (e.a only)", after.pinsCreated - before.pinsCreated, 1),
         expectEqual("units charged", after.budgetUnits > before.budgetUnits, true),
@@ -56,7 +56,7 @@ func budgetFillsThenScoped(fixtures: Array<NativeJSValue>): String {
     }
     let after = ArkTSRuntime.nativeStats()
     firstFailure([
-        expectEqual("ops", (after.opsLeaked - before.opsLeaked) + (after.opsScoped - before.opsScoped), 10000),
+        expectEqual("ops", (after.opsSpilled - before.opsSpilled) + (after.opsScoped - before.opsScoped), 10000),
         expectEqual("some ops ran scoped", after.opsScoped > before.opsScoped, true),
         expectEqual("units within bound (max ${maxUnits})", maxUnits <= BUDGET_BOUND, true),
         expectEqual("last result is an array of keys", number(last.length) > 0.0, true)
@@ -72,11 +72,11 @@ func budgetIsEmpty(): String {
 func newScopeRestoresBudget(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let before = ArkTSRuntime.nativeStats()
-    let (kept, insideUnits, insideDepth) = ArkTSRuntime.newScope {
+    let (kept, insideUnits, insideFramesOpen) = ArkTSRuntime.newScope {
         var last = e.a
         for (_ in 0..1000) { last = e.a }
         let inside = ArkTSRuntime.nativeStats()
-        (last, inside.budgetUnits, inside.budgetDepth)
+        (last, inside.budgetUnits, inside.budgetFramesOpen)
     }
     let after = ArkTSRuntime.nativeStats()
     let thrown = try {
@@ -89,12 +89,12 @@ func newScopeRestoresBudget(fixtures: Array<NativeJSValue>): String {
     let afterThrow = ArkTSRuntime.nativeStats()
     firstFailure([
         expectEqual("units charged inside", insideUnits > before.budgetUnits, true),
-        expectEqual("depth inside", insideDepth, before.budgetDepth + 1),
+        expectEqual("frames open inside", insideFramesOpen, before.budgetFramesOpen + 1),
         expectEqual("units after", after.budgetUnits, before.budgetUnits),
-        expectEqual("depth after", after.budgetDepth, before.budgetDepth),
+        expectEqual("frames open after", after.budgetFramesOpen, before.budgetFramesOpen),
         expectEqual("value made inside, read after", number(kept.b.c), 42.0),
         expectEqual("body's exception", thrown, "inside newScope"),
-        expectEqual("depth after a throw", afterThrow.budgetDepth, before.budgetDepth)
+        expectEqual("frames open after a throw", afterThrow.budgetFramesOpen, before.budgetFramesOpen)
     ])
 }
 
@@ -112,10 +112,10 @@ func repeatedReadReusesPin(fixtures: Array<NativeJSValue>): String {
     e.a = original
     firstFailure([
         expectEqual("pins created by the repeat", afterRepeat.pinsCreated - before.pinsCreated, 0),
-        expectEqual("same handle", ArkTSRuntime.sameHandle(first, second), true),
+        expectEqual("same pin", ArkTSRuntime.samePin(first, second), true),
         expectEqual("pins created after the change", afterChange.pinsCreated - afterRepeat.pinsCreated > 0, true),
         expectEqual("changed value", number(changed.c), 42.0),
-        expectEqual("not the old handle", ArkTSRuntime.sameHandle(changed, first), false)
+        expectEqual("not the old pin", ArkTSRuntime.samePin(changed, first), false)
     ])
 }
 
@@ -128,10 +128,10 @@ func textCopies(fixtures: Array<NativeJSValue>): String {
     e.lone = lone
     let charCodeAt = ArkTSRuntime.global().String.prototype.charCodeAt.call
     firstFailure([
-        expectEqual("kind of a string read", ArkTSRuntime.handleKind(s), "Text"),
+        expectEqual("kind of a string read", ArkTSRuntime.payloadKind(s), "Text"),
         expectEqual("text", ArkTSRuntime.fromExtern<String>(s), "h\u{e9}llo"),
         expectEqual("written back", ArkTSRuntime.fromExtern<String>(e.copy), "h\u{e9}llo"),
-        expectEqual("lone surrogate stays a Ref", ArkTSRuntime.handleKind(lone), "Ref"),
+        expectEqual("lone surrogate stays a Pin", ArkTSRuntime.payloadKind(lone), "Pin"),
         expectEqual("lone surrogate round trip", number(charCodeAt(e.lone, 0.0)), 55296.0),
         expectEqual("copied string as an argument", ArkTSRuntime.fromExtern<String>(ArkTSRuntime.global().String(s)), "h\u{e9}llo")
     ])

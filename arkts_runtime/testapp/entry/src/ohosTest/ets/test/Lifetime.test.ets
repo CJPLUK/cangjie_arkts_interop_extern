@@ -7,8 +7,8 @@ export default function lifetimeTest() {
     it('pinReadAlias', 0, () => {
       expect(runArkTSTest('lifetime.pinReadAlias')).assertEqual('');
     });
-    it('fusedOpsLeak', 0, () => {
-      expect(runArkTSTest('lifetime.fusedOpsLeak', new Target())).assertEqual('');
+    it('fusedOpsSpill', 0, () => {
+      expect(runArkTSTest('lifetime.fusedOpsSpill', new Target())).assertEqual('');
     });
     it('newScopeRestoresBudget', 0, () => {
       expect(runArkTSTest('lifetime.newScopeRestoresBudget', new Target())).assertEqual('');

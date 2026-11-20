@@ -30,7 +30,7 @@ func concat<T>(groups: Array<Array<T>>): Array<T> {
 }
 
 /**
- * A device test scenario whose body runs on a spawned Cangjie thread, so the JS thread stays
+ * A device test scenario whose body runs on a spawned Cangjie thread, so the owner thread stays
  * free to serve `run`. Returns "" on success or a failure message.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -42,7 +42,7 @@ func allOffThreadScenarios(): Array<(String, OffThreadScenario)> {
         step8OffThreadScenarios(), step9OffThreadScenarios(), step10OffThreadScenarios(), step12OffThreadScenarios()])
 }
 
-/** Names of all scenarios: those run on the JS thread first, then the off-thread ones. */
+/** Names of all scenarios: those run on the owner thread first, then the off-thread ones. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 public func scenarioNames(): Array<String> {
     let names = ArrayList<String>(allScenarios().map({ entry => entry[0] }))

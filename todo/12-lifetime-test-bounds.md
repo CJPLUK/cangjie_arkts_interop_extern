@@ -7,7 +7,7 @@
 ## Problem
 
 - **Duplicated constant:** `BUDGET_BOUND = (1 << 19) + 128` copies the native `kCapacity` and a worst-case allowance; a change to either on the native side silently invalidates the test.
-- **Hidden dependency:** `budgetIsEmpty` passes only because the runner calls it in a later turn than `fusedOpsLeak`, and its name hides that.
+- **Hidden dependency:** `budgetIsEmpty` passes only because the runner calls it in a later turn than `fusedOpsSpill`, and its name hides that.
 
 ## Suggested reshape
 

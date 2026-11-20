@@ -79,5 +79,5 @@ func extendHelperReachable(): String {
 /** Tests in this subpackage rely on reaching internal members of the runtime package. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func internalVisibleToSubpackage(): String {
-    expectEqual("handleKind", ArkTSRuntime.handleKind(payload()), "foreign payload")
+    expectEqual("payloadKind", ArkTSRuntime.payloadKind(payload()), "foreign payload")
 }

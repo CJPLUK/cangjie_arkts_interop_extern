@@ -11,7 +11,7 @@ The rival and sentinel scheme is the subtlest code in the runtime. Its justifica
 ## Suggested reshape
 
 - Add a device benchmark of `fromExtern<R>` for each scalar `R`, comparing the probes with a plain `as R` (next to `demos/benchmarks/entry/src/main/cangjie/b05_conversions.cj`).
-- If the gap is gone, reduce `probedFromJSValue` to `as R` plus the slow path.
+- If the gap is gone, reduce `probedFromJSValue` to `as R` plus the reflective conversion.
 - If it holds, replace the repeated match blocks with one table of (type, probe, rival, sentinel, reader).
 
 ## Done when

@@ -53,7 +53,7 @@ private enum NativeResult<R> {
 class NativeSession {
     private let environment: NativeEnv
     let state: CPointer<Unit>
-    let intern = InternTable()
+    let pinCache = PinCache()
 
     init(env: NativeEnv) {
         if (env.isNull()) { throw IllegalArgumentException("ArkTS environment is null") }
@@ -73,16 +73,16 @@ class NativeSession {
             environment
         }
     }
-    func isInBindThread(): Bool { unsafe { ats_rt_ext_is_owner(state) != 0 } }
+    func isOnOwnerThread(): Bool { unsafe { ats_rt_ext_is_owner(state) != 0 } }
     func checkAlive(): Unit {
         if (unsafe { ats_rt_ext_alive(state) == 0 }) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
     }
 
-    func scopeOpen(): CPointer<Unit> { bracketOpen(AR_SCOPE_IN_FLIGHT) }
+    func runtimeFrameOpen(): CPointer<Unit> { frameOpen(AR_SCOPE_IN_FLIGHT) }
 
-    func userScopeOpen(): CPointer<Unit> { bracketOpen(0) }
+    func userFrameOpen(): CPointer<Unit> { frameOpen(0) }
 
-    private func bracketOpen(flags: Int32): CPointer<Unit> {
+    private func frameOpen(flags: Int32): CPointer<Unit> {
         var scope = CPointer<Unit>()
         var status = unsafe { ats_rt_ext_open_scope(state, inout scope, flags | AR_SCOPE_DRAIN_CHECK) }
         if (status == AR_DRAIN_FIRST) {
@@ -96,15 +96,15 @@ class NativeSession {
         scope
     }
 
-    func scopeClose(scope: CPointer<Unit>): Unit { unsafe { ats_rt_ext_close_scope(state, scope) } }
+    func frameClose(scope: CPointer<Unit>): Unit { unsafe { ats_rt_ext_close_scope(state, scope) } }
 
-    func newScope<R>(operation: () -> R): R {
-        let scope = scopeOpen()
-        try { operation() } finally { scopeClose(scope) }
+    func runtimeFrame<R>(operation: () -> R): R {
+        let scope = runtimeFrameOpen()
+        try { operation() } finally { frameClose(scope) }
     }
 
     func run<R>(operation: () -> R): R {
-        if (isInBindThread()) { return newScope(operation) }
+        if (isOnOwnerThread()) { return runtimeFrame(operation) }
         runPosted(operation)
     }
 
@@ -116,7 +116,7 @@ class NativeSession {
         post { cancelled =>
             let completed = try {
                 if (cancelled) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
-                NativeResult.Ok(newScope(operation))
+                NativeResult.Ok(runtimeFrame(operation))
             } catch (e: Exception) {
                 NativeResult<R>.Err(e)
             } catch (e: Error) {

@@ -20,14 +20,14 @@ struct OpPlacement {
     OpPlacement(State *state, uint32_t worst) : s(state), placement(state->budget.admit(worst)) {
         if (placement == ats_rt_ext::Placement::Scoped && napi_open_handle_scope(s->env, &scope) != napi_ok) scope = nullptr;
     }
-    bool ok() const { return placement == ats_rt_ext::Placement::Leak || scope; }
+    bool ok() const { return placement == ats_rt_ext::Placement::Spill || scope; }
     ~OpPlacement() {
         if (placement == ats_rt_ext::Placement::Scoped) {
             ++s->opsScoped;
             if (scope) napi_close_handle_scope(s->env, scope);
             return;
         }
-        ++s->opsLeaked;
+        ++s->opsSpilled;
         s->budget.charge(units);
         if (s->budget.wantsMarker() && statePost(s, kTaskTurnEnd) == napi_ok) s->budget.markerPosted();
     }
@@ -38,7 +38,7 @@ struct OpPlacement {
 int32_t opEnter(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
     if (!s->alive.load(std::memory_order_relaxed)) return ATS_RT_EXT_DEAD;
     if (!stateIsOwner(s)) return ATS_RT_EXT_NOT_OWNER;
-    if (s->opDepth == 0 && s->pins.hasDeaths()) s->pins.drain(s, keep, keepCount);
+    if (s->inFlightCount == 0 && s->pins.hasDeaths()) s->pins.drain(s, keep, keepCount);
     return napi_ok;
 }
 int32_t opEnter(State *s, std::initializer_list<const AtsRtExtPin *> keep) { return opEnter(s, keep.begin(), keep.size()); }
@@ -199,12 +199,12 @@ extern "C" int32_t ats_rt_ext_get_named(void *raw, void *targetPin, const uint8_
     auto status = s->pins.value(s, target, &receiver);
     if (status != napi_ok) return status;
     if (s->pins.read == PinRead::Fetch) place.units += ats_rt_ext::kUnitLocal;
-    ++s->opDepth;
+    ++s->inFlightCount;
     auto env = s->env;
     status = byKey(env, key, keyLength,
         [&](const char *name) { return napi_get_named_property(env, receiver, name, &result); },
         [&](napi_value k) { return napi_get_property(env, receiver, k, &result); });
-    --s->opDepth;
+    --s->inFlightCount;
     place.units += 2 * ats_rt_ext::kUnitLocal;
     if (auto thrown = pendingOr(s->env, status)) return thrown;
     return decodeResult(s, result, out, &place.units, hint);
@@ -223,11 +223,11 @@ extern "C" int32_t ats_rt_ext_set_named(void *raw, void *targetPin, const uint8_
     status = argValue(s, *value, &element, &place.units);
     if (status != napi_ok) return status;
     auto env = s->env;
-    ++s->opDepth;
+    ++s->inFlightCount;
     status = byKey(env, key, keyLength,
         [&](const char *name) { return napi_set_named_property(env, receiver, name, element); },
         [&](napi_value k) { return napi_set_property(env, receiver, k, element); });
-    --s->opDepth;
+    --s->inFlightCount;
     place.units += ats_rt_ext::kUnitLocal;
     return pendingOr(env, status);
 }
@@ -253,9 +253,9 @@ extern "C" int32_t ats_rt_ext_element_get(void *raw, void *targetPin, int64_t in
     status = napi_get_array_length(s->env, array, &length);
     if (status != napi_ok) return status;
     if (index < 0 || static_cast<uint64_t>(index) >= length) return ATS_RT_EXT_INDEX_OUT_OF_RANGE;
-    ++s->opDepth;
+    ++s->inFlightCount;
     status = napi_get_element(s->env, array, static_cast<uint32_t>(index), &result);
-    --s->opDepth;
+    --s->inFlightCount;
     place.units += ats_rt_ext::kUnitLocal;
     if (auto thrown = pendingOr(s->env, status)) return thrown;
     return decodeResult(s, result, out, &place.units);
@@ -272,9 +272,9 @@ extern "C" int32_t ats_rt_ext_element_set(void *raw, void *targetPin, uint32_t i
     if (status != napi_ok) return status;
     status = argValue(s, *value, &element, &place.units);
     if (status != napi_ok) return status;
-    ++s->opDepth;
+    ++s->inFlightCount;
     status = napi_set_element(s->env, array, index, element);
-    --s->opDepth;
+    --s->inFlightCount;
     return pendingOr(s->env, status);
 }
 
@@ -315,9 +315,9 @@ extern "C" int32_t ats_rt_ext_call(void *raw, void *functionPin, const ats_rt_ex
         status = argValue(s, args[i], &values[i], &place.units);
         if (status != napi_ok) return status;
     }
-    ++s->opDepth;
+    ++s->inFlightCount;
     status = napi_call_function(s->env, receiver, callee, argc, values, &result);
-    --s->opDepth;
+    --s->inFlightCount;
     place.units += ats_rt_ext::kUnitLocal;
     if (auto thrown = pendingOr(s->env, status)) return thrown;
     return decodeResult(s, result, out, &place.units);

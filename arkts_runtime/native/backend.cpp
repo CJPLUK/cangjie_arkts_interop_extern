@@ -35,7 +35,7 @@ void dispatch(napi_env env, napi_value, void *context, void *data) {
         if (task > 0) s->callback(task, 1);
         return;
     }
-    if (s->opDepth == 0) s->pins.drain(s);
+    if (s->inFlightCount == 0) s->pins.drain(s);
     if (task > 0) s->callback(task, 0);
 }
 
@@ -48,7 +48,7 @@ void cleanup(void *data) {
 }
 }
 
-AtsRtExtPin *PinTable::create(State *s, napi_value value, napi_status *status) {
+AtsRtExtPin *Pins::create(State *s, napi_value value, napi_status *status) {
     auto *pin = new (std::nothrow) AtsRtExtPin{s, nullptr, nullptr, nullptr};
     if (!pin) { *status = napi_generic_failure; return nullptr; }
     *status = napi_create_strong_reference(s->env, value, &pin->strong);
@@ -63,12 +63,12 @@ AtsRtExtPin *PinTable::create(State *s, napi_value value, napi_status *status) {
     return pin;
 }
 
-napi_status PinTable::value(State *s, const AtsRtExtPin *pin, napi_value *result) const {
+napi_status Pins::value(State *s, const AtsRtExtPin *pin, napi_value *result) const {
     if (pin->alias) { *result = pin->alias; return napi_ok; }
     return napi_get_strong_reference_value(s->env, pin->strong, result);
 }
 
-bool PinTable::push(AtsRtExtPin *pin) {
+bool Pins::push(AtsRtExtPin *pin) {
     pending.fetch_add(1, std::memory_order_relaxed);
     AtsRtExtPin *head = deaths.load(std::memory_order_acquire);
     do {
@@ -84,7 +84,7 @@ bool PinTable::push(AtsRtExtPin *pin) {
     return head == nullptr && !wakeQueued.exchange(true);
 }
 
-void PinTable::drain(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
+void Pins::drain(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
     wakeQueued.store(false);
     AtsRtExtPin *head = deaths.exchange(nullptr, std::memory_order_acq_rel);
     if (head == tombstone()) { deaths.store(tombstone()); return; }
@@ -106,7 +106,7 @@ void PinTable::drain(State *s, const AtsRtExtPin *const *keep, size_t keepCount)
     }
 }
 
-void PinTable::cleanup(State *s) {
+void Pins::cleanup(State *s) {
     AtsRtExtPin *head = deaths.exchange(tombstone(), std::memory_order_acq_rel);
     while (head && head != tombstone()) {
         AtsRtExtPin *next = head->nextDead;
@@ -117,7 +117,7 @@ void PinTable::cleanup(State *s) {
     }
 }
 
-void PinTable::probe(State *s) {
+void Pins::aliasCheck(State *s) {
     napi_handle_scope scope;
     if (napi_open_handle_scope(s->env, &scope) != napi_ok) return;
     napi_value object, a = nullptr, b = nullptr;
@@ -152,7 +152,7 @@ extern "C" void *ats_rt_ext_bind(void *raw, ats_rt_ext_task_callback callback) t
         napi_release_threadsafe_function(failed->dispatcher, napi_tsfn_abort);
         release(failed); return nullptr;
     }
-    s->pins.probe(s.get());
+    s->pins.aliasCheck(s.get());
     return s.release();
 } catch (...) { return nullptr; }
 extern "C" int32_t ats_rt_ext_is_owner(void *raw) {
@@ -175,26 +175,26 @@ extern "C" int32_t ats_rt_ext_open_scope(void *raw, void **scope, int32_t flags)
     auto *s = static_cast<State *>(raw);
     if (ats_rt_ext_access_status(raw) != 0) return napi_generic_failure;
     bool inFlight = flags & ATS_RT_EXT_SCOPE_IN_FLIGHT;
-    if ((flags & ATS_RT_EXT_SCOPE_DRAIN_CHECK) && s->opDepth == 0 && s->pins.hasDeaths()) return ATS_RT_EXT_DRAIN_FIRST;
-    if (s->brackets.size() == s->brackets.capacity()) s->brackets.reserve(2 * s->brackets.size() + 8);
+    if ((flags & ATS_RT_EXT_SCOPE_DRAIN_CHECK) && s->inFlightCount == 0 && s->pins.hasDeaths()) return ATS_RT_EXT_DRAIN_FIRST;
+    if (s->openFrames.size() == s->openFrames.capacity()) s->openFrames.reserve(2 * s->openFrames.size() + 8);
     auto status = napi_open_handle_scope(s->env, reinterpret_cast<napi_handle_scope *>(scope));
     if (status == napi_ok) {
-        if (inFlight) ++s->opDepth;
-        s->brackets.push_back({s->budget.enter(), inFlight});
+        if (inFlight) ++s->inFlightCount;
+        s->openFrames.push_back({s->budget.enter(), inFlight});
     }
     return status;
 } catch (...) { return napi_generic_failure; }
 extern "C" void ats_rt_ext_drain(void *raw) {
     auto *s = static_cast<State *>(raw);
-    if (ats_rt_ext_access_status(raw) == 0 && s->opDepth == 0) s->pins.drain(s);
+    if (ats_rt_ext_access_status(raw) == 0 && s->inFlightCount == 0) s->pins.drain(s);
 }
 extern "C" int32_t ats_rt_ext_close_scope(void *raw, void *scope) {
     auto *s = static_cast<State *>(raw);
     if (ats_rt_ext_access_status(raw) != 0) return napi_generic_failure;
-    auto bracket = s->brackets.back();
-    s->brackets.pop_back();
-    if (bracket.inFlight) --s->opDepth;
-    s->budget.exit(bracket.units);
+    auto frame = s->openFrames.back();
+    s->openFrames.pop_back();
+    if (frame.inFlight) --s->inFlightCount;
+    s->budget.exit(frame.units);
     return napi_close_handle_scope(s->env, static_cast<napi_handle_scope>(scope));
 }
 extern "C" int32_t ats_rt_ext_pin(void *raw, void *value, void **pin) {
@@ -230,7 +230,7 @@ napi_value invoke(napi_env env, napi_callback_info info) try {
     size_t count = 8; void *data = nullptr;
     if (napi_get_cb_info(env, info, &count, stack, nullptr, &data) != napi_ok) return nullptr;
     auto *f = static_cast<FunctionData *>(data);
-    // The engine closes this callback's scope on return: whatever ops leak in here dies with it.
+    // The engine closes this callback's scope on return: whatever ops spill in here dies with it.
     ats_rt_ext::HostBudget::Frame frame(f->state->budget);
     if (count <= 8) return static_cast<napi_value>(f->call(f->id, count, reinterpret_cast<void **>(stack)));
     std::vector<napi_value> args(count);
@@ -539,8 +539,8 @@ extern "C" int32_t ats_rt_ext_element_write(void *raw, void *value, uint32_t ind
 
 extern "C" void ats_rt_ext_stats(void *raw, ats_rt_ext_stats_t *out) {
     auto *s = static_cast<State *>(raw);
-    *out = ats_rt_ext_stats_t{s->opsLeaked, s->opsScoped, s->pinsCreated.load(), s->pinsDeleted.load(),
-        s->budget.units, s->budget.depth, s->pins.read == PinRead::Alias ? 1u : 0u, s->pins.pending.load()};
+    *out = ats_rt_ext_stats_t{s->opsSpilled, s->opsScoped, s->pinsCreated.load(), s->pinsDeleted.load(),
+        s->budget.units, s->budget.framesOpen, s->pins.read == PinRead::Alias ? 1u : 0u, s->pins.pending.load()};
 }
 
 extern "C" void ats_rt_ext_text_take(void *raw, uint8_t *dst, size_t length) {

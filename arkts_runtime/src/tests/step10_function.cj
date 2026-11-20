@@ -59,7 +59,7 @@ func functionThrows(fixtures: Array<NativeJSValue>): String {
 }
 
 /**
- * A function created from a spawned thread and called from it: the body runs on the JS thread
+ * A function created from a spawned thread and called from it: the body runs on the owner thread
  * (not the calling one) and the result comes back.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]

@@ -23,12 +23,12 @@ struct State {
     // `postMutex` serializes every TSFN post against cleanup, so a finalizer's wake can never call
     // a TSFN that cleanup already aborted.
     std::mutex postMutex;
-    PinTable pins;
+    Pins pins;
     ats_rt_ext::HostBudget budget;
-    struct Bracket { uint32_t units; bool inFlight; };
-    std::vector<Bracket> brackets;
-    uint32_t opDepth = 0;
-    uint64_t opsLeaked = 0, opsScoped = 0;
+    struct OpenFrame { uint32_t units; bool inFlight; };
+    std::vector<OpenFrame> openFrames;
+    uint32_t inFlightCount = 0;
+    uint64_t opsSpilled = 0, opsScoped = 0;
     std::vector<char16_t> text16;
     std::vector<uint8_t> text;
     std::atomic<uint64_t> pinsCreated{0}, pinsDeleted{0};

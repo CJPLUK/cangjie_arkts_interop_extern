@@ -22,7 +22,7 @@ func runArkTSTest(runtime: JSContext, callInfo: JSCallInfo): JSValue {
 
 /**
  * runArkTSTestOffThread(name): Promise<string>. Runs the scenario on a spawned thread and
- * resolves on the JS thread with "" on success, otherwise a failure message.
+ * resolves on the owner thread with "" on success, otherwise a failure message.
  */
 func runArkTSTestOffThread(runtime: JSContext, callInfo: JSCallInfo): JSValue {
     let name = callInfo[0].toString()

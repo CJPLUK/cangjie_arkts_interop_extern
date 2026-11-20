@@ -13,7 +13,7 @@ Each op declares its worst case as bare integers. What the terms stand for (rece
 
 ## Suggested reshape
 
-Name the units an op can leak (for example `kUnitReceiverFetch`, `kUnitKey`, `kUnitResult`) and write each worst case as a sum of them. Better still, describe each op's locals once and use that one description for both `admit` and the exit charge.
+Name the units an op can spill (for example `kUnitReceiverFetch`, `kUnitKey`, `kUnitResult`) and write each worst case as a sum of them. Better still, describe each op's locals once and use that one description for both `admit` and the exit charge.
 
 ## Done when
 

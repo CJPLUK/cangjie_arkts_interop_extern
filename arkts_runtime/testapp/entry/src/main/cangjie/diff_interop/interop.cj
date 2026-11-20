@@ -493,7 +493,7 @@ func options(js: Js, w: JSValue, log: Transcript): Unit {
 let THREADS = 8
 let THREAD_ITERATIONS = 200
 
-/** DiffPrograms.ts's manyThreads: ark_interop runs only on the JS thread, so the bodies run one after another. */
+/** DiffPrograms.ts's manyThreads: ark_interop runs only on the owner thread, so the bodies run one after another. */
 func manyThreads(js: Js, w: JSValue, log: Transcript): Unit {
     for (t in 0..THREADS) { threadBody(js, w, t, log) }
     log.num("bumps", num(get(get(w, "shared"), "bumps")))

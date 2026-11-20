@@ -1,14 +1,14 @@
-# ADR-0005: Reuse the pin of a repeated member read (intern table)
+# ADR-0005: Reuse the pin of a repeated member read (pin cache)
 
 Status: accepted, with an open issue
 
 ## Context
 
-Code such as `obj.config.theme.color` inside a loop reads the same objects again and again. Under ADR-0003, each heap result is a new strong reference, later deleted on the JS thread. Most of those references would duplicate one that is already live.
+Code such as `obj.config.theme.color` inside a loop reads the same objects again and again. Under ADR-0003, each heap result is a new strong reference, later deleted on the owner thread. Most of those references would duplicate one that is already live.
 
 ## Decision
 
-`InternTable` (`src/native_values.cj`) is a 256-slot, direct-mapped cache. A slot is chosen by hashing (receiver pin, key) and holds the last heap result read from that pair.
+The pin cache (`PinCache`, `src/native_values.cj`) is a 256-slot, direct-mapped cache. A slot is chosen by hashing (receiver pin, key) and holds the last heap result read from that pair.
 
 1. Before a member read, `memberAccess` looks the pair up (`hint`) and passes the cached pin to the fused op.
 2. The op returns the hint (`ATS_RT_EXT_RESULT_HIT`, no new pin) only when the value read is strictly equal to the hinted value. Otherwise it returns a new pin, which then replaces the slot (`remember`).

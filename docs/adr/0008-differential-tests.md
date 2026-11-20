@@ -8,11 +8,11 @@ The runtime must behave exactly like the ohos.ark_interop library it replaces: t
 
 ## Decision
 
-Each program in `testapp/entry/src/ohosTest/ets/test/DiffPrograms.ts` exists in three variants, and their transcripts must be identical line for line:
+Each differential program in `testapp/entry/src/ohosTest/ets/test/DiffPrograms.ts` exists in three variants, and their transcripts must be identical line for line:
 
-- **A: plain ArkTS** (`DiffPrograms.ts`), the reference. Where the Extern contract differs from plain JS, the program spells out the contract: extracted methods keep `this`, `Int64` is a bigint, `Option`, `String` conversion.
-- **B: Cangjie with ark_interop** (`diff_interop/interop.cj`), written as an ark_interop user would. Where the Extern contract decides an outcome (conversion and access errors, extracted methods keeping `this`), the program checks it by hand.
-- **C: Cangjie with `Extern<ArkTSRuntime>`** (`diff_extern/extern.cj`).
+- **Reference: plain ArkTS** (`DiffPrograms.ts`). Where the Extern contract differs from plain JS, the program spells out the contract: extracted methods keep `this`, `Int64` is a bigint, `Option`, `String` conversion.
+- **Interop variant: Cangjie with ark_interop** (`diff_interop/interop.cj`), written as an ark_interop user would. Where the Extern contract decides an outcome (contract errors, extracted methods keeping `this`), the program checks it by hand.
+- **Extern variant: Cangjie with `Extern<ArkTSRuntime>`** (`diff_extern/extern.cj`).
 
 How the programs run:
 
@@ -26,15 +26,15 @@ How the programs run:
 
 `Diff.test.ets` runs, for each program:
 
-1. variant A;
-2. variant B and variant C on the JS thread;
-3. variant C again on a spawned thread. This is skipped for programs marked `heavy`, which have too many operations to run through posting, and repeated `offThreadRuns` times for programs that race threads.
+1. the reference;
+2. the interop and Extern variants on the owner thread;
+3. the Extern variant again on a spawned thread. This is skipped for programs marked `heavy`, which have too many operations to run through posting, and repeated `offThreadRuns` times for programs that race threads.
 
 ### The thread program
 
-Off the JS thread, the Extern variant of `manyThreads` starts eight thread bodies together on a barrier, while another thread runs the Cangjie GC. Each body touches only its own slot and the read-only shared object, so the transcript does not depend on the interleaving.
+Off the owner thread, the Extern variant of `manyThreads` starts eight thread bodies together on a barrier, while another thread runs the Cangjie GC. Each body touches only its own slot and the read-only shared object, so the transcript does not depend on the interleaving.
 
-On the JS thread the bodies run one after another, because a spawned thread's operations would wait for the JS thread, which would be waiting for them. ark_interop runs only on the JS thread.
+On the owner thread the bodies run one after another, because a spawned thread's operations would wait for the owner thread, which would be waiting for them. ark_interop runs only on the owner thread.
 
 ### Lone surrogates
 

@@ -175,7 +175,7 @@ func largeValues(fixtures: Array<NativeJSValue>): String {
 }
 
 /**
- * fixtures: Target. An `Extern` converted to an `Extern` is returned with its own handle, a
+ * fixtures: Target. An `Extern` converted to an `Extern` is returned with its own pin, a
  * method too; inside an array it gives its value.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
@@ -187,13 +187,13 @@ func externInputs(fixtures: Array<NativeJSValue>): String {
     firstFailure([
         expectEqual("fromExtern of a member read", from<Float64>(c), 42.0),
         expectEqual("toExtern of a member read", from<Float64>(to(c)), 42.0),
-        expectEqual("toExtern of a number read is an immediate", ArkTSRuntime.handleKind(to(c)), "Imm"),
-        expectEqual("fromExtern<E> of an object read", ArkTSRuntime.handleKind(from<E>(e.a)), "Ref"),
-        expectEqual("toExtern(a) keeps a's handle", ArkTSRuntime.sameHandle(to(a), a), true),
-        expectEqual("fromExtern<E>(a) keeps a's handle", ArkTSRuntime.sameHandle(from<E>(a), a), true),
-        expectEqual("a retained again is a new handle", ArkTSRuntime.sameHandle(ArkTSRuntime.retain(unwrap(a)), a), false),
-        expectEqual("toExtern(method) keeps its handle", ArkTSRuntime.sameHandle(to(m), m), true),
-        expectEqual("toExtern(method) is still a method", ArkTSRuntime.handleKind(to(m)), "Method"),
+        expectEqual("toExtern of a number read is an immediate", ArkTSRuntime.payloadKind(to(c)), "Imm"),
+        expectEqual("fromExtern<E> of an object read", ArkTSRuntime.payloadKind(from<E>(e.a)), "Pin"),
+        expectEqual("toExtern(a) keeps a's pin", ArkTSRuntime.samePin(to(a), a), true),
+        expectEqual("fromExtern<E>(a) keeps a's pin", ArkTSRuntime.samePin(from<E>(a), a), true),
+        expectEqual("a retained again is a new pin", ArkTSRuntime.samePin(ArkTSRuntime.retain(unwrap(a)), a), false),
+        expectEqual("toExtern(method) keeps its pin", ArkTSRuntime.samePin(to(m), m), true),
+        expectEqual("toExtern(method) is still a method", ArkTSRuntime.payloadKind(to(m)), "Method"),
         expectEqual("Externs inside an array", from<Array<Float64>>(to([c, e.num])), [42.0, 1.5]),
         expectEqual("method inside an array is its function",
             unwrap(to([m])[0]).strictEqual(fixture(fixtures, 0).getProperty("record")), true)

@@ -15,4 +15,4 @@ Use `offThreadRuns: 0` for the two programs and delete `heavy` and `programHeavy
 
 ## Done when
 
-One field controls off-thread runs; the diff suite runs the same set of programs.
+One field controls off-thread runs; the differential suite runs the same set of programs.

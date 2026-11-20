@@ -2,8 +2,8 @@
 
 ## Where
 
-- `arkts_runtime/native/pins.h`: `AtsRtExtPin` (16-21), `PinTable::push` (39).
-- `arkts_runtime/native/backend.cpp`: `PinTable::value` and `PinTable::push` (66-86), and the `release(s)` calls in `push` and `drain`.
+- `arkts_runtime/native/pins.h`: `AtsRtExtPin` (16-21), `Pins::push` (39).
+- `arkts_runtime/native/backend.cpp`: `Pins::value` and `Pins::push` (66-86), and the `release(s)` calls in `push` and `drain`.
 
 ## Problem
 
@@ -14,7 +14,7 @@
 ## Suggested reshape
 
 - Return an enum from `push`, for example `Queued`, `QueuedWakeNeeded` or `Freed`.
-- Make `PinTable::value` switch on the table's read mode instead of testing `alias` for null.
+- Make `Pins::value` switch on the table's read mode instead of testing `alias` for null.
 - Hold the `State` share in a small RAII type that releases it in its destructor.
 
 ## Done when

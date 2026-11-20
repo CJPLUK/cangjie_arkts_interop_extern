@@ -58,7 +58,7 @@ func iterationsOf(context: JSContext, info: JSCallInfo): JSValue {
 /**
  * `runBenchmark(name: string, variant: 'arkInterop' | 'arktsRuntime', done: (ns: number, error: string) => void)`:
  * one timed run of `iterations` operations. `done` gets the elapsed nanoseconds, or -1 and the
- * error. Off-thread benchmarks run on a spawned thread and call `done` later from the JS thread.
+ * error. Off-thread benchmarks run on a spawned thread and call `done` later from the owner thread.
  */
 func runBenchmark(context: JSContext, info: JSCallInfo): JSValue {
     let name = info[0].toString()

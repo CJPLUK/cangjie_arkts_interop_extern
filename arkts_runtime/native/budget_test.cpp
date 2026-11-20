@@ -6,23 +6,23 @@
 
 namespace {
 
-struct Scope { uint64_t leaked; bool frame; uint32_t saved; };
+struct Scope { uint64_t spilled; bool frame; uint32_t saved; };
 
 struct World {
     ats_rt_ext::HostBudget budget;
     std::vector<Scope> scopes{{0, false, 0}};
     bool inTurn = false;
     uint32_t markersThisTurn = 0;
-    uint64_t opsScoped = 0, opsLeaked = 0;
+    uint64_t opsScoped = 0, opsSpilled = 0;
 
-    uint64_t live() const { uint64_t sum = 0; for (auto &s : scopes) sum += s.leaked; return sum; }
+    uint64_t live() const { uint64_t sum = 0; for (auto &s : scopes) sum += s.spilled; return sum; }
     uint32_t frames() const { uint32_t n = 0; for (auto &s : scopes) n += s.frame; return n; }
 
-    void op(uint32_t worst, uint32_t leaked) {
+    void op(uint32_t worst, uint32_t spilled) {
         if (budget.admit(worst) == ats_rt_ext::Placement::Scoped) { ++opsScoped; return; }
-        ++opsLeaked;
-        scopes.back().leaked += leaked;
-        budget.charge(leaked);
+        ++opsSpilled;
+        scopes.back().spilled += spilled;
+        budget.charge(spilled);
         if (budget.wantsMarker()) { budget.markerPosted(); ++markersThisTurn; }
     }
     void frameOpen() { scopes.push_back({0, true, budget.enter()}); }
@@ -44,7 +44,7 @@ void check(bool ok, const char *what, uint64_t step) {
 
 struct Outcome { bool sound; uint64_t turns, resets, scoped; };
 
-Outcome run(uint64_t seed, uint64_t steps, bool contractKept, bool expectSound, uint32_t turnEndOdds = 1) {
+Outcome run(uint64_t seed, uint64_t steps, bool scopeRuleKept, bool expectSound, uint32_t turnEndOdds = 1) {
     std::mt19937_64 rng(seed);
     World w;
     const uint32_t kWorst = 4 + ats_rt_ext::kUnitFreshHeap;
@@ -53,7 +53,7 @@ Outcome run(uint64_t seed, uint64_t steps, bool contractKept, bool expectSound, 
     for (uint64_t step = 0; step < steps; ++step) {
         uint32_t r = rng() % 100;
         if (!w.inTurn && w.scopes.size() == 1) {
-            if (contractKept || r < 50) { w.turnStart(); ++turns; }
+            if (scopeRuleKept || r < 50) { w.turnStart(); ++turns; }
             else w.op(kWorst, 1 + rng() % 3);
         } else if (r < 60) {
             w.op(kWorst, (rng() % 8 == 0) ? ats_rt_ext::kUnitFreshHeap + 2 : 1 + rng() % 4);
@@ -74,11 +74,11 @@ Outcome run(uint64_t seed, uint64_t steps, bool contractKept, bool expectSound, 
         if (w.budget.units < w.live()) sound = false;
         if (expectSound) check(w.budget.units >= w.live(), "Sound", step);
         check(w.budget.units <= ats_rt_ext::kCapacity + kWorst, "Bound", step);
-        check(w.budget.depth == w.frames(), "depth == open frames", step);
+        check(w.budget.framesOpen == w.frames(), "framesOpen == open frames", step);
     }
-    std::printf("seed %llu: %llu turns, %llu marker resets, %llu leaked ops, %llu scoped ops, sound %s\n",
+    std::printf("seed %llu: %llu turns, %llu marker resets, %llu spilled ops, %llu scoped ops, sound %s\n",
         (unsigned long long)seed, (unsigned long long)turns, (unsigned long long)resets,
-        (unsigned long long)w.opsLeaked, (unsigned long long)w.opsScoped, sound ? "yes" : "no");
+        (unsigned long long)w.opsSpilled, (unsigned long long)w.opsScoped, sound ? "yes" : "no");
     return {sound, turns, resets, w.opsScoped};
 }
 
@@ -96,10 +96,10 @@ int main() {
     if (run(99, 3000000, false, false).sound) { std::printf("FAIL negative control stayed sound\n"); ++failures; }
     ats_rt_ext::HostBudget b;
     b.charge(10);
-    { ats_rt_ext::HostBudget::Frame f(b); b.charge(500); check(b.depth == 1, "frame depth", 0); }
-    check(b.units == 10 && b.depth == 0, "frame restores units", 0);
+    { ats_rt_ext::HostBudget::Frame f(b); b.charge(500); check(b.framesOpen == 1, "frames open inside a frame", 0); }
+    check(b.units == 10 && b.framesOpen == 0, "frame restores units", 0);
     b.units = ats_rt_ext::kCapacity - 3;
-    check(b.admit(4) == ats_rt_ext::Placement::Scoped && b.admit(3) == ats_rt_ext::Placement::Leak, "admit at capacity", 0);
+    check(b.admit(4) == ats_rt_ext::Placement::Scoped && b.admit(3) == ats_rt_ext::Placement::Spill, "admit at capacity", 0);
     std::printf(failures ? "FAILED (%d)\n" : "all budget checks passed\n", failures);
     return failures ? 1 : 0;
 }

@@ -150,12 +150,12 @@ struct NativeArg {
 }
 @C
 struct NativeStats {
-    var opsLeaked: UInt64 = 0
+    var opsSpilled: UInt64 = 0
     var opsScoped: UInt64 = 0
     var pinsCreated: UInt64 = 0
     var pinsDeleted: UInt64 = 0
     var budgetUnits: UInt32 = 0
-    var budgetDepth: UInt32 = 0
+    var budgetFramesOpen: UInt32 = 0
     var pinReadAlias: UInt32 = 0
     var pinsPending: UInt32 = 0
 }

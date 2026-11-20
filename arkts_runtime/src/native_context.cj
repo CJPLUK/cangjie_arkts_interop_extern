@@ -42,8 +42,8 @@ class NativeContext {
         session = NativeSession(env)
     }
     func getNapiEnv(): NativeEnv { session.env }
-    func isInBindThread(): Bool { session.isInBindThread() }
-    func newScope<R>(operation: () -> R): R { session.newScope(operation) }
+    func isOnOwnerThread(): Bool { session.isOnOwnerThread() }
+    func runtimeFrame<R>(operation: () -> R): R { session.runtimeFrame(operation) }
     func undefined(): NativeJSValue { NativeJSValue(session, NapiValue(), 0) }
     func null(): NativeJSValue { NativeJSValue(session, NapiValue(), 1) }
     func boolean(b: Bool): NativeJSValue { NativeJSValue(session, NapiValue(), 2, boolean: b) }

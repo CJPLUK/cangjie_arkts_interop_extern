@@ -21,7 +21,7 @@ struct AtsRtExtPin {
     AtsRtExtPin *nextDead;
 };
 
-struct PinTable {
+struct Pins {
     static AtsRtExtPin *tombstone() { return reinterpret_cast<AtsRtExtPin *>(uintptr_t(1)); }
     static constexpr uint32_t kDrainBatch = 256;
 
@@ -37,13 +37,13 @@ struct PinTable {
         return head != nullptr && head != tombstone();
     }
     bool push(AtsRtExtPin *pin);
-    // drain() runs only while no op or generic bracket is in flight (opDepth == 0), and keeps the
+    // drain() runs only while no op or runtime frame is in flight (inFlightCount == 0), and keeps the
     // pins the starting op was handed. An alias handed to an op therefore stays valid until the op
     // returns, even if its Pinned was finalized meanwhile (Cangjie has no reachability fence).
     void drain(State *s, const AtsRtExtPin *const *keep, size_t keepCount);
     void drain(State *s, std::initializer_list<const AtsRtExtPin *> keep = {}) { drain(s, keep.begin(), keep.size()); }
     void cleanup(State *s);
-    void probe(State *s);
+    void aliasCheck(State *s);
 };
 
 #endif

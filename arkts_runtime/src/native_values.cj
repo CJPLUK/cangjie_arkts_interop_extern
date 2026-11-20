@@ -301,7 +301,7 @@ struct NativeJSValue <: ToString {
     }
 }
 
-class InternTable {
+class PinCache {
     private static let SLOTS = 256
     private let receivers = Array<UIntNative>(SLOTS, repeat: 0)
     private let keys = Array<String>(SLOTS, repeat: "")
@@ -346,7 +346,7 @@ class Pinned {
     private var arrayState: Int8 = 0
 
     func isArrayHere(): Bool {
-        arrayState == 1 || (arrayState == 0 && session.isInBindThread() && isArray())
+        arrayState == 1 || (arrayState == 0 && session.isOnOwnerThread() && isArray())
     }
 
     func isArray(): Bool {

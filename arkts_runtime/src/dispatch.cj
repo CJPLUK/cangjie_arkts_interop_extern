@@ -79,93 +79,93 @@ func asR<R>(value: Any): R {
 func probedFromJSValue<R>(value: NativeJSValue): R {
     match (probeOf<R>(probeFloat64, probeComparableFloat64, probeFloat32)) {
         case Hit => return asR<R>(Float64.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeBool, probeComparableBool, probeInt64)) {
         case Hit => return asR<R>(Bool.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeString, probeComparableString, probeInt64)) {
         case Hit => return asR<R>(String.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeInt64, probeComparableInt64, probeInt32)) {
         case Hit => return asR<R>(Int64.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeInt32, probeComparableInt32, probeInt64)) {
         case Hit => return asR<R>(Int32.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeInt16, probeComparableInt16, probeInt64)) {
         case Hit => return asR<R>(Int16.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeInt8, probeComparableInt8, probeInt64)) {
         case Hit => return asR<R>(Int8.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeUInt64, probeComparableUInt64, probeUInt32)) {
         case Hit => return asR<R>(UInt64.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeUInt32, probeComparableUInt32, probeUInt64)) {
         case Hit => return asR<R>(UInt32.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeUInt16, probeComparableUInt16, probeUInt64)) {
         case Hit => return asR<R>(UInt16.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeUInt8, probeComparableUInt8, probeUInt64)) {
         case Hit => return asR<R>(UInt8.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeFloat32, probeComparableFloat32, probeFloat64)) {
         case Hit => return asR<R>(Float32.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeFloat16, probeComparableFloat16, probeFloat64)) {
         case Hit => return asR<R>(Float16.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeBigInt, probeComparableBigInt, probeInt64)) {
         case Hit => return asR<R>(BigInt.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeUnit, probeComparableUnit, probeBool)) {
         case Hit => return asR<R>(Unit.fromJS(value))
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeOptionFloat64, probeOptionFloat32, probeSentinel)) {
         case Hit => return asR<R>(if (value.isUndefined() || value.isNull()) { None<Float64> } else { Some(Float64.fromJS(value)) })
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeOptionString, probeOptionInt64, probeSentinel)) {
         case Hit => return asR<R>(if (value.isUndefined() || value.isNull()) { None<String> } else { Some(String.fromJS(value)) })
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
     match (probeOf<R>(probeOptionBool, probeOptionInt64, probeSentinel)) {
         case Hit => return asR<R>(if (value.isUndefined() || value.isNull()) { None<Bool> } else { Some(Bool.fromJS(value)) })
-        case Shared => return ArkTSRuntime.fromJSValueSlow<R>(value)
+        case Shared => return ArkTSRuntime.fromJSValueReflective<R>(value)
         case Miss => ()
     }
-    ArkTSRuntime.fromJSValueSlow<R>(value)
+    ArkTSRuntime.fromJSValueReflective<R>(value)
 }

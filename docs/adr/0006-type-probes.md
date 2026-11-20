@@ -17,7 +17,7 @@ A hit is exact unless `R` is an interface. Two further probes tell the cases apa
 - **The type's rival scalar also matches:** then `R` is an interface both share, such as `Any`, `ToString` or `Hashable`.
 - **Its `ProbeComparable` matches:** then `R` is `Equatable<T>` or `Comparable<T>`. `ProbeComparable<T>` is a marker type that is never compared.
 
-Both cases fall back to the slow path, which rejects interfaces as ark_interop does.
+Both cases fall back to the reflective conversion, which rejects interfaces as ark_interop does.
 
 An interface the user attached to the type alone (`extend Float64 <: Shape`) receives the value as that type.
 

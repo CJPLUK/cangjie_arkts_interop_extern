@@ -749,7 +749,7 @@ function checkKeptObject(kept: WeakRef<Rectangle>): void {
 }
 
 /**
- * Forces full collections, yielding to the event loop in between (queued handle releases run
+ * Forces full collections, yielding to the event loop in between (queued pin releases run
  * there), until `done()` holds; false after 5 rounds. Allocating garbage only triggers young
  * collections, which never cleared the WeakRefs here; dumping a heap snapshot runs a full one.
  */
