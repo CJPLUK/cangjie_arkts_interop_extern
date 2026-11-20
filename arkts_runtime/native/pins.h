@@ -1,5 +1,5 @@
-#ifndef ARKTS_RUNTIME3_PINS_H
-#define ARKTS_RUNTIME3_PINS_H
+#ifndef ARKTS_RUNTIME_PINS_H
+#define ARKTS_RUNTIME_PINS_H
 #include <napi/native_api.h>
 #include <atomic>
 #include <cstdint>

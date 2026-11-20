@@ -1,5 +1,5 @@
-#ifndef ARKTS_RUNTIME3_BUDGET_H
-#define ARKTS_RUNTIME3_BUDGET_H
+#ifndef ARKTS_RUNTIME_BUDGET_H
+#define ARKTS_RUNTIME_BUDGET_H
 #include <cstdint>
 
 namespace ats_rt_ext {

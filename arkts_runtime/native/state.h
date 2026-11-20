@@ -1,5 +1,5 @@
-#ifndef ARKTS_RUNTIME3_STATE_H
-#define ARKTS_RUNTIME3_STATE_H
+#ifndef ARKTS_RUNTIME_STATE_H
+#define ARKTS_RUNTIME_STATE_H
 #include "backend.h"
 #include "budget.h"
 #include "pins.h"

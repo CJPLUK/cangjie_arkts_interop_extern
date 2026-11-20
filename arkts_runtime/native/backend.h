@@ -1,5 +1,5 @@
-#ifndef ARKTS_RUNTIME3_BACKEND_H
-#define ARKTS_RUNTIME3_BACKEND_H
+#ifndef ARKTS_RUNTIME_BACKEND_H
+#define ARKTS_RUNTIME_BACKEND_H
 #include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus
