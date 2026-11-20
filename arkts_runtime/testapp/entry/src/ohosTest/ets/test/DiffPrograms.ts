@@ -74,7 +74,6 @@ class Counter {
 
 export interface Program {
   name: string;
-  heavy?: boolean;
   offThreadRuns?: number;
   world: () => any;
   arkts?: (w: any, log: Log) => void;
@@ -469,7 +468,8 @@ export const PROGRAMS: Program[] = [
   },
   {
     name: 'longTurn',
-    heavy: true,
+    // Too many operations to run through posting.
+    offThreadRuns: 0,
     world: () => ({ t: { a: { b: 1.5 } }, fresh(i: number): any { return { id: i }; } }),
     arkts: (w: any, log: Log) => {
       const early = w.t.a;
@@ -493,7 +493,8 @@ export const PROGRAMS: Program[] = [
   },
   {
     name: 'gcChurn',
-    heavy: true,
+    // Too many operations to run through posting.
+    offThreadRuns: 0,
     world: () => ({ store: [], fresh(i: number): any { return { id: i, payload: [i, i + 1] }; } }),
     arkts: (w: any, log: Log) => {
       const kept: any[] = [];
@@ -638,8 +639,6 @@ function program(name: string): Program {
 export function programNames(): string[] { return PROGRAMS.map((p: Program) => p.name); }
 
 export function programWorld(name: string): Object { return program(name).world(); }
-
-export function programHeavy(name: string): boolean { return program(name).heavy === true; }
 
 export function programOffThreadRuns(name: string): number { return program(name).offThreadRuns ?? 1; }
 

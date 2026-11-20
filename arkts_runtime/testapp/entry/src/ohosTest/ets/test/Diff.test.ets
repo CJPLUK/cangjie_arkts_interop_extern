@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { runDiffProgram, runDiffProgramOffThread } from 'libohos_app_cangjie_entry.so';
-import { programHeavy, programNames, programOffThreadRuns, programReference, programWorld } from './DiffPrograms';
+import { programNames, programOffThreadRuns, programReference, programWorld } from './DiffPrograms';
 
 function firstDifference(variant: string, expected: string, actual: string): string {
   if (expected === actual) {
@@ -37,7 +37,7 @@ export default function diffTest() {
         };
         check('interop', runDiffProgram('interop', name, programWorld(name)));
         check('extern', runDiffProgram('extern', name, programWorld(name)));
-        for (let run = 0; !programHeavy(name) && run < programOffThreadRuns(name); run++) {
+        for (let run = 0; run < programOffThreadRuns(name); run++) {
           check('extern off-thread run ' + run, await runDiffProgramOffThread(name, programWorld(name)));
         }
         if (differences.length > 0) {

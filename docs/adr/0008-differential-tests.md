@@ -28,7 +28,7 @@ How the programs run:
 
 1. the reference;
 2. the interop and Extern variants on the owner thread;
-3. the Extern variant again on a spawned thread. This is skipped for programs marked `heavy`, which have too many operations to run through posting, and repeated `offThreadRuns` times for programs that race threads.
+3. the Extern variant again on a spawned thread. This runs `offThreadRuns` times: once by default, more for programs that race threads, and not at all (`offThreadRuns: 0`) for programs with too many operations to run through posting.
 
 ### The thread program
 
