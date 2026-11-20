@@ -301,6 +301,10 @@ struct NativeJSValue <: ToString {
     }
 }
 
+/**
+ * The pin cache (ADR-0005). Owner thread only: its slots are plain fields, so an access from
+ * another thread would race the owner thread's `remember`.
+ */
 class PinCache {
     private static let SLOTS = 256
     private let receivers = Array<UIntNative>(SLOTS, repeat: 0)
@@ -343,17 +347,10 @@ class Pinned {
         this.kind = kind
     }
     ~init() { unsafe { ats_rt_ext_unpin(cell) } }
-    private var arrayState: Int8 = 0
 
-    func isArrayHere(): Bool {
-        arrayState == 1 || (arrayState == 0 && session.isOnOwnerThread() && isArray())
-    }
-
+    /** Whether the value is an array. Owner thread only; native keeps the answer on the pin. */
     func isArray(): Bool {
-        if (arrayState == 0) {
-            arrayState = if (kind == 6 && unsafe { ats_rt_ext_is_array(session.env, toJSValue().raw) } == 1) { 1 } else { 2 }
-        }
-        arrayState == 1
+        kind == JSType.OBJECT && unsafe { ats_rt_ext_pin_is_array(session.state, cell) } == 1
     }
 
     func elementRead(index: Int64): NativeJSValue {

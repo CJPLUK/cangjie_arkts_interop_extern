@@ -233,24 +233,48 @@ extern "C" int32_t ats_rt_ext_set_named(void *raw, void *targetPin, const uint8_
 }
 
 namespace {
-napi_status arrayValue(State *s, const AtsRtExtPin *pin, napi_value *array, uint32_t *units) {
-    auto status = s->pins.value(s, pin, array);
-    if (status == napi_ok && s->pins.read == PinRead::Fetch) *units += ats_rt_ext::kUnitLocal;
+/** Fills pin->isArray from the pin's value. Owner thread only. */
+napi_status learnArray(State *s, const AtsRtExtPin *pin, napi_value value) {
+    if (pin->isArray != IsArray::Unknown) return napi_ok;
+    bool isArray = false;
+    auto status = napi_is_array(s->env, value, &isArray);
+    if (status == napi_ok) pin->isArray = isArray ? IsArray::Yes : IsArray::No;
     return status;
 }
+
+/** The value of an array pin; ATS_RT_EXT_GENERIC if it is not an array. Owner thread only. */
+int32_t arrayValue(State *s, const AtsRtExtPin *pin, napi_value *array, uint32_t *units) {
+    auto status = s->pins.value(s, pin, array);
+    if (status != napi_ok) return status;
+    if (s->pins.read == PinRead::Fetch) *units += ats_rt_ext::kUnitLocal;
+    status = learnArray(s, pin, *array);
+    if (status != napi_ok) return status;
+    return pin->isArray == IsArray::Yes ? napi_ok : ATS_RT_EXT_GENERIC;
+}
+}
+
+extern "C" int32_t ats_rt_ext_pin_is_array(void *raw, void *pinRaw) {
+    auto *s = static_cast<State *>(raw);
+    auto *pin = static_cast<const AtsRtExtPin *>(pinRaw);
+    if (!pin || !s->alive.load(std::memory_order_relaxed) || !stateIsOwner(s)) return 0;
+    if (pin->isArray == IsArray::Unknown) {
+        napi_value value;
+        if (s->pins.value(s, pin, &value) != napi_ok || learnArray(s, pin, value) != napi_ok) return 0;
+    }
+    return pin->isArray == IsArray::Yes ? 1 : 0;
 }
 
 extern "C" int32_t ats_rt_ext_element_get(void *raw, void *targetPin, int64_t index, ats_rt_ext_op_result *out) {
     auto *s = static_cast<State *>(raw);
     auto *target = static_cast<const AtsRtExtPin *>(targetPin);
     if (auto entered = opEnter(s, {target})) return entered;
+    if (target->isArray == IsArray::No) return ATS_RT_EXT_GENERIC;  // known already: skip the placement
     OpPlacement place(s, 2 + ats_rt_ext::kUnitFreshHeap);
     if (!place.ok()) return napi_generic_failure;
     napi_value array, result;
-    auto status = arrayValue(s, target, &array, &place.units);
-    if (status != napi_ok) return status;
+    if (auto status = arrayValue(s, target, &array, &place.units)) return status;
     uint32_t length = 0;
-    status = napi_get_array_length(s->env, array, &length);
+    auto status = napi_get_array_length(s->env, array, &length);
     if (status != napi_ok) return status;
     if (index < 0 || static_cast<uint64_t>(index) >= length) return ATS_RT_EXT_INDEX_OUT_OF_RANGE;
     ++s->inFlightCount;
@@ -265,12 +289,12 @@ extern "C" int32_t ats_rt_ext_element_set(void *raw, void *targetPin, uint32_t i
     auto *s = static_cast<State *>(raw);
     auto *target = static_cast<const AtsRtExtPin *>(targetPin);
     if (auto entered = opEnter(s, {target, pinOf(*value)})) return entered;
+    if (target->isArray == IsArray::No) return ATS_RT_EXT_GENERIC;  // known already: skip the placement
     OpPlacement place(s, 1 + worstArg(*value));
     if (!place.ok()) return napi_generic_failure;
     napi_value array, element;
-    auto status = arrayValue(s, target, &array, &place.units);
-    if (status != napi_ok) return status;
-    status = argValue(s, *value, &element, &place.units);
+    if (auto status = arrayValue(s, target, &array, &place.units)) return status;
+    auto status = argValue(s, *value, &element, &place.units);
     if (status != napi_ok) return status;
     ++s->inFlightCount;
     status = napi_set_element(s->env, array, index, element);

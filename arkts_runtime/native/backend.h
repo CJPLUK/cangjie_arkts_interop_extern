@@ -132,6 +132,8 @@ int32_t ats_rt_ext_post(void *state, int64_t id);
 #define ATS_RT_EXT_NOT_OWNER (-4)
 /** A fused op was called after environment teardown. Nothing was done. */
 #define ATS_RT_EXT_DEAD (-5)
+/** A fused op does not apply to its operands (an element op on a non-array): take the generic path. Nothing was done. */
+#define ATS_RT_EXT_GENERIC (-6)
 
 /** A fused op's result: a copied scalar (kind 0..3) or a new pin the caller owns. */
 typedef struct {
@@ -158,14 +160,21 @@ typedef struct {
 int32_t ats_rt_ext_set_named(void *state, void *target, const uint8_t *key, size_t key_length, const ats_rt_ext_arg *value);
 
 /**
- * `target[index]` for a pin the caller knows is an array (the type does not change). Returns
- * ATS_RT_EXT_INDEX_OUT_OF_RANGE, having run nothing, when index is not an element.
+ * `target[index]` for an array pin. Returns ATS_RT_EXT_INDEX_OUT_OF_RANGE, having run nothing,
+ * when index is not an element, and ATS_RT_EXT_GENERIC when target is not an array. Whether it
+ * is an array is found out once and kept on the pin.
  */
 #define ATS_RT_EXT_INDEX_OUT_OF_RANGE (-1)
 int32_t ats_rt_ext_element_get(void *state, void *target, int64_t index, ats_rt_ext_op_result *out);
 
-/** `target[index] = value` for a pin the caller knows is an array, index < UINT32_MAX. */
+/** `target[index] = value` for an array pin, index < UINT32_MAX. Statuses as ats_rt_ext_element_get. */
 int32_t ats_rt_ext_element_set(void *state, void *target, uint32_t index, const ats_rt_ext_arg *value);
+
+/**
+ * 1 when the pin's value is an array, else 0, and 0 off the owner thread or after teardown. The
+ * answer is kept on the pin. The first call may create a local: call it inside an open scope.
+ */
+int32_t ats_rt_ext_pin_is_array(void *state, void *pin);
 
 /** `function.call(this_arg, ...args)` for a function pin. Status as ats_rt_ext_get_named. */
 int32_t ats_rt_ext_call(void *state, void *function, const ats_rt_ext_arg *this_arg, const ats_rt_ext_arg *args, size_t argc,

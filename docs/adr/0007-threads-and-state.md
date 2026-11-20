@@ -17,8 +17,14 @@ The bound environment has one `State` (`native/state.h`), shared by `backend.cpp
   - the open runtime and user frames, innermost last;
   - `inFlightCount` (fused ops and runtime frames in flight);
   - the spill and scope counters;
-  - the text buffers. The last string result stays in UTF-8 until `ats_rt_ext_text_take`, so a caller must take it before its next op.
+  - the text buffers. The last string result stays in UTF-8 until `ats_rt_ext_text_take`, so a caller must take it before its next op;
+  - each pin's `isArray` (on `AtsRtExtPin`, not `State`).
 - **Touched from other threads:** only `alive`, `owners`, `postMutex` and the atomics of the pin table.
+
+The same split holds on the Cangjie side, with one general rule: **no Cangjie-side cache is read or written off the owner thread.** The Cangjie spec makes unsynchronised concurrent access undefined behaviour, and a cache's fields are plain fields. So:
+
+- the pin cache (ADR-0005) is used only after an owner-thread check;
+- whether a pin holds an array is cached on the native pin (`AtsRtExtPin::isArray`), not on `Pinned`. The fused element ops find it out after their owner check and return `ATS_RT_EXT_GENERIC` for a non-array; the owner-thread generic paths ask `ats_rt_ext_pin_is_array`.
 
 ### Off-thread operations
 

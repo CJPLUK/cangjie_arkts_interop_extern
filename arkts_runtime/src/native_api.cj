@@ -11,7 +11,7 @@ const AR_SCOPE_DRAIN_CHECK: Int32 = 1
 const AR_SCOPE_IN_FLIGHT: Int32 = 2
 const AR_NOT_OWNER: Int32 = -4
 const AR_DEAD: Int32 = -5
-const AR_GENERIC: Int32 = -100
+const AR_GENERIC: Int32 = -6
 const NAPI_INVALID_ARG: Int32 = 1
 
 type NativeEnv = CPointer<Unit>
@@ -176,7 +176,7 @@ const AR_RESULT_HIT: Int32 = 1
 foreign func ats_rt_ext_decode_value(env: NativeEnv, value: NapiValue): NativeValueInfo
 
 @FastNative
-foreign func ats_rt_ext_is_array(env: NativeEnv, value: NapiValue): Int32
+foreign func ats_rt_ext_pin_is_array(state: CPointer<Unit>, pin: CPointer<Unit>): Int32
 foreign func ats_rt_ext_element_read(env: NativeEnv, array: NapiValue, index: Int64, length: CPointer<UInt32>,
     result: CPointer<NapiValue>, info: CPointer<NativeValueInfo>): Int32
 foreign func ats_rt_ext_element_write_f64(env: NativeEnv, array: NapiValue, index: UInt32, value: Float64): Int32

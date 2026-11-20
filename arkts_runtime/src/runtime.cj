@@ -137,6 +137,9 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
                 let session = context.session
+                // The pin cache is owner-thread only (ADR-0005), and off it the op could only
+                // return not-owner.
+                if (!session.isOnOwnerThread()) { return memberAccessSlow(e, field) }
                 let hint = session.pinCache.hint(target.cell, field)
                 var out = NativeOpResult()
                 let status = unsafe {
@@ -145,10 +148,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                     finally { releaseArrayRawData(key) }
                 }
                 if (status == 0) { return Extern<ArkTSRuntime>(payloadOfRead(session, out, receiver, target, field, hint)) }
-                if (status != AR_NOT_OWNER) {
-                    try { opFailed(session, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
-                }
-                return memberAccessSlow(e, field)
+                try { opFailed(session, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
             }
         }
         if (context.session.isOnOwnerThread()) {
@@ -169,7 +169,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 let session = context.session
                 var out = NativeOpResult()
                 let status = match (arg) {
-                    case position: Int64 where target.isArrayHere() => unsafe { ats_rt_ext_element_get(session.state, target.cell, position, inout out) }
+                    case position: Int64 => unsafe { ats_rt_ext_element_get(session.state, target.cell, position, inout out) }
                     case name: String => unsafe {
                         let key = acquireArrayRawData(name.rawData())
                         try { ats_rt_ext_get_named(session.state, target.cell, key.pointer, UIntNative(key.array.size), CPointer<Unit>(), inout out) }
@@ -282,7 +282,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     private static func indexedUpdateFused(target: Pinned, field: Any, arg: OpArg): Int32 {
         let state = context.session.state
         match (field) {
-            case position: Int64 where position >= 0 && position < Int64(UInt32.Max) && target.isArrayHere() => unsafe {
+            case position: Int64 where position >= 0 && position < Int64(UInt32.Max) => unsafe {
                 match (arg) {
                     case Text(text) =>
                         let bytes = acquireArrayRawData(text.rawData())

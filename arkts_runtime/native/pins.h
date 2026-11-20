@@ -14,11 +14,17 @@ enum class PinRead : uint8_t {
     Fetch,
 };
 
+// Whether a pin's value is an array. A value's type never changes, so it is found out once.
+enum class IsArray : uint8_t { Unknown, Yes, No };
+
 struct AtsRtExtPin {
     State *state;
     napi_strong_ref strong;
     napi_value alias;
     AtsRtExtPin *nextDead;
+    // Owner thread only: read and written after an owner-thread check (ADR-0007), never by Cangjie.
+    // `mutable`: filled in by ops that otherwise only read the pin.
+    mutable IsArray isArray = IsArray::Unknown;
 };
 
 struct Pins {

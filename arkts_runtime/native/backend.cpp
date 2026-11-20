@@ -49,7 +49,7 @@ void cleanup(void *data) {
 }
 
 AtsRtExtPin *Pins::create(State *s, napi_value value, napi_status *status) {
-    auto *pin = new (std::nothrow) AtsRtExtPin{s, nullptr, nullptr, nullptr};
+    auto *pin = new (std::nothrow) AtsRtExtPin{s, nullptr, nullptr, nullptr, IsArray::Unknown};
     if (!pin) { *status = napi_generic_failure; return nullptr; }
     *status = napi_create_strong_reference(s->env, value, &pin->strong);
     if (*status == napi_ok && read == PinRead::Alias) *status = napi_get_strong_reference_value(s->env, pin->strong, &pin->alias);
@@ -474,12 +474,6 @@ extern "C" ats_rt_ext_value_info ats_rt_ext_decode_value(void *raw, void *value)
         if (result.status == napi_ok) result.scalar = boolean ? 1.0 : 0.0;
     }
     return result;
-}
-
-extern "C" int32_t ats_rt_ext_is_array(void *raw, void *value) {
-    bool result = false;
-    if (napi_is_array(static_cast<napi_env>(raw), static_cast<napi_value>(value), &result) != napi_ok) return 0;
-    return result ? 1 : 0;
 }
 
 extern "C" int32_t ats_rt_ext_element_read(void *raw, void *value, int64_t index, uint32_t *length, void **result,

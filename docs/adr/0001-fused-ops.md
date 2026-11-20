@@ -24,9 +24,10 @@ Everything else takes the generic path in Cangjie (`native_values.cj`), inside a
 
 - string receivers;
 - element indices at or above `UInt32.Max`;
-- argument types that need a conversion the op cannot do itself.
+- argument types that need a conversion the op cannot do itself;
+- element reads and writes on a pin that is not an array.
 
-On the Cangjie side the status `AR_GENERIC` (-100) means "the fused path does not apply". It is not a native status.
+The status `ATS_RT_EXT_GENERIC` (-6, `AR_GENERIC` on the Cangjie side) means "the fused path does not apply", having run nothing. The element ops return it for a non-array; the Cangjie side also uses it for the cases it rules out before calling an op.
 
 ### Threads
 

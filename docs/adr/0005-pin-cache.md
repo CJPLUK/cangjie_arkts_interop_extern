@@ -1,6 +1,6 @@
 # ADR-0005: Reuse the pin of a repeated member read (pin cache)
 
-Status: accepted, with an open issue
+Status: accepted
 
 ## Context
 
@@ -15,15 +15,12 @@ The pin cache (`PinCache`, `src/native_values.cj`) is a 256-slot, direct-mapped 
 
 The table is a hint, never a source of truth. A stale or colliding slot costs a miss, never a wrong value.
 
-`remember` runs only on the owner thread, after a successful op. `hint` runs before the op, possibly on another thread. Off the owner thread the op returns `ATS_RT_EXT_NOT_OWNER` without using the hint.
+The pin cache is used only on the owner thread. `memberAccess` checks the thread first; off the owner thread it goes straight to the posted generic path, with no `hint` and no fused attempt, which could only return `ATS_RT_EXT_NOT_OWNER`. `remember` runs only after a successful op, so also only on the owner thread.
 
-## Open issue
-
-The off-thread `hint` read is a data race with the owner thread's `remember` on the same slot. The value read is discarded, but the read itself is unsynchronised, and the three slot fields can be seen half-written: in particular a torn `String` key, which is then compared.
-
-The fix is to look the hint up only on the owner thread. This puts a thread check on the hottest operation, so it needs a benchmark run and the device suite before it lands. Tracked as issue #15.
+The slots are plain fields with no synchronisation. An off-thread `hint` would race the owner thread's `remember`: the Cangjie spec makes that undefined behaviour, and in practice a slot's `String` key could be read half-written and then compared past the end of its buffer (issue #15). Off-thread reads lose nothing by skipping the cache, since the op never used the hint there. The extra thread check is one more native call per member read: about 12 ns, or 2.6% on `property.readNumber` and 2.8 to 3.7% on `property.readChain` (paired runs on a phone).
 
 ## Consequences
 
 - Repeated reads of an unchanged object graph create no references.
 - The table holds at most 256 extra pins alive.
+- Off-thread member reads never reuse a pin.
