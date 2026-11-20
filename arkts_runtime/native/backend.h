@@ -159,8 +159,9 @@ int32_t ats_rt_ext_set_named(void *state, void *target, const uint8_t *key, size
 
 /**
  * `target[index]` for a pin the caller knows is an array (the type does not change). Returns
- * ATS_RT_EXT_INDEX_OUT_OF_RANGE (-1), having run nothing, when index is not an element.
+ * ATS_RT_EXT_INDEX_OUT_OF_RANGE, having run nothing, when index is not an element.
  */
+#define ATS_RT_EXT_INDEX_OUT_OF_RANGE (-1)
 int32_t ats_rt_ext_element_get(void *state, void *target, int64_t index, ats_rt_ext_op_result *out);
 
 /** `target[index] = value` for a pin the caller knows is an array, index < UINT32_MAX. */

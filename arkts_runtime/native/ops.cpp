@@ -252,7 +252,7 @@ extern "C" int32_t ats_rt_ext_element_get(void *raw, void *targetPin, int64_t in
     uint32_t length = 0;
     status = napi_get_array_length(s->env, array, &length);
     if (status != napi_ok) return status;
-    if (index < 0 || static_cast<uint64_t>(index) >= length) return -1;
+    if (index < 0 || static_cast<uint64_t>(index) >= length) return ATS_RT_EXT_INDEX_OUT_OF_RANGE;
     ++s->opDepth;
     status = napi_get_element(s->env, array, static_cast<uint32_t>(index), &result);
     --s->opDepth;
