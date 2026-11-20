@@ -341,10 +341,15 @@ class Pinned {
         nativeCheck(session, unsafe { ats_rt_ext_pin(session.state, value.raw, inout result) })
         cell = result
     }
-    init(session: NativeSession, cell: CPointer<Unit>, kind: Int32) {
+    private init(session: NativeSession, cell: CPointer<Unit>, kind: Int32) {
         this.session = session
         this.cell = cell
         this.kind = kind
+    }
+
+    /** Takes ownership of a pin cell an op already created; the new owner releases it. */
+    static func adopt(session: NativeSession, cell: CPointer<Unit>, kind: Int32): Pinned {
+        Pinned(session, cell, kind)
     }
     ~init() { unsafe { ats_rt_ext_unpin(cell) } }
 
@@ -356,17 +361,17 @@ class Pinned {
     func elementRead(index: Int64): NativeJSValue {
         var length: UInt32 = 0
         var result = NapiValue()
-        var info = NativeValueInfo(0.0, 0, 0)
+        var info = NativeValueInfo(0.0, JSType.UNDEFINED, 0)
         let status = unsafe { ats_rt_ext_element_read(session.env, toJSValue().raw, index, inout length, inout result, inout info) }
         if (status == AR_INDEX_OUT_OF_RANGE) {
             throw ArkTSNativeException(34300001, "The accessing index is out of range, allowed: [0, ${length}), given: ${index}")
         }
         nativeCheck(session, status)
-        NativeJSValue(session, result, info.kind, number: info.scalar, boolean: info.kind == 2 && info.scalar != 0.0)
+        NativeJSValue(session, result, info.kind, number: info.scalar, boolean: info.kind == JSType.BOOLEAN && info.scalar != 0.0)
     }
 
     func elementWrite(index: UInt32, value: NativeJSValue): Unit {
-        let status = if (value.kind == 3) {
+        let status = if (value.kind == JSType.NUMBER) {
             unsafe { ats_rt_ext_element_write_f64(session.env, toJSValue().raw, index, value.number) }
         } else {
             unsafe { ats_rt_ext_element_write(session.env, toJSValue().raw, index, value.raw) }

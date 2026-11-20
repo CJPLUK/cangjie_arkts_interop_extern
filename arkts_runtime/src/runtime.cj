@@ -801,7 +801,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (out.kind <= JSType.NUMBER) {
             return Imm(NativeJSValue(session, NapiValue(), out.kind, number: out.scalar, boolean: out.kind == JSType.BOOLEAN && out.scalar != 0.0))
         }
-        let pinned = Pinned(session, out.pin, out.kind)
+        let pinned = Pinned.adopt(session, out.pin, out.kind)
         match {
             case out.kind == JSType.FUNCTION => match (receiver) {
                 case Some(r) => Method(pinned, r)
