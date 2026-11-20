@@ -1,9 +1,5 @@
 package ohos_app_cangjie_entry.diff_interop
 
-// Differential programs, variant B: DiffPrograms.ts written with ohos.ark_interop, as an
-// ark_interop user would. Where the Extern contract decides an outcome (conversion and access
-// errors, extracted methods keeping `this`), the program checks for it by hand.
-
 import std.collection.ArrayList
 import std.runtime.gc
 import ohos.ark_interop.*
@@ -69,7 +65,6 @@ class Cell {
     var value = 0.0
 }
 
-/** Runs program `name` on `world`; any escaping exception ends the transcript. */
 public func runProgram(context: JSContext, name: String, world: JSValue): String {
     let log = Transcript()
     let js = Js(context)

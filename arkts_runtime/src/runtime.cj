@@ -13,12 +13,11 @@ const TYPE_MISMATCH_CODE: Int32 = 34300005
 /** What an `Extern<ArkTSRuntime>` made by the runtime holds as its payload. */
 private enum ArkTSHandle {
     | Imm(NativeJSValue)      // undefined / null / boolean / number
-    | Text(String)            // a well-formed string, copied (longer or ill-formed strings are Refs)
+    | Text(String)
     | Ref(Pinned) // string / bigint / symbol / object (arrays too) / function / external
     | Method(Pinned, ArkTSHandle) // a function read as a member or element, with its receiver
 }
 
-/** How a fused op receives a Cangjie value; `Generic` values take the generic conversion path. */
 private enum OpArg {
     | Scalar(Int32, Float64)
     | Pin(Pinned)
@@ -102,8 +101,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      * or rethrows its exception or error on the calling thread. Blocks callers on other threads
      * until the JS thread has run it, so the JS thread must never wait for a thread that is
      * inside `run`. Public entry points call it exactly once; internal recursion never does.
-     * A JS throw arrives as a `ForeignRuntimeException` whose message holds the JS message and
-     * stack, with the JS exception already cleared.
      */
     static func run<R>(operation: () -> R): R {
         if (context.session.isInBindThread()) {
@@ -282,7 +279,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         indexedUpdateSlow(e, field, value)
     }
 
-    /** The fused write for an element position below UInt32.Max or a string key; AR_GENERIC otherwise. */
     private static func indexedUpdateFused(target: Pinned, field: Any, arg: OpArg): Int32 {
         let state = context.session.state
         match (field) {
@@ -349,10 +345,8 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         functionCallSlow(e, args)
     }
 
-    /** The held texts of a call without text arguments: never added to. */
     private static let noTexts = ArrayList<CPointerHandle<UInt8>>()
 
-    /** The fused call of `e(args)`; `None` when an argument needs the generic path. Text is held for the call. */
     private static func callFused(function: Pinned, receiverArg: NativeArg, e: Extern<ArkTSRuntime>,
         args: Array<Any>): ?Extern<ArkTSRuntime> {
         let natives = Array<NativeArg>(args.size, repeat: NativeArg())
@@ -388,7 +382,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** A call argument as a `NativeArg`; text gets its pointer once held. `None`: generic path. */
     private static func callArgOf(value: Any): ?NativeArg {
         if (let Some((kind, x)) <- immediateOfAny(value)) { return scalarArg(kind, x) }
         match (value) {
@@ -403,7 +396,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** The text of a call argument that `callArgOf` classified as text. */
     private static func textOfArg(value: Any): String {
         match (value) {
             case text: String => text
@@ -416,7 +408,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** A non-text handle as a `NativeArg`. Member access rejects string receivers, so a method's `this` is never text. */
     private static func receiverArgOf(handle: ArkTSHandle): ?NativeArg {
         match (handle) {
             case Imm(v) => scalarArg(v.kind, if (v.kind == JSType.BOOLEAN) { if (v.boolean) { 1.0 } else { 0.0 } } else { v.number })
@@ -426,7 +417,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** A handle as a member or index write's value. */
     private static func argOfHandle(handle: ArkTSHandle): OpArg {
         match (handle) {
             case Imm(v) => Scalar(v.kind, if (v.kind == JSType.BOOLEAN) { if (v.boolean) { 1.0 } else { 0.0 } } else { v.number })
@@ -561,7 +551,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             case external: Extern<ArkTSRuntime> => return external
             case _ => ()
         }
-        // Immediates need no engine value; the liveness check is the one the engine path makes.
         if (let Some((kind, x)) <- immediateOfAny(boxed)) {
             context.session.checkAlive()
             return Extern<ArkTSRuntime>(Imm(NativeJSValue(context.session, NapiValue(), kind, number: x,
@@ -709,7 +698,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** The pin of an object or function handle: a fused op's target. Anything else takes the generic path. */
     private static func objectPinOf(handle: ArkTSHandle): ?Pinned {
         let pin = match (handle) {
             case Ref(p) => p
@@ -719,8 +707,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (pin.kind == JSType.OBJECT || pin.kind == JSType.FUNCTION) { pin } else { None }
     }
 
-    /** `value` as a fused op argument, for the kinds `toJSValue` converts without the engine. */
-    /** A Cangjie value that is a JS immediate (a scalar, or an Option of one): its kind and payload. */
     private static func immediateOfAny(value: Any): ?(Int32, Float64) {
         match (value) {
             case number: Float64 => (JSType.NUMBER, number)
@@ -758,7 +744,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** A scalar or pin argument as a `NativeArg`. */
     private static func plainArg(arg: OpArg): NativeArg {
         match (arg) {
             case Scalar(kind, x) => scalarArg(kind, x)
@@ -767,7 +752,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** UTF-8 text held by the caller for the duration of the op. */
     private static func textArg(bytes: CPointer<UInt8>, count: Int64): NativeArg {
         var native = NativeArg()
         native.tag = AR_ARG_UTF8
@@ -776,7 +760,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         native
     }
 
-    /** Test hook: the native counters. */
     static func nativeStats(): NativeStats {
         var out = NativeStats()
         unsafe { ats_rt_ext_stats(context.session.state, inout out) }
@@ -790,7 +773,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** `handleOfResult` for a member read: a hit reuses `hint`, a new heap result is remembered. */
     private static func handleOfRead(session: NativeSession, out: NativeOpResult, receiver: ArkTSHandle, target: Pinned,
         field: String, hint: ?Pinned): ArkTSHandle {
         if (out.kind > JSType.NUMBER && (out.flags & AR_RESULT_HIT) != 0) {
@@ -807,7 +789,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         handle
     }
 
-    /** The handle of a fused op's result; a function keeps `receiver` as its `this`, as `retain` does. */
     private static func handleOfResult(session: NativeSession, out: NativeOpResult, receiver: ?ArkTSHandle): ArkTSHandle {
         if ((out.flags & AR_RESULT_TEXT) != 0) {
             let bytes = Array<UInt8>(Int64(out.textLength), repeat: 0)
@@ -831,7 +812,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** Throws what a fused op's failure status means: a destroyed environment, or the engine's exception. */
     private static func opFailed(session: NativeSession, status: Int32): Nothing {
         if (status == AR_DEAD) { session.checkAlive() }
         session.newScope { nativeCheck(session, status, checkPending: true) }
@@ -866,7 +846,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** Test hook: "Imm", "Text", "Ref" or "Method" for a payload made by the runtime, otherwise "foreign payload". */
     static func handleKind(value: Extern<ArkTSRuntime>): String {
         match (Extern<ArkTSRuntime>.getPayload(value) as ArkTSHandle) {
             case Some(Imm(_)) => "Imm"

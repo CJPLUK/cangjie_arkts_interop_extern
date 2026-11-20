@@ -2,16 +2,6 @@ package arkts_runtime
 
 import std.math.numeric.BigInt
 
-/*
- * Generic readers find R by probing: `match (probe) { case _: R }` holds when the probe's type is R or
- * one of R's supertypes, and checks against the type info the generic function already receives.
- * `match (None<R>) { case _: Option<T> }`, `x as R` and `TypeTag<R>()` build type info at run time
- * instead, 150-350 ns each on device. A hit is exact unless R is an interface: if the type's rival
- * scalar also matches, R is one they share (Any, ToString, Hashable); if its ProbeComparable does, R
- * is Equatable<T> or Comparable<T>. Both keep the slow path, which rejects interfaces. An interface
- * the user attached to the type alone (`extend Float64 <: Shape`) receives the value as that type.
- */
-
 let probeFloat64: Any = 0.0
 let probeBool: Any = false
 let probeString: Any = ""
@@ -52,7 +42,6 @@ let probeComparableUnit: Any = ProbeComparable<Unit>()
 class ProbeSentinel {}
 let probeSentinel: Any = ProbeSentinel()
 
-/** Matches R = Equatable<T> or Comparable<T>; never compared. */
 class ProbeComparable<T> <: Comparable<T> {
     public func compare(_: T): Ordering { Ordering.EQ }
     public operator func ==(_: T): Bool { false }
@@ -65,7 +54,6 @@ class ProbeComparable<T> <: Comparable<T> {
 
 enum Probe { | Miss | Hit | Shared }
 
-/** Whether `probe` is an R, and if so whether `rival` or `sentinel` is one too. */
 func probeOf<R>(probe: Any, rival: Any, sentinel: Any): Probe {
     match (probe) {
         case _: R => ()
@@ -81,7 +69,6 @@ func probeOf<R>(probe: Any, rival: Any, sentinel: Any): Probe {
     }
 }
 
-/** `value` as R, after a hit on its type. */
 func asR<R>(value: Any): R {
     match (value) {
         case r: R => r
@@ -89,7 +76,6 @@ func asR<R>(value: Any): R {
     }
 }
 
-/** `fromJSValue<R>`: the scalars and `Option<Float64 | String | Bool>` by probe, anything else by the slow path. */
 func probedFromJSValue<R>(value: NativeJSValue): R {
     match (probeOf<R>(probeFloat64, probeComparableFloat64, probeFloat32)) {
         case Hit => return asR<R>(Float64.fromJS(value))

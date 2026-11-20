@@ -1,7 +1,3 @@
-// Fused ops: one ordinary FFI call per compiler-generated operation. Each op checks the owner,
-// drains finalized pins when nothing is in flight, places its locals (leak into the caller's
-// scope, or its own scope once the budget is full), runs the engine call, and returns the result
-// as a scalar or a new pin. No napi_value outlives the op.
 #include "state.h"
 #include <cstring>
 #include <string>
@@ -9,14 +5,12 @@
 
 namespace {
 
-/** Leaked locals, at most: receiver read (Fetch mode), key, result, and the result's weight. */
 constexpr uint32_t kWorstGetNamed = 3 + ats_rt_ext::kUnitFreshHeap;
 
 uint32_t worstArg(const ats_rt_ext_arg &arg) {
     return arg.tag == ATS_RT_EXT_ARG_UTF8 ? ats_rt_ext::unitsForCreatedText(arg.length) : ats_rt_ext::kUnitLocal;
 }
 
-/** The op's locals: leaked and charged on exit, or confined to a scope it closes on exit. */
 struct OpPlacement {
     State *s;
     ats_rt_ext::Placement placement;
@@ -41,7 +35,6 @@ struct OpPlacement {
     OpPlacement &operator=(const OpPlacement &) = delete;
 };
 
-/** Owner thread and live, then drain if nothing is in flight; `keep` are the op's own pins. */
 int32_t opEnter(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
     if (!s->alive.load(std::memory_order_relaxed)) return ATS_RT_EXT_DEAD;
     if (!stateIsOwner(s)) return ATS_RT_EXT_NOT_OWNER;
@@ -54,7 +47,6 @@ const AtsRtExtPin *pinOf(const ats_rt_ext_arg &arg) {
     return arg.tag == ATS_RT_EXT_ARG_PIN ? static_cast<const AtsRtExtPin *>(arg.ptr) : nullptr;
 }
 
-/** The napi_value of an argument, created in the op's placement. */
 napi_status argValue(State *s, const ats_rt_ext_arg &arg, napi_value *result, uint32_t *units) {
     switch (arg.tag) {
         case ATS_RT_EXT_ARG_PIN:
@@ -81,13 +73,8 @@ int32_t pendingOr(napi_env env, napi_status status) {
     return pending ? napi_pending_exception : status;
 }
 
-/**
- * Strings up to kTextCopyMax UTF-16 units are copied, in one read. Longer ones stay pinned: copying
- * them on every read cost 4x ark_interop on a 10K-unit string, where a pin is reused (intern hit).
- */
 constexpr size_t kTextCopyMax = 255;
 
-/** UTF-16 to UTF-8 into `out`; false on a lone surrogate (such strings stay pinned, losslessly). */
 bool utf8Of(const char16_t *units, size_t count, std::vector<uint8_t> &out) {
     out.resize(count * 3);
     uint8_t *p = out.data();
@@ -115,7 +102,6 @@ bool utf8Of(const char16_t *units, size_t count, std::vector<uint8_t> &out) {
     return true;
 }
 
-/** A well-formed string of at most kTextCopyMax units, into s->text as UTF-8. */
 bool copyText(State *s, napi_value value, size_t *bytes) try {
     auto &units = s->text16;
     if (units.size() < kTextCopyMax + 2) units.resize(kTextCopyMax + 2);
@@ -127,13 +113,9 @@ bool copyText(State *s, napi_value value, size_t *bytes) try {
     return true;
 } catch (...) { return false; }
 
-/**
- * Scalars are copied. Anything else is `hint` when strictly equal to it (ATS_RT_EXT_RESULT_HIT, no new
- * pin), else a new pin, weighing kUnitFreshHeap.
- */
 int32_t decodeResult(State *s, napi_value local, ats_rt_ext_op_result *out, uint32_t *units, const AtsRtExtPin *hint = nullptr) {
     out->pin = nullptr;
-    if (napi_get_value_double(s->env, local, &out->scalar) == napi_ok) {  // numbers, the common case, in one call
+    if (napi_get_value_double(s->env, local, &out->scalar) == napi_ok) {
         out->kind = napi_number;
         return napi_ok;
     }
@@ -203,7 +185,7 @@ napi_status byKey(napi_env env, const uint8_t *bytes, size_t length, Named named
     return named(key.c_str());
 } catch (...) { return napi_generic_failure; }
 
-}  // namespace
+}
 
 extern "C" int32_t ats_rt_ext_get_named(void *raw, void *targetPin, const uint8_t *key, size_t keyLength, void *hintPin,
                                  ats_rt_ext_op_result *out) {
@@ -223,7 +205,7 @@ extern "C" int32_t ats_rt_ext_get_named(void *raw, void *targetPin, const uint8_
         [&](const char *name) { return napi_get_named_property(env, receiver, name, &result); },
         [&](napi_value k) { return napi_get_property(env, receiver, k, &result); });
     --s->opDepth;
-    place.units += 2 * ats_rt_ext::kUnitLocal;  // key and result, charged even when the get threw
+    place.units += 2 * ats_rt_ext::kUnitLocal;
     if (auto thrown = pendingOr(s->env, status)) return thrown;
     return decodeResult(s, result, out, &place.units, hint);
 }
@@ -246,18 +228,17 @@ extern "C" int32_t ats_rt_ext_set_named(void *raw, void *targetPin, const uint8_
         [&](const char *name) { return napi_set_named_property(env, receiver, name, element); },
         [&](napi_value k) { return napi_set_property(env, receiver, k, element); });
     --s->opDepth;
-    place.units += ats_rt_ext::kUnitLocal;  // key
+    place.units += ats_rt_ext::kUnitLocal;
     return pendingOr(env, status);
 }
 
 namespace {
-/** The target pin's value, which the caller knows is an array; its read is charged to `units`. */
 napi_status arrayValue(State *s, const AtsRtExtPin *pin, napi_value *array, uint32_t *units) {
     auto status = s->pins.value(s, pin, array);
     if (status == napi_ok && s->pins.read == PinRead::Fetch) *units += ats_rt_ext::kUnitLocal;
     return status;
 }
-}  // namespace
+}
 
 extern "C" int32_t ats_rt_ext_element_get(void *raw, void *targetPin, int64_t index, ats_rt_ext_op_result *out) {
     auto *s = static_cast<State *>(raw);

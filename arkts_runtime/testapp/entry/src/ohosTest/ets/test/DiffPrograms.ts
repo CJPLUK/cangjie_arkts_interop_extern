@@ -1,9 +1,3 @@
-// Differential programs, variant A: each program written in plain ArkTS, the reference that the
-// Cangjie variants (interop.cj with ark_interop, extern.cj with Extern<ArkTSRuntime>) must match
-// line for line. Where the Extern contract differs from plain JS (extracted methods keep `this`,
-// Int64 is a bigint, Option, String conversion), the program spells out the contract.
-//
-// Every program gets a fresh world from `world()`; transcripts use the formatting of difflog.cj.
 
 export class Log {
   lines: string[] = [];
@@ -50,10 +44,6 @@ function errorText(e: any): string {
   return e instanceof Error ? e.name + '\n' + e.message : String(e);
 }
 
-/**
- * Runs `body`; logs `ok`, `js:<whether the JS error text contains fragment>` for a JS throw,
- * or `contract` (member, function, conversion, index) for an error the Extern contract raises.
- */
 function attempt(log: Log, label: string, fragment: string, contract: string | undefined, body: () => any): void {
   try {
     body();
@@ -84,9 +74,7 @@ class Counter {
 
 export interface Program {
   name: string;
-  /** Too many operations to also run from a spawned thread. */
   heavy?: boolean;
-  /** How many times the off-thread run repeats (default 1): more for programs racing threads there. */
   offThreadRuns?: number;
   world: () => any;
   arkts?: (w: any, log: Log) => void;
@@ -572,9 +560,6 @@ export const PROGRAMS: Program[] = [
     }
   },
   {
-    // Off the JS thread, the Extern variant runs the 8 thread bodies at once, with a GC thread;
-    // each body touches only its own slot and the read-only shared object, so the transcript
-    // does not depend on the interleaving. Everywhere else the bodies run one after another.
     name: 'manyThreads',
     offThreadRuns: 5,
     world: () => {
@@ -658,7 +643,6 @@ export function programHeavy(name: string): boolean { return program(name).heavy
 
 export function programOffThreadRuns(name: string): number { return program(name).offThreadRuns ?? 1; }
 
-/** Variant A's transcript; an escaping exception ends it, as in the Cangjie variants. */
 export function programReference(name: string): string {
   const p = program(name);
   const log = new Log();

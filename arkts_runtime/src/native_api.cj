@@ -11,7 +11,6 @@ const AR_SCOPE_DRAIN_CHECK: Int32 = 1
 const AR_SCOPE_IN_FLIGHT: Int32 = 2
 const AR_NOT_OWNER: Int32 = -4
 const AR_DEAD: Int32 = -5
-/** Not a native status: the fused path does not apply, take the generic one. */
 const AR_GENERIC: Int32 = -100
 const NAPI_INVALID_ARG: Int32 = 1
 
@@ -130,7 +129,6 @@ struct NativeValueInfo {
         this.scalar = scalar; this.kind = kind; this.status = status
     }
 }
-/** A fused op's result: a copied scalar (kind 0..3) or a new pin the caller owns. */
 @C
 struct NativeOpResult {
     var scalar: Float64 = 0.0
@@ -142,7 +140,6 @@ struct NativeOpResult {
 const AR_RESULT_TEXT: Int32 = 2
 @FastNative
 foreign func ats_rt_ext_text_take(state: CPointer<Unit>, dst: CPointer<UInt8>, length: UIntNative): Unit
-/** A value a fused op materializes itself: tag 0 scalar (kind 0..3), 1 pin, 2 UTF-8 text. */
 @C
 struct NativeArg {
     var scalar: Float64 = 0.0
@@ -163,7 +160,6 @@ struct NativeStats {
     var pinsPending: UInt32 = 0
 }
 foreign func ats_rt_ext_stats(state: CPointer<Unit>, out: CPointer<NativeStats>): Unit
-// Fused ops: ordinary FFI, they run JS.
 foreign func ats_rt_ext_element_get(state: CPointer<Unit>, target: CPointer<Unit>, index: Int64, out: CPointer<NativeOpResult>): Int32
 foreign func ats_rt_ext_element_set(state: CPointer<Unit>, target: CPointer<Unit>, index: UInt32, value: CPointer<NativeArg>): Int32
 foreign func ats_rt_ext_call(state: CPointer<Unit>, function: CPointer<Unit>, thisArg: CPointer<NativeArg>, args: CPointer<NativeArg>,

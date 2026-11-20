@@ -301,12 +301,6 @@ struct NativeJSValue <: ToString {
     }
 }
 
-/**
- * The last heap result of each (receiver pin, key) read, so a repeated read of the same object
- * reuses its Pinned instead of creating a reference. Only a hint: the fused op returns it only
- * when strictly equal to the value read. Written on the owner thread after a successful op;
- * read before the op, possibly off-thread, where the op then ignores it (AR_NOT_OWNER).
- */
 class InternTable {
     private static let SLOTS = 256
     private let receivers = Array<UIntNative>(SLOTS, repeat: 0)
@@ -332,10 +326,6 @@ class InternTable {
     }
 }
 
-/**
- * One strong engine reference, owned by exactly one Pinned. Dropping the Pinned queues the
- * reference for deletion on the JS thread (ats_rt_ext_unpin), so the finalizer runs on any thread.
- */
 class Pinned {
     let session: NativeSession
     let cell: CPointer<Unit>
@@ -347,7 +337,6 @@ class Pinned {
         nativeCheck(session, unsafe { ats_rt_ext_pin(session.state, value.raw, inout result) })
         cell = result
     }
-    /** Adopts a pin a fused op created. */
     init(session: NativeSession, cell: CPointer<Unit>, kind: Int32) {
         this.session = session
         this.cell = cell
@@ -356,7 +345,6 @@ class Pinned {
     ~init() { unsafe { ats_rt_ext_unpin(cell) } }
     private var arrayState: Int8 = 0
 
-    /** Whether this is an array, when known or computable here (the bind thread); else false. */
     func isArrayHere(): Bool {
         arrayState == 1 || (arrayState == 0 && session.isInBindThread() && isArray())
     }
@@ -389,7 +377,6 @@ class Pinned {
         nativeCheck(session, status)
     }
 
-    /** The pinned value for the current scope (in alias mode the reference's own slot). */
     func toJSValue(): NativeJSValue {
         var result = NapiValue()
         nativeCheck(session, unsafe { ats_rt_ext_pin_value(session.state, cell, inout result) })

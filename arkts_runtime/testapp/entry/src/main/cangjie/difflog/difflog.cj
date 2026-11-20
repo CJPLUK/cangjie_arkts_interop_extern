@@ -4,7 +4,6 @@ import std.collection.ArrayList
 import std.convert.Formattable
 import std.math.{abs, trunc}
 
-/** A differential program's output: one `label=value` line per observation, formatted like DiffPrograms.ts. */
 public class Transcript {
     private let lines = ArrayList<String>()
 

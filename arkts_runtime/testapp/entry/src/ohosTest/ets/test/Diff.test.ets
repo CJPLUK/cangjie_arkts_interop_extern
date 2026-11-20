@@ -2,10 +2,6 @@ import { describe, it, expect } from '@ohos/hypium';
 import { runDiffProgram, runDiffProgramOffThread } from 'libohos_app_cangjie_entry.so';
 import { programHeavy, programNames, programOffThreadRuns, programReference, programWorld } from './DiffPrograms';
 
-// Differential programs (DiffPrograms.ts): each program's transcript from ArkTS (the reference),
-// ark_interop, and Extern<ArkTSRuntime> on and off the JS thread must be identical. Extern-only
-// programs use the Extern transcript from the JS thread as the reference.
-
 function firstDifference(variant: string, expected: string, actual: string): string {
   if (expected === actual) {
     return '';

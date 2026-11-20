@@ -1,7 +1,5 @@
 package ohos_app_cangjie_entry.diff_extern
 
-// Differential programs, variant C: DiffPrograms.ts written with Extern<ArkTSRuntime>.
-
 import std.collection.ArrayList
 import std.runtime.gc
 import std.sync.{AtomicBool, AtomicInt64, Barrier}
@@ -42,10 +40,6 @@ func attempt(log: Transcript, label: String, fragment: String, body: () -> Any):
     log.text(label, outcome)
 }
 
-/**
- * Runs program `name` on the world in `globalThis.__diffWorld`; any escaping exception ends the
- * transcript. `offThread`: the caller is not the JS thread, so programs may run threads at once.
- */
 public func runProgram(name: String, offThread: Bool): String {
     let log = Transcript()
     try {
@@ -470,11 +464,6 @@ func options(w: E, log: Transcript): Unit {
 let THREADS = 8
 let THREAD_ITERATIONS = 200
 
-/**
- * The bodies of DiffPrograms.ts's threadBody. Off the JS thread they start together on a barrier
- * while another thread runs the Cangjie GC; on it they run one after another (a spawned thread's
- * operations would wait for the JS thread, which would be waiting for them).
- */
 func manyThreads(w: E, log: Transcript, offThread: Bool): Unit {
     let logs = Array<Transcript>(THREADS) { _ => Transcript() }
     let progress = AtomicInt64(0)
@@ -505,7 +494,6 @@ func manyThreads(w: E, log: Transcript, offThread: Bool): Unit {
     log.num("bumps", num(w.shared.bumps))
 }
 
-/** `interleaved` is set when other bodies advanced `progress` between this body's first and last iteration. */
 func threadBody(w: E, t: Int64, log: Transcript, progress: AtomicInt64, interleaved: AtomicBool): Unit {
     try {
         var first = 0

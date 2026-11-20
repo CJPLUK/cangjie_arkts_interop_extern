@@ -2,7 +2,6 @@ import { describe, it, expect } from '@ohos/hypium';
 import { runArkTSTest } from 'libohos_app_cangjie_entry.so';
 import { Target } from './fixtures';
 
-// Handle lifetime and host budget scenarios (arkts_runtime/src/tests/step13_lifetime.cj).
 export default function lifetimeTest() {
   describe('Lifetime', () => {
     it('pinReadAlias', 0, () => {

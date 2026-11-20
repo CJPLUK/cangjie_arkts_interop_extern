@@ -9,7 +9,6 @@ func registerDiffExports(context: JSContext, exports: JSObject): Unit {
     exports["runDiffProgramOffThread"] = context.function(runDiffProgramOffThread).toJSValue()
 }
 
-/** `runDiffProgram(variant: 'interop' | 'extern', name: string, world: Object): string`, the transcript. */
 func runDiffProgram(context: JSContext, info: JSCallInfo): JSValue {
     let variant = info[0].toString()
     let name = info[1].toString()
@@ -25,7 +24,6 @@ func runDiffProgram(context: JSContext, info: JSCallInfo): JSValue {
     context.string(transcript).toJSValue()
 }
 
-/** `runDiffProgramOffThread(name: string, world: Object): Promise<string>`, the Extern transcript, run on a spawned thread. */
 func runDiffProgramOffThread(context: JSContext, info: JSCallInfo): JSValue {
     let name = info[0].toString()
     context.global["__diffWorld"] = info[1]

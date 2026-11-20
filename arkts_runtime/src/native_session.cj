@@ -20,7 +20,6 @@ foreign func ats_rt_ext_post(state: CPointer<Unit>, id: Int64): Int32
 foreign func ats_rt_ext_open_scope(state: CPointer<Unit>, scope: CPointer<CPointer<Unit>>, flags: Int32): Int32
 @FastNative
 foreign func ats_rt_ext_close_scope(state: CPointer<Unit>, scope: CPointer<Unit>): Int32
-// Deleting references stays on an ordinary FFI transition: unbounded work.
 foreign func ats_rt_ext_drain(state: CPointer<Unit>): Unit
 @FastNative
 foreign func ats_rt_ext_pin(state: CPointer<Unit>, value: NapiValue, pin: CPointer<CPointer<Unit>>): Int32
@@ -79,10 +78,8 @@ class NativeSession {
         if (unsafe { ats_rt_ext_alive(state) == 0 }) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
     }
 
-    /** A generic bracket: holds napi_values, so pins are not deleted until it closes. */
     func scopeOpen(): CPointer<Unit> { bracketOpen(AR_SCOPE_IN_FLIGHT) }
 
-    /** `ArkTSRuntime.newScope`'s bracket: holds no napi_value, pins may drain inside it. */
     func userScopeOpen(): CPointer<Unit> { bracketOpen(0) }
 
     private func bracketOpen(flags: Int32): CPointer<Unit> {

@@ -211,8 +211,7 @@ int32_t ats_rt_ext_get_named(void *state, void *target, const uint8_t *key, size
 
 /**
  * Open a scope on the live owner thread: a known frame, whose close restores the host budget.
- * With ATS_RT_EXT_SCOPE_IN_FLIGHT it also counts as in flight (opDepth), so no pin is deleted until it
- * closes: generic brackets, which hold napi_values. ArkTSRuntime.newScope holds none and does not.
+ * With ATS_RT_EXT_SCOPE_IN_FLIGHT it also counts as in flight, so no pin is deleted until it closes.
  * With ATS_RT_EXT_SCOPE_DRAIN_CHECK, returns ATS_RT_EXT_DRAIN_FIRST, having opened nothing, when nothing is in
  * flight and finalized pins are waiting; the open after that drain omits it, as finalizers may
  * keep queueing pins meanwhile.

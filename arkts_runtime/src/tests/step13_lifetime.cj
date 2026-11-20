@@ -2,8 +2,6 @@ package arkts_runtime.tests
 
 import arkts_runtime.*
 
-// Fused ops, the host budget, pins. Run by testapp's Lifetime.test.ets; kept out of
-// scenarioNames, which the ArkTSRuntime suite pins exactly.
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func lifetimeScenarios(): Array<(String, Scenario)> {
     [
@@ -19,17 +17,14 @@ func lifetimeScenarios(): Array<(String, Scenario)> {
     ]
 }
 
-/** HostBudget's capacity plus the largest single op's worst case. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 let BUDGET_BOUND: UInt32 = (1 << 19) + 128
 
-/** On the test device, pins are read by alias. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func pinReadAlias(): String {
     expectEqual("pin read mode", ArkTSRuntime.nativeStats().pinReadAlias, 1)
 }
 
-/** fixtures: Target. Fused reads and writes leak into the caller's (the export's) scope. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func fusedOpsLeak(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
@@ -48,7 +43,6 @@ func fusedOpsLeak(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: Target. 10K calls with fresh heap results in one turn: the budget fills, later calls run scoped. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func budgetFillsThenScoped(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
@@ -69,13 +63,11 @@ func budgetFillsThenScoped(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** Called in a later turn: the turn marker reset the budget. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func budgetIsEmpty(): String {
     expectEqual("budget units", ArkTSRuntime.nativeStats().budgetUnits, 0)
 }
 
-/** fixtures: Target. newScope is a known frame: its exit restores the budget, even on a throw. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func newScopeRestoresBudget(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
@@ -106,7 +98,6 @@ func newScopeRestoresBudget(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: Target. A repeated read of the same object makes no new pin; a changed one does. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func repeatedReadReusesPin(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
@@ -128,7 +119,6 @@ func repeatedReadReusesPin(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: Target. Well-formed strings are copied as text; a lone surrogate stays pinned and exact. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func textCopies(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
@@ -153,7 +143,6 @@ interface UserShape { func area(): Float64 }
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 extend Float64 <: UserShape { public func area(): Float64 { this * this } }
 
-/** fixtures: Target. A user interface attached to Float64 reads a number as that interface. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func userInterfaceOnScalar(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
@@ -161,7 +150,6 @@ func userInterfaceOnScalar(fixtures: Array<NativeJSValue>): String {
     expectEqual("area of e.num as UserShape", shape.area(), 1.5 * 1.5)
 }
 
-/** fixtures: Target. Options of immediates reach JS as the value or undefined. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func optionImmediates(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)

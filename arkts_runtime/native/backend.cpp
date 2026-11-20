@@ -46,7 +46,7 @@ void cleanup(void *data) {
     s->pins.cleanup(s);
     napi_release_threadsafe_function(s->dispatcher, napi_tsfn_abort);
 }
-}  // namespace
+}
 
 AtsRtExtPin *PinTable::create(State *s, napi_value value, napi_status *status) {
     auto *pin = new (std::nothrow) AtsRtExtPin{s, nullptr, nullptr, nullptr};
@@ -69,7 +69,6 @@ napi_status PinTable::value(State *s, const AtsRtExtPin *pin, napi_value *result
 }
 
 bool PinTable::push(AtsRtExtPin *pin) {
-    // Counted before it is published, so a drain that takes it never sees `pending` below zero.
     pending.fetch_add(1, std::memory_order_relaxed);
     AtsRtExtPin *head = deaths.load(std::memory_order_acquire);
     do {
@@ -177,7 +176,6 @@ extern "C" int32_t ats_rt_ext_open_scope(void *raw, void **scope, int32_t flags)
     if (ats_rt_ext_access_status(raw) != 0) return napi_generic_failure;
     bool inFlight = flags & ATS_RT_EXT_SCOPE_IN_FLIGHT;
     if ((flags & ATS_RT_EXT_SCOPE_DRAIN_CHECK) && s->opDepth == 0 && s->pins.hasDeaths()) return ATS_RT_EXT_DRAIN_FIRST;
-    // Grown before the scope opens, so the push below cannot fail with the scope open.
     if (s->brackets.size() == s->brackets.capacity()) s->brackets.reserve(2 * s->brackets.size() + 8);
     auto status = napi_open_handle_scope(s->env, reinterpret_cast<napi_handle_scope *>(scope));
     if (status == napi_ok) {
@@ -186,7 +184,6 @@ extern "C" int32_t ats_rt_ext_open_scope(void *raw, void **scope, int32_t flags)
     }
     return status;
 } catch (...) { return napi_generic_failure; }
-// Ordinary FFI: deletes any number of references.
 extern "C" void ats_rt_ext_drain(void *raw) {
     auto *s = static_cast<State *>(raw);
     if (ats_rt_ext_access_status(raw) == 0 && s->opDepth == 0) s->pins.drain(s);

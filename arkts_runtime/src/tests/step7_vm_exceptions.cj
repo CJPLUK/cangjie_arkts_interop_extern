@@ -18,10 +18,6 @@ func step7OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [("step7.jsExceptionFromOtherThread", jsExceptionFromOtherThread)]
 }
 
-/**
- * fixtures: Thrower. Pins what the direct native backend throws for a JS throw, called directly
- * (without `run`): a `ForeignRuntimeException` whose message contains the JS text.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func nativeJSException(fixtures: Array<NativeJSValue>): String {
     let thrower = fixture(fixtures, 0)
