@@ -5,6 +5,7 @@
 **/build
 **/.hvigor
 **/.devicetest
+**/.hostcheck
 .cxx
 /.clangd
 /.clang-format
