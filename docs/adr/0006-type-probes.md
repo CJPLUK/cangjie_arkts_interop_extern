@@ -24,4 +24,4 @@ An interface the user attached to the type alone (`extend Float64 <: Shape`) rec
 ## Consequences
 
 - Scalar and option conversions cost a few type checks against preallocated probes.
-- The rival and sentinel scheme is subtle, and its justification rests on an unrecorded measurement. See `todo/07`: benchmark it against `as R`, and collapse it if the difference is gone.
+- The rival and sentinel scheme is subtle, and its justification rests on an unrecorded measurement. See issue #7: benchmark it against `as R`, and collapse it if the difference is gone.

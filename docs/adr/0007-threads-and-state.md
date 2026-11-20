@@ -37,4 +37,4 @@ After cleanup, posting returns `napi_closing`.
 
 - The fast path (ADR-0001) only compares the current thread with the owner thread.
 - Other threads pay a post and a wait per operation. The differential suite (ADR-0008) runs every program off the owner thread as well, with eight threads at once and a GC thread for the thread program.
-- `State` mixes the two kinds of field, and the runtime's task ids sit in the same `Int64` space as user tasks. See `todo/03`.
+- `State` mixes the two kinds of field, and the runtime's task ids sit in the same `Int64` space as user tasks. See issue #3.

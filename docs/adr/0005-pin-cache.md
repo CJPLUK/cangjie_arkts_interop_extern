@@ -21,7 +21,7 @@ The table is a hint, never a source of truth. A stale or colliding slot costs a 
 
 The off-thread `hint` read is a data race with the owner thread's `remember` on the same slot. The value read is discarded, but the read itself is unsynchronised, and the three slot fields can be seen half-written: in particular a torn `String` key, which is then compared.
 
-The fix is to look the hint up only on the owner thread. This puts a thread check on the hottest operation, so it needs a benchmark run and the device suite before it lands.
+The fix is to look the hint up only on the owner thread. This puts a thread check on the hottest operation, so it needs a benchmark run and the device suite before it lands. Tracked as issue #15.
 
 ## Consequences
 
