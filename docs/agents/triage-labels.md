@@ -13,3 +13,7 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
+
+## Tracking issues
+
+An issue labelled `tracking` groups other issues as its sub-issues, for example #18. It is bookkeeping, not work: triage skips it, it gets no category or state role, and no agent implements it. Close it when all its sub-issues are closed.
