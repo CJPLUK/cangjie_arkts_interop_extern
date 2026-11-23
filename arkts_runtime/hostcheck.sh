@@ -3,8 +3,8 @@
 #
 #   ./hostcheck.sh
 #
-# 1. Type-checks the Cangjie package with the SDK compiler, twice: as shipped, and with the
-#    step tests (they are compiled in only for the test app's bundle, see @When[bundle == ...]).
+# 1. Type-checks the Cangjie package with the SDK compiler, as shipped and for the test app's
+#    bundle (see @When[bundle == ...]), then the step tests' package against the latter.
 # 2. Syntax-checks the native sources against the SDK's N-API headers.
 # 3. Builds and runs native/budget_test.cpp (ADR-0002).
 #
@@ -23,14 +23,19 @@ export CANGJIE_HOME="$CANGJIE_SDK/build-tools"
 mkdir -p "$WORK"
 cd "$ROOT"
 
-for bundle in shipped "$TEST_BUNDLE"; do
-    echo "== cjc (bundle=$bundle)"
-    if ! "$CANGJIE_HOME/bin/cjc" --package src --output-type=staticlib --cfg="bundle=$bundle" \
-            -o "$WORK/libarkts_runtime.a" > "$WORK/cjc.log" 2>&1; then
+# Compiles package directory $1 for bundle $2 into $WORK, importing what is already there.
+cjc_package() {
+    echo "== cjc $1 (bundle=$2)"
+    if ! "$CANGJIE_HOME/bin/cjc" --package "$1" --output-type=staticlib --cfg="bundle=$2" \
+            --import-path "$WORK" --output-dir "$WORK" -o "lib$(basename "$1").a" > "$WORK/cjc.log" 2>&1; then
         cat "$WORK/cjc.log"
         exit 1
     fi
-done
+}
+cjc_package src shipped
+cjc_package src "$TEST_BUNDLE"
+# The step tests are their own package, arkts_runtime.tests, compiled against the one above.
+cjc_package src/tests "$TEST_BUNDLE"
 
 # -idirafter: the host's libc headers win, and only napi/ and info/ come from the device sysroot.
 for source in native/ops.cpp native/backend.cpp; do
