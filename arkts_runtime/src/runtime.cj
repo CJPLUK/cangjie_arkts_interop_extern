@@ -2,7 +2,7 @@ package arkts_runtime
 
 import std.collection.ArrayList
 import std.math.numeric.BigInt
-import std.sync.Mutex
+import std.sync.{AtomicOptionReference, Mutex}
 
 /** `ArkTSNativeException.code` of `ark_interop`'s "The accessing index is out of range". */
 const INDEX_OUT_OF_RANGE_CODE: Int32 = 34300001
@@ -39,8 +39,8 @@ private enum ArkTSIndex {
  * All members are static; the class is never instantiated.
  */
 public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
-    private static let contextMutex = Mutex()
-    private static var context_: ?NativeContext = None
+    private static let bindMutex = Mutex()
+    private static let context_ = AtomicOptionReference<NativeContext>()
 
     /**
      * Associates the runtime with the JS engine instance `env`. Only the first call
@@ -48,23 +48,23 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      * same context.
      */
     public static func bind(env: CPointer<Unit>): Unit {
-        synchronized(contextMutex) {
-            match (context_) {
-                case None => context_ = Some(NativeContext(env))
-                case Some(_) => throw ArkTSContextAlreadyBoundException(
+        synchronized(bindMutex) {
+            if (context_.load().isSome()) {
+                throw ArkTSContextAlreadyBoundException(
                     "ArkTS runtime is already associated with a host ArkTS environment")
             }
+            context_.store(NativeContext(env))
         }
     }
 
     public static func isBound(): Bool {
-        context_.isSome()
+        context_.load().isSome()
     }
 
     /** The bound context; throws `ArkTSContextNotBoundException` before `bind`. */
     static prop context: NativeContext {
         get() {
-            match (context_) {
+            match (context_.load()) {
                 case Some(context) => context
                 case None => throw ArkTSContextNotBoundException(
                     "ArkTS runtime is not associated with a host ArkTS environment")

@@ -4,6 +4,7 @@ import std.collection.HashMap
 import std.sync.Mutex
 import std.math.numeric.BigInt
 
+/** Held for every access to the registries below, on any thread. */
 private let functionMutex = Mutex()
 private let nativeFunctions = HashMap<Int64, (NativeContext, (NativeContext, Array<NativeJSValue>) -> NativeJSValue)>()
 private var nextFunctionId: Int64 = 0
@@ -22,7 +23,8 @@ func ats_rt_ext_nativeFunctionDrop(id: Int64): Unit {
 
 @C
 func ats_rt_ext_nativeFunctionCall(id: Int64, count: UIntNative, values: CPointer<NapiValue>): NapiValue {
-    let entry = nativeFunctions.get(id)
+    // Not held while the body runs: the body may create or drop native functions itself.
+    let entry = synchronized(functionMutex) { nativeFunctions.get(id) }
     if (let Some((context, body)) <- entry) {
         try {
             let args = Array<NativeJSValue>(Int64(count)) { i => NativeJSValue(context.session, unsafe { values.read(i) }) }
