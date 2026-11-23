@@ -190,6 +190,7 @@ typedef struct {
     uint32_t budget_frames_open;
     uint32_t pin_read_alias;
     uint32_t pins_pending;
+    uint32_t budget_capacity;
 } ats_rt_ext_stats_t;
 void ats_rt_ext_stats(void *state, ats_rt_ext_stats_t *out);
 

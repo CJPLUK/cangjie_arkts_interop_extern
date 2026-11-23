@@ -7,37 +7,6 @@
 
 namespace {
 
-struct Scope { uint64_t spilled; bool frame; uint32_t saved; };
-
-struct World {
-    ats_rt_ext::HostBudget budget;
-    std::vector<Scope> scopes{{0, false, 0}};
-    bool inTurn = false;
-    uint32_t markersThisTurn = 0;
-    uint64_t opsScoped = 0, opsSpilled = 0;
-
-    uint64_t live() const { uint64_t sum = 0; for (auto &s : scopes) sum += s.spilled; return sum; }
-    uint32_t frames() const { uint32_t n = 0; for (auto &s : scopes) n += s.frame; return n; }
-
-    void op(uint32_t worst, uint32_t spilled) {
-        if (budget.admit(worst) == ats_rt_ext::Placement::Scoped) { ++opsScoped; return; }
-        ++opsSpilled;
-        scopes.back().spilled += spilled;
-        budget.charge(spilled);
-        if (budget.wantsMarker()) { budget.markerPosted(); ++markersThisTurn; }
-    }
-    void frameOpen() { scopes.push_back({0, true, budget.enter()}); }
-    void frameClose() { budget.exit(scopes.back().saved); scopes.pop_back(); }
-    void foreignOpen() { scopes.push_back({0, false, 0}); }
-    void foreignClose() { scopes.pop_back(); }
-    void turnStart() { scopes.push_back({0, false, 0}); inTurn = true; markersThisTurn = 0; }
-    void turnEnd() {
-        scopes.pop_back();
-        inTurn = false;
-        if (budget.markerPending) budget.turnEnded();
-    }
-};
-
 // The running case: its name, the seed its walk is on (set by run), and its failed checks.
 struct CaseState {
     const char *name = "";
@@ -55,6 +24,39 @@ void fail(const char *what, std::optional<uint64_t> step) {
     std::printf("\n");
 }
 void check(bool ok, const char *what, std::optional<uint64_t> step = std::nullopt) { if (!ok) fail(what, step); }
+
+struct Scope { uint64_t spilled; bool frame; uint32_t saved; };
+
+struct World {
+    ats_rt_ext::HostBudget budget;
+    std::vector<Scope> scopes{{0, false, 0}};
+    bool inTurn = false;
+    uint32_t markersThisTurn = 0;
+    uint64_t opsScoped = 0, opsSpilled = 0;
+
+    uint64_t live() const { uint64_t sum = 0; for (auto &s : scopes) sum += s.spilled; return sum; }
+    uint32_t frames() const { uint32_t n = 0; for (auto &s : scopes) n += s.frame; return n; }
+
+    // An op charges at most its worst case (ops.cpp checks this in debug builds), so Bound is exact.
+    void op(uint32_t worst, uint32_t spilled) {
+        check(spilled <= worst, "an op spills at most its worst case");
+        if (budget.admit(worst) == ats_rt_ext::Placement::Scoped) { ++opsScoped; return; }
+        ++opsSpilled;
+        scopes.back().spilled += spilled;
+        budget.charge(spilled);
+        budget.postMarkerIfWanted([&] { ++markersThisTurn; return true; });
+    }
+    void frameOpen() { scopes.push_back({0, true, budget.enter()}); }
+    void frameClose() { budget.exit(scopes.back().saved); scopes.pop_back(); }
+    void foreignOpen() { scopes.push_back({0, false, 0}); }
+    void foreignClose() { scopes.pop_back(); }
+    void turnStart() { scopes.push_back({0, false, 0}); inTurn = true; markersThisTurn = 0; }
+    void turnEnd() {
+        scopes.pop_back();
+        inTurn = false;
+        if (budget.markerPending) budget.turnEnded();
+    }
+};
 
 // Kept: every op runs inside a turn (the outer scope closes before the marker runs), so Sound must
 // hold. Broken: ops also spill into the root scope, which never closes, so Sound must be seen to fail.
@@ -93,7 +95,7 @@ Outcome run(uint64_t seed, uint64_t steps, ScopeRule rule, uint32_t turnEndOdds 
         }
         if (w.budget.units < w.live()) sound = false;
         if (ruleKept) check(w.budget.units >= w.live(), "Sound", step);
-        check(w.budget.units <= ats_rt_ext::kCapacity + kWorst, "Bound", step);
+        check(w.budget.units <= ats_rt_ext::kCapacity, "Bound", step);
         check(w.budget.framesOpen == w.frames(), "framesOpen == open frames", step);
     }
     std::printf("  seed %llu: %llu turns, %llu marker resets, %llu spilled ops, %llu scoped ops, sound %s\n",
@@ -130,6 +132,31 @@ void scopedOnceFull() {
     check(b.admit(4) == ats_rt_ext::Placement::Scoped, "admit past capacity is scoped");
 }
 
+// The turn marker, through a fake post that counts its calls and succeeds as told.
+void markerPosting() {
+    ats_rt_ext::HostBudget b;
+    int posts = 0;
+    bool succeeds = true;
+    auto post = [&] { ++posts; return succeeds; };
+
+    check(!b.postMarkerIfWanted(post) && posts == 0, "no marker while nothing is spilled");
+    b.charge(5);
+    {
+        ats_rt_ext::HostBudget::Frame f(b);
+        b.charge(5);
+        check(!b.postMarkerIfWanted(post) && posts == 0, "no marker inside a frame");
+    }
+    succeeds = false;
+    check(!b.postMarkerIfWanted(post) && posts == 1, "a failed post reports no marker");
+    succeeds = true;
+    check(b.postMarkerIfWanted(post) && posts == 2, "the next spill retries the post");
+    check(!b.postMarkerIfWanted(post) && posts == 2, "one marker pending at a time");
+    b.turnEnded();
+    check(b.units == 0, "the marker empties the budget");
+    b.charge(1);
+    check(b.postMarkerIfWanted(post) && posts == 3, "a later turn posts its own marker");
+}
+
 void negativeControl() {
     check(!run(99, 3000000, ScopeRule::Broken).sound, "Sound fails once the scope rule is broken");
 }
@@ -141,6 +168,7 @@ const Case kCases[] = {
     {"long turns", longTurns},
     {"frame restore", frameRestore},
     {"scoped once full", scopedOnceFull},
+    {"marker posting", markerPosting},
     {"negative control", negativeControl},
 };
 

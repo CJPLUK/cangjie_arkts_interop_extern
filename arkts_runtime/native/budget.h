@@ -23,8 +23,13 @@ struct HostBudget {
     // resets `units`: a TSFN task posted on the first spill there, which runs once the JS stack has
     // unwound. Scope rule: the outer scope closes by then (ark_interop exports and JS-called
     // functions do; Cangjie UI handlers and postJSTask bodies must use ArkTSRuntime.newScope).
-    bool wantsMarker() const { return framesOpen == 0 && units > 0 && !markerPending; }
-    void markerPosted() { markerPending = true; }
+    // Calls `post` (returning whether it posted) if a marker is wanted; returns whether one was posted.
+    template <class Post>
+    bool postMarkerIfWanted(Post &&post) {
+        if (framesOpen != 0 || units == 0 || markerPending || !post()) return false;
+        markerPending = true;
+        return true;
+    }
     void turnEnded() { markerPending = false; if (framesOpen == 0) units = 0; }
 
     uint32_t enter() { ++framesOpen; return units; }

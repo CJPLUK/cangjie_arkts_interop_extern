@@ -21,8 +21,9 @@ Every engine value an op creates (the key, the result, the receiver when it must
   - Created text weighs 1 per 512 bytes.
 
   `kCapacity` is 2^19 units: at most 4 MiB of handle slots, or 8K fresh heap results per turn or frame.
+- **Worst cases.** `ops.cpp` names what each local an op creates weighs: a pin read in Fetch mode, a scalar argument, created text (a text argument or a property key), an engine call's result, and the extra weight of a result that is a fresh heap value. Each op declares its worst case as a sum of these. It creates every local through `OpPlacement`, which charges the local's units where it is created, so no local goes uncharged. In debug builds, an op whose charge exceeds its declared worst case aborts, naming the op and both numbers; release builds compile the check out.
 - **Frames.** A frame is a scope whose opening and closing the runtime sees: an engine frame (JS calling a Cangjie function, through the callback trampoline), a runtime frame (generic-path work and posted tasks), or a user frame (`ArkTSRuntime.newScope`). Each saves `units` on entry (`enter`) and restores it on exit (`exit`), because everything spilled above its scope died when the scope closed.
-- **Turn marker.** Outside every frame, ops spill into the outer scope, whose caller the runtime cannot see. The first spill there posts a TSFN task, the turn marker. The marker runs once the JS stack has unwound, and resets `units` to 0 (`wantsMarker`, `markerPosted`, `turnEnded`).
+- **Turn marker.** Outside every frame, ops spill into the outer scope, whose caller the runtime cannot see. The first spill there posts a TSFN task, the turn marker. The marker runs once the JS stack has unwound, and resets `units` to 0. An op posts it with `postMarkerIfWanted(post)`, which calls `post` only when a marker is wanted and none is pending, and counts the marker as pending only if the post succeeded; the marker runs `turnEnded`.
 
 ## Scope rule
 
@@ -33,7 +34,7 @@ The outer scope must close before the turn marker runs.
 
 ## Invariants
 
-- **Bound:** `units <= kCapacity` + the largest `worst` ever admitted.
+- **Bound:** `units <= kCapacity`, because `admit` requires `units + worst <= kCapacity` and an op charges at most its `worst` (checked in debug builds).
 - **Sound:** `units >=` the weight of spilled locals not yet reclaimed, given the scope rule.
 
 ## Verification
@@ -50,6 +51,7 @@ Unseen callers open an outer scope per turn, frames are scopes the runtime sees 
 - long turns that fill the budget, after which ops run scoped;
 - frame restores, checked directly;
 - admit at capacity (scoped once full), checked directly;
+- the turn marker's posting, through a fake post;
 - a negative control that breaks the scope rule, so ops spill into the root and Sound must be seen to fail.
 
 Run it on the host:
@@ -60,7 +62,7 @@ c++ -std=c++17 -O2 arkts_runtime/native/budget_test.cpp -o budget_test && ./budg
 
 On the device, `src/tests/step13_lifetime.cj` checks the budget through the native stats (`ArkTSRuntime.nativeStats`):
 
-- 10K fresh results in one turn stay within the bound;
+- fresh results in one turn fill the budget until an op runs scoped, and `units` never exceeds the capacity (`budget_capacity` in the stats), with no slack;
 - a later turn finds the budget empty;
 - `newScope` restores the budget even when its body throws.
 

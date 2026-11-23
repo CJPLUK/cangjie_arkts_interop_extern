@@ -28,7 +28,7 @@ export default function lifetimeTest() {
     it('budgetFillsThenResets', 0, async () => {
       expect(runArkTSTest('lifetime.budgetFillsThenScoped', new Target())).assertEqual('');
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
-      expect(runArkTSTest('lifetime.budgetIsEmpty')).assertEqual('');
+      expect(runArkTSTest('lifetime.budgetEmptyNextTurn')).assertEqual('');
     });
   });
 }

@@ -38,9 +38,12 @@ cjc_package src "$TEST_BUNDLE"
 cjc_package src/tests "$TEST_BUNDLE"
 
 # -idirafter: the host's libc headers win, and only napi/ and info/ come from the device sysroot.
+# Both build modes: release (-DNDEBUG) compiles out the fused ops' worst-case check.
 for source in native/ops.cpp native/backend.cpp; do
-    echo "== c++ -fsyntax-only $source"
-    c++ -std=c++17 -fsyntax-only -idirafter "$SYSROOT_INCLUDE" -Inative "$source"
+    for mode in "" -DNDEBUG; do
+        echo "== c++ -fsyntax-only $mode $source"
+        c++ -std=c++17 -fsyntax-only -Wall -Wextra -Werror $mode -idirafter "$SYSROOT_INCLUDE" -Inative "$source"
+    done
 done
 
 echo "== budget_test"

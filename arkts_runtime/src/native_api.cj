@@ -158,6 +158,7 @@ struct NativeStats {
     var budgetFramesOpen: UInt32 = 0
     var pinReadAlias: UInt32 = 0
     var pinsPending: UInt32 = 0
+    var budgetCapacity: UInt32 = 0
 }
 foreign func ats_rt_ext_stats(state: CPointer<Unit>, out: CPointer<NativeStats>): Unit
 foreign func ats_rt_ext_element_get(state: CPointer<Unit>, target: CPointer<Unit>, index: Int64, out: CPointer<NativeOpResult>): Int32

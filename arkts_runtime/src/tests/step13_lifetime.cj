@@ -8,7 +8,7 @@ func lifetimeScenarios(): Array<(String, Scenario)> {
         ("lifetime.pinReadAlias", { _, _ => pinReadAlias() }),
         ("lifetime.fusedOpsSpill", { _, f => fusedOpsSpill(f) }),
         ("lifetime.budgetFillsThenScoped", { _, f => budgetFillsThenScoped(f) }),
-        ("lifetime.budgetIsEmpty", { _, _ => budgetIsEmpty() }),
+        ("lifetime.budgetEmptyNextTurn", { _, _ => budgetEmptyNextTurn() }),
         ("lifetime.newScopeRestoresBudget", { _, f => newScopeRestoresBudget(f) }),
         ("lifetime.repeatedReadReusesPin", { _, f => repeatedReadReusesPin(f) }),
         ("lifetime.textCopies", { _, f => textCopies(f) }),
@@ -16,9 +16,6 @@ func lifetimeScenarios(): Array<(String, Scenario)> {
         ("lifetime.optionImmediates", { _, f => optionImmediates(f) })
     ]
 }
-
-@When[bundle == "com.example.testArkTSForeignRuntime"]
-let BUDGET_BOUND: UInt32 = (1 << 19) + 128
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func pinReadAlias(): String {
@@ -43,28 +40,34 @@ func fusedOpsSpill(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
+// Fills the budget with fresh results until an op runs scoped. Every op charges at most its worst
+// case and admit keeps units + worst within capacity, so units never exceed capacity, exactly.
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func budgetFillsThenScoped(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let keys = ArkTSRuntime.global().Object.keys
     var last = keys(e)
     let before = ArkTSRuntime.nativeStats()
-    var maxUnits: UInt32 = 0
-    for (_ in 0..10000) {
+    let capacity = before.budgetCapacity
+    var stats = before
+    var maxUnits = before.budgetUnits
+    var calls = 0
+    while (stats.opsScoped == before.opsScoped && calls < 100000) {
         last = keys(e)
-        maxUnits = max(maxUnits, ArkTSRuntime.nativeStats().budgetUnits)
+        calls++
+        stats = ArkTSRuntime.nativeStats()
+        maxUnits = max(maxUnits, stats.budgetUnits)
     }
-    let after = ArkTSRuntime.nativeStats()
     firstFailure([
-        expectEqual("ops", (after.opsSpilled - before.opsSpilled) + (after.opsScoped - before.opsScoped), 10000),
-        expectEqual("some ops ran scoped", after.opsScoped > before.opsScoped, true),
-        expectEqual("units within bound (max ${maxUnits})", maxUnits <= BUDGET_BOUND, true),
+        expectEqual("an op ran scoped within 100000 calls", stats.opsScoped > before.opsScoped, true),
+        expectEqual("ops", (stats.opsSpilled - before.opsSpilled) + (stats.opsScoped - before.opsScoped), UInt64(calls)),
+        expectEqual("units within capacity (max ${maxUnits})", maxUnits <= capacity, true),
         expectEqual("last result is an array of keys", number(last.length) > 0.0, true)
     ])
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func budgetIsEmpty(): String {
+func budgetEmptyNextTurn(): String {
     expectEqual("budget units", ArkTSRuntime.nativeStats().budgetUnits, 0)
 }
 

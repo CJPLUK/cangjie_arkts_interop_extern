@@ -534,7 +534,8 @@ extern "C" int32_t ats_rt_ext_element_write(void *raw, void *value, uint32_t ind
 extern "C" void ats_rt_ext_stats(void *raw, ats_rt_ext_stats_t *out) {
     auto *s = static_cast<State *>(raw);
     *out = ats_rt_ext_stats_t{s->opsSpilled, s->opsScoped, s->pinsCreated.load(), s->pinsDeleted.load(),
-        s->budget.units, s->budget.framesOpen, s->pins.read == PinRead::Alias ? 1u : 0u, s->pins.pending.load()};
+        s->budget.units, s->budget.framesOpen, s->pins.read == PinRead::Alias ? 1u : 0u, s->pins.pending.load(),
+        ats_rt_ext::kCapacity};
 }
 
 extern "C" void ats_rt_ext_text_take(void *raw, uint8_t *dst, size_t length) {

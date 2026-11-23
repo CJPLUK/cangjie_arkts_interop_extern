@@ -1,4 +1,5 @@
 import { hapTasks } from '@ohos/hvigor-ohos-plugin';
+import { hvigor } from '@ohos/hvigor';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
@@ -11,7 +12,9 @@ fs.rmSync(libs, { recursive: true, force: true });
 fs.cpSync(path.resolve(__dirname, '../../../dependencies_libs/base'), libs, { recursive: true });
 
 const nativeLibs = path.join(libs, 'arm64-v8a');
-execFileSync('/bin/sh', [path.resolve(__dirname, '../../../arkts_runtime/native/build.sh'), nativeLibs]);
+// The build mode (-p buildMode=...) picks the native library's: debug keeps its checks.
+execFileSync('/bin/sh', [path.resolve(__dirname, '../../../arkts_runtime/native/build.sh'), nativeLibs,
+  hvigor.getParameter().getExtParam('buildMode') ?? 'debug']);
 process.env.ARKTS_RUNTIME_NATIVE_LIB = nativeLibs;
 
 export default {

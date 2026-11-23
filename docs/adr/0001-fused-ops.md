@@ -42,4 +42,4 @@ Off the owner thread, a fused op returns `ATS_RT_EXT_NOT_OWNER` having run nothi
 
 - An operation costs one native transition plus the engine call.
 - There are two paths, fused and generic, and they must give identical results. The differential suite (ADR-0008) checks this program by program, against ark_interop and against plain ArkTS.
-- Each op states by hand the largest number of locals it can spill (`kWorstGetNamed` and the `2 +` terms in `ops.cpp`). See issue #1.
+- Each op declares the largest number of units it can spill as a sum of named units, and charges each local where it creates it (ADR-0002).
