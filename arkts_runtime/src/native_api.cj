@@ -11,7 +11,6 @@ const AR_SCOPE_DRAIN_CHECK: Int32 = 1
 const AR_SCOPE_IN_FLIGHT: Int32 = 2
 const AR_NOT_OWNER: Int32 = -4
 const AR_DEAD: Int32 = -5
-const AR_GENERIC: Int32 = -6
 const NAPI_INVALID_ARG: Int32 = 1
 
 type NativeEnv = CPointer<Unit>

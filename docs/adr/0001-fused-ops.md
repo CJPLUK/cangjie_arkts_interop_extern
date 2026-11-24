@@ -27,7 +27,7 @@ Everything else takes the generic path in Cangjie (`native_values.cj`), inside a
 - argument types that need a conversion the op cannot do itself;
 - element reads and writes on a pin that is not an array.
 
-The status `ATS_RT_EXT_GENERIC` (-6, `AR_GENERIC` on the Cangjie side) means "the fused path does not apply", having run nothing. The element ops return it for a non-array; the Cangjie side also uses it for the cases it rules out before calling an op.
+The status `ATS_RT_EXT_GENERIC` (-6) means "the fused path does not apply", having run nothing. The element ops return it for a non-array. The Cangjie side gives it no name: the indexed operations take the generic path on any status other than success, not-owner, a pending exception or a dead environment. The cases the Cangjie side rules out before calling an op are types instead: `opArgOf` returns `None` for an argument no op can pass, and the indexed operations' status is `None` for an index that is neither a position nor a name.
 
 ### Threads
 
