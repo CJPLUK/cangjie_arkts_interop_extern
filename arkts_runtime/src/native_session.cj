@@ -78,9 +78,22 @@ class NativeSession {
         if (unsafe { ats_rt_ext_alive(state) == 0 }) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
     }
 
-    func runtimeFrameOpen(): CPointer<Unit> { frameOpen(AR_SCOPE_IN_FLIGHT) }
+    /**
+     * Runs `operation` inside a runtime frame, closed when it returns or throws. A runtime frame
+     * holds `napi_value`s, so it is in flight: no pin is deleted while it is open (ADR-0003).
+     */
+    func runtimeFrame<R>(operation: () -> R): R { inFrame(AR_SCOPE_IN_FLIGHT, operation) }
 
-    func userFrameOpen(): CPointer<Unit> { frameOpen(0) }
+    /**
+     * Runs `operation` inside a user frame (`ArkTSRuntime.newScope`), closed when it returns or
+     * throws. A user frame holds no `napi_value`, so pins may drain inside it (ADR-0003).
+     */
+    func userFrame<R>(operation: () -> R): R { inFrame(0, operation) }
+
+    private func inFrame<R>(flags: Int32, operation: () -> R): R {
+        let scope = frameOpen(flags)
+        try { operation() } finally { unsafe { ats_rt_ext_close_scope(state, scope) } }
+    }
 
     private func frameOpen(flags: Int32): CPointer<Unit> {
         var scope = CPointer<Unit>()
@@ -94,18 +107,6 @@ class NativeSession {
             throw ForeignRuntimeException("Cannot open ArkTS handle scope: ${status}")
         }
         scope
-    }
-
-    func frameClose(scope: CPointer<Unit>): Unit { unsafe { ats_rt_ext_close_scope(state, scope) } }
-
-    func runtimeFrame<R>(operation: () -> R): R {
-        let scope = runtimeFrameOpen()
-        try { operation() } finally { frameClose(scope) }
-    }
-
-    func run<R>(operation: () -> R): R {
-        if (isOnOwnerThread()) { return runtimeFrame(operation) }
-        runPosted(operation)
     }
 
     func runPosted<R>(operation: () -> R): R {

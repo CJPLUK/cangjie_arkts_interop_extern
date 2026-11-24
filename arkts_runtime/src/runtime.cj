@@ -105,15 +105,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     }
 
     /**
-     * Runs `operation` on the owner thread inside a fresh engine scope and returns its result,
+     * Runs `operation` on the owner thread inside a runtime frame and returns its result,
      * or rethrows its exception or error on the calling thread. Blocks callers on other threads
      * until the owner thread has run it, so the owner thread must never wait for a thread that is
      * inside `run`. Public entry points call it exactly once; internal recursion never does.
      */
     static func run<R>(operation: () -> R): R {
         if (context.session.isOnOwnerThread()) {
-            let scope = context.session.runtimeFrameOpen()
-            try { return operation() } finally { context.session.frameClose(scope) }
+            return context.session.runtimeFrame(operation)
         }
         context.session.runPosted(operation)
     }
@@ -136,8 +135,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     public static func newScope<T>(body: () -> T): T {
         let session = context.session
         if (!session.isOnOwnerThread()) { return body() }
-        let scope = session.userFrameOpen()
-        try { body() } finally { session.frameClose(scope) }
+        session.userFrame(body)
     }
 
     /** `e.f`. A function keeps `e` as the `this` of a later `functionCall`. */
@@ -158,10 +156,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 if (status == 0) { return Extern<ArkTSRuntime>(payloadOfRead(session, out, receiver, target, field, hint)) }
                 try { opFailed(session, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
             }
-        }
-        if (context.session.isOnOwnerThread()) {
-            let scope = context.session.runtimeFrameOpen()
-            try { return ArkTSRuntime.retain(readMember(ArkTSRuntime.jsValueOf(e), field), receiver: e) } finally { context.session.frameClose(scope) }
         }
         memberAccessSlow(e, field)
     }
@@ -200,17 +194,18 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (context.session.isOnOwnerThread()) {
             match (arg) {
                 case position: Int64 =>
-                    let scope = context.session.runtimeFrameOpen()
-                    try {
-                        if (let Some(owner) <- arrayOwnerOf(e)) {
-                            return try { ArkTSRuntime.retain(owner.elementRead(position), receiver: e) }
-                                   catch (x: ArkTSNativeException) { throw indexError(x) }
+                    // `None`: `e` is not an array, so the generic read below applies.
+                    let read: ?Extern<ArkTSRuntime> = context.session.runtimeFrame {
+                        match (arrayOwnerOf(e)) {
+                            case Some(owner) =>
+                                try { Some(ArkTSRuntime.retain(owner.elementRead(position), receiver: e)) }
+                                catch (x: ArkTSNativeException) { throw indexError(x) }
+                            case None => None
                         }
-                    } finally { context.session.frameClose(scope) }
+                    }
+                    if (let Some(result) <- read) { return result }
                 case _ => ()
             }
-            let scope = context.session.runtimeFrameOpen()
-            try { return ArkTSRuntime.retain(readIndex(ArkTSRuntime.jsValueOf(e), arg), receiver: e) } finally { context.session.frameClose(scope) }
         }
         indexedAccessSlow(e, arg)
     }
@@ -249,10 +244,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 }
             }
         }
-        if (context.session.isOnOwnerThread()) {
-            let scope = context.session.runtimeFrameOpen()
-            try { return writeMember(ArkTSRuntime.jsValueOf(e), field, ArkTSRuntime.toJSValue(value)) } finally { context.session.frameClose(scope) }
-        }
         memberUpdateSlow(e, field, value)
     }
 
@@ -281,17 +272,19 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (context.session.isOnOwnerThread()) {
             match (field) {
                 case position: Int64 where position >= 0 && position < Int64(UInt32.Max) =>
-                    let scope = context.session.runtimeFrameOpen()
-                    try {
-                        if (let Some(owner) <- arrayOwnerOf(e)) {
-                            return try { owner.elementWrite(UInt32(position), ArkTSRuntime.toJSValue(value)) }
-                                   catch (x: ArkTSNativeException) { throw indexError(x) }
+                    // `false`: `e` is not an array, so the generic write below applies.
+                    let written = context.session.runtimeFrame {
+                        match (arrayOwnerOf(e)) {
+                            case Some(owner) =>
+                                try { owner.elementWrite(UInt32(position), ArkTSRuntime.toJSValue(value)) }
+                                catch (x: ArkTSNativeException) { throw indexError(x) }
+                                true
+                            case None => false
                         }
-                    } finally { context.session.frameClose(scope) }
+                    }
+                    if (written) { return }
                 case _ => ()
             }
-            let scope = context.session.runtimeFrameOpen()
-            try { return writeIndex(ArkTSRuntime.jsValueOf(e), field, value) } finally { context.session.frameClose(scope) }
         }
         indexedUpdateSlow(e, field, value)
     }
@@ -349,13 +342,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 case _ => None
             }
             if (let Some(result) <- fused) { return result }
-        }
-        if (context.session.isOnOwnerThread()) {
-            let scope = context.session.runtimeFrameOpen()
-            try {
-            let (function, receiver) = ArkTSRuntime.calleeOf(e)
-            return ArkTSRuntime.retain(invoke(function, args, receiver ?? undefinedValue))
-        } finally { context.session.frameClose(scope) }
         }
         functionCallSlow(e, args)
     }
@@ -549,12 +535,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             return Extern<ArkTSRuntime>(Imm(NativeJSValue(context.session, NapiValue(), kind, number: x,
                 boolean: kind == JSType.BOOLEAN && x != 0.0)))
         }
-        if (context.session.isOnOwnerThread()) {
-            let scope = context.session.runtimeFrameOpen()
-            try {
-                return ArkTSRuntime.retain(ArkTSRuntime.toJSValue(boxed))
-            } finally { context.session.frameClose(scope) }
-        }
         toExternSlow(boxed)
     }
 
@@ -619,12 +599,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         match (probeOf<R>(boxed, probeSentinel, probeSentinel)) {
             case Hit => return asR<R>(boxed)
             case _ => ()
-        }
-        if (context.session.isOnOwnerThread()) {
-            let scope = context.session.runtimeFrameOpen()
-            try {
-                return ArkTSRuntime.fromJSValue<R>(ArkTSRuntime.jsValueOf(value))
-            } finally { context.session.frameClose(scope) }
         }
         fromExternSlow<R>(value)
     }
