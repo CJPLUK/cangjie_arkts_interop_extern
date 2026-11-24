@@ -367,33 +367,38 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      */
     private static func callFused(function: Pinned, receiver: OpArg, e: Extern<ArkTSRuntime>,
         args: Array<Any>): ?Extern<ArkTSRuntime> {
+        // `this`, then the arguments: one buffer, so one loop classifies them all.
+        let natives = Array<NativeArg>(args.size + 1, repeat: NativeArg())
         // Allocated with the first text, sized for every value still to classify.
         var texts: ?ArrayList<CPointerHandle<UInt8>> = None
-        func lend(arg: OpArg, capacity: Int64): NativeArg {
-            match (arg) {
-                case Plain(plain) => nativeOf(plain)
-                case Text(text) =>
-                    let held = texts ?? ArrayList<CPointerHandle<UInt8>>(capacity)
-                    texts = held
-                    let bytes = unsafe { acquireArrayRawData(text.rawData()) }
-                    held.add(bytes)
-                    textArg(bytes.pointer, bytes.array.size)
-            }
-        }
         try {
-            var thisArg = lend(receiver, args.size + 1)
-            let natives = Array<NativeArg>(args.size, repeat: NativeArg())
-            for (i in 0..args.size) {
-                match (opArgOf(args[i])) {
-                    case Some(arg) => natives[i] = lend(arg, args.size - i)
-                    case None => return None
+            for (i in 0..natives.size) {
+                let arg = if (i == 0) { receiver } else {
+                    match (opArgOf(args[i - 1])) {
+                        case Some(arg) => arg
+                        case None => return None
+                    }
+                }
+                natives[i] = match (arg) {
+                    case Plain(plain) => nativeOf(plain)
+                    case Text(text) =>
+                        let held = match (texts) {
+                            case Some(list) => list
+                            case None =>
+                                let list = ArrayList<CPointerHandle<UInt8>>(natives.size - i)
+                                texts = list
+                                list
+                        }
+                        let bytes = unsafe { acquireArrayRawData(text.rawData()) }
+                        held.add(bytes)
+                        textArg(bytes.pointer, bytes.array.size)
                 }
             }
             let session = context.session
             var result = NativeOpResult()
             let status = unsafe {
                 let buffer = acquireArrayRawData(natives)
-                try { ats_rt_ext_call(session.state, function.cell, inout thisArg, buffer.pointer, UIntNative(natives.size), inout result) }
+                try { ats_rt_ext_call(session.state, function.cell, buffer.pointer, buffer.pointer + 1, UIntNative(args.size), inout result) }
                 finally { releaseArrayRawData(buffer) }
             }
             if (status == 0) { return Extern<ArkTSRuntime>(payloadOfResult(session, result, None)) }
