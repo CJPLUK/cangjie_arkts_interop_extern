@@ -27,10 +27,22 @@ private enum OpArg {
     | Text(String)
 }
 
-/** What `OpArg.Plain` carries: a value native code takes as is (`nativeOf`). */
+/** What `OpArg.Plain` carries: a value native code takes as is (`nativeArgOf`). */
 private enum PlainArg {
     | Scalar(Int32, Float64) // undefined / null / boolean / number, as `NativeArg.kind` and `scalar`
     | Pin(Pinned)
+}
+
+/**
+ * An `OpArg` lent to native code (`ArkTSRuntime.lend`): the `NativeArg` the op passes, and the
+ * bytes of a text, acquired until `release` once the native call has returned.
+ */
+private struct LentArg {
+    LentArg(let native: NativeArg, let bytes: ?CPointerHandle<UInt8>) {}
+
+    unsafe func release(): Unit {
+        if (let Some(held) <- bytes) { releaseArrayRawData(held) }
+    }
 }
 
 /** How an index is accessed: an array element, or a property key. */
@@ -180,14 +192,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                     }
                     case _ => None
                 }
-                // Any other status, out of range and a non-array included, takes the generic path,
-                // which throws ark_interop's errors.
                 if (let Some(status) <- status) {
                     if (status == 0) { return Extern<ArkTSRuntime>(payloadOfResult(session, out, receiver)) }
                     if (status == AR_NOT_OWNER) { return indexedAccessSlow(e, arg) }
-                    if (status == NAPI_PENDING_EXCEPTION || status == AR_DEAD) {
-                        try { opFailed(session, status) } catch (x: ArkTSNativeException) { throw indexError(x) }
-                    }
+                    indexedOpFailed(status)
                 }
             }
         }
@@ -223,17 +231,11 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                     let status = unsafe {
                         let key = acquireArrayRawData(field.rawData())
                         try {
-                            match (arg) {
-                                case Text(text) =>
-                                    let bytes = acquireArrayRawData(text.rawData())
-                                    try {
-                                        var native = textArg(bytes.pointer, bytes.array.size)
-                                        ats_rt_ext_set_named(session.state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
-                                    } finally { releaseArrayRawData(bytes) }
-                                case Plain(plain) =>
-                                    var native = nativeOf(plain)
-                                    ats_rt_ext_set_named(session.state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
-                            }
+                            let lent = lend(arg)
+                            try {
+                                var native = lent.native
+                                ats_rt_ext_set_named(session.state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
+                            } finally { lent.release() }
                         } finally { releaseArrayRawData(key) }
                     }
                     if (status == 0) { return }
@@ -259,13 +261,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                     case Some(arg) => indexedUpdateFused(target, field, arg)
                     case None => None
                 }
-                // As in `indexedAccess`, any other status takes the generic path.
                 if (let Some(status) <- status) {
                     if (status == 0) { return }
                     if (status == AR_NOT_OWNER) { return indexedUpdateSlow(e, field, value) }
-                    if (status == NAPI_PENDING_EXCEPTION || status == AR_DEAD) {
-                        try { opFailed(context.session, status) } catch (x: ArkTSNativeException) { throw indexError(x) }
-                    }
+                    indexedOpFailed(status)
                 }
             }
         }
@@ -294,32 +293,20 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         let state = context.session.state
         match (field) {
             case position: Int64 where position >= 0 && position < Int64(UInt32.Max) => unsafe {
-                match (arg) {
-                    case Text(text) =>
-                        let bytes = acquireArrayRawData(text.rawData())
-                        try {
-                            var native = textArg(bytes.pointer, bytes.array.size)
-                            ats_rt_ext_element_set(state, target.cell, UInt32(position), inout native)
-                        } finally { releaseArrayRawData(bytes) }
-                    case Plain(plain) =>
-                        var native = nativeOf(plain)
-                        ats_rt_ext_element_set(state, target.cell, UInt32(position), inout native)
-                }
+                let lent = lend(arg)
+                try {
+                    var native = lent.native
+                    ats_rt_ext_element_set(state, target.cell, UInt32(position), inout native)
+                } finally { lent.release() }
             }
             case name: String => unsafe {
                 let key = acquireArrayRawData(name.rawData())
                 try {
-                    match (arg) {
-                        case Text(text) =>
-                            let bytes = acquireArrayRawData(text.rawData())
-                            try {
-                                var native = textArg(bytes.pointer, bytes.array.size)
-                                ats_rt_ext_set_named(state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
-                            } finally { releaseArrayRawData(bytes) }
-                        case Plain(plain) =>
-                            var native = nativeOf(plain)
-                            ats_rt_ext_set_named(state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
-                    }
+                    let lent = lend(arg)
+                    try {
+                        var native = lent.native
+                        ats_rt_ext_set_named(state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
+                    } finally { lent.release() }
                 } finally { releaseArrayRawData(key) }
             }
             case _ => None
@@ -348,15 +335,18 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     /**
      * Calls `function` with the fused op, `None` when an argument has no `OpArg`. The receiver
-     * and the arguments are classified once; the bytes of each text among them stay acquired,
-     * in `texts`, until the call returns.
+     * and the arguments are classified once, in order. Their number varies, so unlike the other
+     * ops the bytes of each text among them are not released by a `finally` of their own: they
+     * stay acquired, in `lentTexts`, until the outer `finally` releases them all, on every exit.
+     * An argument with no `OpArg` after a text releases that text without calling.
      */
     private static func callFused(function: Pinned, receiver: OpArg, e: Extern<ArkTSRuntime>,
         args: Array<Any>): ?Extern<ArkTSRuntime> {
         // `this`, then the arguments: one buffer, so one loop classifies them all.
         let natives = Array<NativeArg>(args.size + 1, repeat: NativeArg())
-        // Allocated with the first text, sized for every value still to classify.
-        var texts: ?ArrayList<CPointerHandle<UInt8>> = None
+        // Allocated with the first text, sized for every value still to classify: an upper
+        // bound, which saves counting the texts in a pass of its own.
+        var lentTexts: ?ArrayList<CPointerHandle<UInt8>> = None
         try {
             for (i in 0..natives.size) {
                 let arg = if (i == 0) { receiver } else {
@@ -365,20 +355,17 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                         case None => return None
                     }
                 }
-                natives[i] = match (arg) {
-                    case Plain(plain) => nativeOf(plain)
-                    case Text(text) =>
-                        let held = match (texts) {
-                            case Some(list) => list
-                            case None =>
-                                let list = ArrayList<CPointerHandle<UInt8>>(natives.size - i)
-                                texts = list
-                                list
-                        }
-                        let bytes = unsafe { acquireArrayRawData(text.rawData()) }
-                        held.add(bytes)
-                        textArg(bytes.pointer, bytes.array.size)
+                let lent = unsafe { lend(arg) }
+                if (let Some(bytes) <- lent.bytes) {
+                    match (lentTexts) {
+                        case Some(list) => list.add(bytes)
+                        case None =>
+                            let list = ArrayList<CPointerHandle<UInt8>>(natives.size - i)
+                            list.add(bytes)
+                            lentTexts = list
+                    }
                 }
+                natives[i] = lent.native
             }
             let session = context.session
             var result = NativeOpResult()
@@ -391,22 +378,24 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             if (status != AR_NOT_OWNER) { opFailed(session, status) }
             functionCallSlow(e, args)
         } finally {
-            if (let Some(held) <- texts) {
-                for (bytes in held) { unsafe { releaseArrayRawData(bytes) } }
+            if (let Some(list) <- lentTexts) {
+                for (bytes in list) { unsafe { releaseArrayRawData(bytes) } }
             }
         }
     }
 
+    /** What a payload the runtime made passes to a fused op: always one, unlike any value (`opArgOf`). */
     private static func opArgOfPayload(payload: ArkTSPayload): OpArg {
         match (payload) {
-            case Imm(v) => Plain(Scalar(v.kind, if (v.kind == JSType.BOOLEAN) { if (v.boolean) { 1.0 } else { 0.0 } } else { v.number }))
+            case Imm(v) => Plain(Scalar(v.kind, v.scalar))
             case Text(s) => OpArg.Text(s)
             case Pin(p) => Plain(PlainArg.Pin(p))
             case Method(p, _) => Plain(PlainArg.Pin(p))
         }
     }
 
-    private static func nativeOf(arg: PlainArg): NativeArg {
+    /** `arg` as the `NativeArg` native code takes: a scalar by value, a pin by its cell. */
+    private static func nativeArgOf(arg: PlainArg): NativeArg {
         var native = NativeArg()
         match (arg) {
             case Scalar(kind, x) =>
@@ -674,16 +663,18 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (pin.kind == JSType.OBJECT || pin.kind == JSType.FUNCTION) { pin } else { None }
     }
 
+    private static func scalarOf(boolean: Bool): Float64 { if (boolean) { 1.0 } else { 0.0 } }
+
     private static func immediateOfAny(value: Any): ?(Int32, Float64) {
         match (value) {
             case number: Float64 => (JSType.NUMBER, number)
-            case boolean: Bool => (JSType.BOOLEAN, if (boolean) { 1.0 } else { 0.0 })
+            case boolean: Bool => (JSType.BOOLEAN, scalarOf(boolean))
             case option: Option<Float64> => match (option) {
                 case Some(number) => (JSType.NUMBER, number)
                 case None => (JSType.UNDEFINED, 0.0)
             }
             case option: Option<Bool> => match (option) {
-                case Some(boolean) => (JSType.BOOLEAN, if (boolean) { 1.0 } else { 0.0 })
+                case Some(boolean) => (JSType.BOOLEAN, scalarOf(boolean))
                 case None => (JSType.UNDEFINED, 0.0)
             }
             case option: Option<String> where option.isNone() => (JSType.UNDEFINED, 0.0)
@@ -693,13 +684,15 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     /** `value` as an op argument; `None` when no fused op can pass it, so the operation takes the generic path. */
     private static func opArgOf(value: Any): ?OpArg {
+        // Text first, so that a `None` `Option<String>` falls through to `immediateOfAny`, which
+        // takes it as undefined.
+        match (value) {
+            case text: String => return Text(text)
+            case option: Option<String> => if (let Some(text) <- option) { return Text(text) }
+            case _ => ()
+        }
         if (let Some((kind, x)) <- immediateOfAny(value)) { return Plain(Scalar(kind, x)) }
         match (value) {
-            case text: String => Text(text)
-            case option: Option<String> => match (option) {
-                case Some(text) => Text(text)
-                case None => Plain(Scalar(JSType.UNDEFINED, 0.0))
-            }
             case external: Extern<ArkTSRuntime> => match (Extern<ArkTSRuntime>.getPayload(external) as ArkTSPayload) {
                 case Some(payload) => opArgOfPayload(payload)
                 case None => None
@@ -708,12 +701,32 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    private static func textArg(bytes: CPointer<UInt8>, count: Int64): NativeArg {
-        var native = NativeArg()
-        native.tag = AR_ARG_UTF8
-        native.ptr = CPointer<Unit>(bytes)
-        native.length = UIntNative(count)
-        native
+    /**
+     * `arg` as native code takes it. A text's bytes are acquired here; the caller releases them
+     * (`LentArg.release`) once the native call has returned.
+     */
+    private static unsafe func lend(arg: OpArg): LentArg {
+        match (arg) {
+            case Plain(plain) => LentArg(nativeArgOf(plain), None)
+            case Text(text) =>
+                let bytes = acquireArrayRawData(text.rawData())
+                var native = NativeArg()
+                native.tag = AR_ARG_UTF8
+                native.ptr = CPointer<Unit>(bytes.pointer)
+                native.length = UIntNative(bytes.array.size)
+                LentArg(native, bytes)
+        }
+    }
+
+    /**
+     * Handles an indexed op's status other than success or not-owner: throws for a pending
+     * exception or a dead environment. Any other status, out of range and a non-array included,
+     * leaves the operation to the generic path, which throws ark_interop's errors.
+     */
+    private static func indexedOpFailed(status: Int32): Unit {
+        if (status == NAPI_PENDING_EXCEPTION || status == AR_DEAD) {
+            try { opFailed(context.session, status) } catch (x: ArkTSNativeException) { throw indexError(x) }
+        }
     }
 
     static func nativeStats(): NativeStats {

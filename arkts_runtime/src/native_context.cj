@@ -83,9 +83,7 @@ class NativeContext {
         // N-API materialization and insertion stay on the native side of the loop.
         let kinds = elements.map { v => v.kind }
         let locals = elements.map { v => v.local }
-        let numbers = elements.map { v =>
-            if (v.kind == 2) { if (v.boolean) { 1.0 } else { 0.0 } } else { v.number }
-        }
+        let numbers = elements.map { v => v.scalar }
         var value = NapiValue()
         unsafe {
             let types = acquireArrayRawData(kinds)

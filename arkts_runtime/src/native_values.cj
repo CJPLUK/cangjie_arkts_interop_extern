@@ -17,6 +17,11 @@ struct NativeJSValue <: ToString {
     /** Copied boolean payload, meaningful only when kind is JSType.BOOLEAN. */
     let boolean: Bool
 
+    /** The copied payload as one number, as native code takes an immediate: a boolean as 1 or 0. */
+    prop scalar: Float64 {
+        get() { if (kind == JSType.BOOLEAN) { if (boolean) { 1.0 } else { 0.0 } } else { number } }
+    }
+
     init(session: NativeSession, value: NapiValue) {
         this.session = session
         local = value
