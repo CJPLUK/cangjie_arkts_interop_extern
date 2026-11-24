@@ -156,7 +156,6 @@ struct NativeStats {
     var budgetUnits: UInt32 = 0
     var budgetFramesOpen: UInt32 = 0
     var pinReadAlias: UInt32 = 0
-    var pinsPending: UInt32 = 0
     var budgetCapacity: UInt32 = 0
 }
 foreign func ats_rt_ext_stats(state: CPointer<Unit>, out: CPointer<NativeStats>): Unit

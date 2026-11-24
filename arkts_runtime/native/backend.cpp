@@ -64,24 +64,25 @@ AtsRtExtPin *Pins::create(State *s, napi_value value, napi_status *status) {
 }
 
 napi_status Pins::value(State *s, const AtsRtExtPin *pin, napi_value *result) const {
-    if (pin->alias) { *result = pin->alias; return napi_ok; }
-    return napi_get_strong_reference_value(s->env, pin->strong, result);
+    switch (read) {
+        case PinRead::Alias: *result = pin->alias; return napi_ok;
+        case PinRead::Fetch: return napi_get_strong_reference_value(s->env, pin->strong, result);
+    }
+    return napi_generic_failure;
 }
 
-bool Pins::push(AtsRtExtPin *pin) {
-    pending.fetch_add(1, std::memory_order_relaxed);
+PushResult Pins::push(AtsRtExtPin *pin) {
     AtsRtExtPin *head = deaths.load(std::memory_order_acquire);
     do {
         if (head == tombstone()) {
-            pending.fetch_sub(1, std::memory_order_relaxed);
             State *s = pin->state;
             delete pin;
             release(s);
-            return false;
+            return PushResult::Freed;
         }
         pin->nextDead = head;
     } while (!deaths.compare_exchange_weak(head, pin, std::memory_order_acq_rel, std::memory_order_acquire));
-    return head == nullptr && !wakeQueued.exchange(true);
+    return head == nullptr && !wakeQueued.exchange(true) ? PushResult::QueuedWakeNeeded : PushResult::Queued;
 }
 
 void Pins::drain(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
@@ -93,12 +94,10 @@ void Pins::drain(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
         bool kept = false;
         for (size_t i = 0; i < keepCount; ++i) kept = kept || keep[i] == head;
         if (kept) {
-            pending.fetch_sub(1, std::memory_order_relaxed);
-            if (push(head)) post(s, 0);
+            if (push(head) == PushResult::QueuedWakeNeeded) post(s, 0);
         } else {
             napi_delete_strong_reference(s->env, head->strong);
             delete head;
-            pending.fetch_sub(1, std::memory_order_relaxed);
             s->pinsDeleted.fetch_add(1, std::memory_order_relaxed);
             release(s);
         }
@@ -213,7 +212,7 @@ extern "C" void ats_rt_ext_unpin(void *raw) {
     auto *pin = static_cast<AtsRtExtPin *>(raw);
     if (!pin) return;
     State *s = pin->state;
-    if (s->pins.push(pin)) post(s, 0);
+    if (s->pins.push(pin) == PushResult::QueuedWakeNeeded) post(s, 0);
 }
 extern "C" int32_t ats_rt_ext_pin_read_mode(void *raw) {
     return static_cast<State *>(raw)->pins.read == PinRead::Alias ? 1 : 0;
@@ -534,7 +533,7 @@ extern "C" int32_t ats_rt_ext_element_write(void *raw, void *value, uint32_t ind
 extern "C" void ats_rt_ext_stats(void *raw, ats_rt_ext_stats_t *out) {
     auto *s = static_cast<State *>(raw);
     *out = ats_rt_ext_stats_t{s->opsSpilled, s->opsScoped, s->pinsCreated.load(), s->pinsDeleted.load(),
-        s->budget.units, s->budget.framesOpen, s->pins.read == PinRead::Alias ? 1u : 0u, s->pins.pending.load(),
+        s->budget.units, s->budget.framesOpen, s->pins.read == PinRead::Alias ? 1u : 0u,
         ats_rt_ext::kCapacity};
 }
 
