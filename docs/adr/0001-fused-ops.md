@@ -31,7 +31,7 @@ The status `ATS_RT_EXT_GENERIC` (-6) means "the fused path does not apply", havi
 
 ### Threads
 
-Off the owner thread, a fused op returns `ATS_RT_EXT_NOT_OWNER` having run nothing. The Cangjie side then posts the operation to the owner thread through a threadsafe function and blocks until it has run (`ArkTSRuntime.run`, `NativeSession.runPosted`).
+Off the owner thread, a fused op returns `ATS_RT_EXT_NOT_OWNER` having run nothing. The Cangjie side then posts the operation to the owner thread through a threadsafe function and blocks until it has run (`ArkTSRuntime.run`, `Environment.runPosted`).
 
 ### Kinds of FFI declaration
 

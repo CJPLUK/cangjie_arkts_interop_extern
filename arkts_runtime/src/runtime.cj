@@ -60,36 +60,44 @@ private enum ArkTSIndex {
  */
 public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     private static let bindMutex = Mutex()
-    private static let context_ = AtomicOptionReference<NativeContext>()
+    private static let js_ = AtomicOptionReference<JS>()
 
     /**
      * Associates the runtime with the JS engine instance `env`. Only the first call
      * succeeds; every later call throws `ArkTSContextAlreadyBoundException`, even with the
-     * same context.
+     * same environment.
      */
     public static func bind(env: CPointer<Unit>): Unit {
         synchronized(bindMutex) {
-            if (context_.load().isSome()) {
+            if (js_.load().isSome()) {
                 throw ArkTSContextAlreadyBoundException(
                     "ArkTS runtime is already associated with a host ArkTS environment")
             }
-            context_.store(NativeContext(env))
+            js_.store(JS(Environment(env)))
         }
     }
 
     public static func isBound(): Bool {
-        context_.load().isSome()
+        js_.load().isSome()
     }
 
-    /** The bound context; throws `ArkTSContextNotBoundException` before `bind`. */
-    static prop context: NativeContext {
+    /**
+     * Makes values and calls JS operations in the bound environment; throws
+     * `ArkTSContextNotBoundException` before `bind`.
+     */
+    static prop js: JS {
         get() {
-            match (context_.load()) {
-                case Some(context) => context
+            match (js_.load()) {
+                case Some(js) => js
                 case None => throw ArkTSContextNotBoundException(
                     "ArkTS runtime is not associated with a host ArkTS environment")
             }
         }
+    }
+
+    /** The bound environment; throws `ArkTSContextNotBoundException` before `bind`. */
+    static prop environment: Environment {
+        get() { js.environment }
     }
 
     /** The `undefined` the runtime returns and passes, built on first use. Bind thread only. */
@@ -99,7 +107,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         match (undefined_) {
             case Some(pair) => pair
             case None =>
-                let value = context.undefined().toJSValue()
+                let value = js.undefined().toJSValue()
                 let pair = (value, ArkTSRuntime.retain(value))
                 undefined_ = Some(pair)
                 pair
@@ -123,10 +131,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      * inside `run`. Public entry points call it exactly once; internal recursion never does.
      */
     static func run<R>(operation: () -> R): R {
-        if (context.session.isOnOwnerThread()) {
-            return context.session.runtimeFrame(operation)
+        if (environment.isOnOwnerThread()) {
+            return environment.runtimeFrame(operation)
         }
-        context.session.runPosted(operation)
+        environment.runPosted(operation)
     }
 
     static func arrayOwnerOf(e: Extern<ArkTSRuntime>): ?Pinned {
@@ -145,28 +153,28 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      * runs `body`.
      */
     public static func newScope<T>(body: () -> T): T {
-        let session = context.session
-        if (!session.isOnOwnerThread()) { return body() }
-        session.userFrame(body)
+        let environment = ArkTSRuntime.environment
+        if (!environment.isOnOwnerThread()) { return body() }
+        environment.userFrame(body)
     }
 
     /** `e.f`. A function keeps `e` as the `this` of a later `functionCall`. */
     public static func memberAccess(e: Extern<ArkTSRuntime>, field: String): Extern<ArkTSRuntime> {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
-                let session = context.session
+                let environment = ArkTSRuntime.environment
                 // The pin cache is owner-thread only (ADR-0005), and off it the op could only
                 // return not-owner.
-                if (!session.isOnOwnerThread()) { return memberAccessSlow(e, field) }
-                let hint = session.pinCache.hint(target.cell, field)
+                if (!environment.isOnOwnerThread()) { return memberAccessSlow(e, field) }
+                let hint = environment.pinCache.hint(target.cell, field)
                 var out = NativeOpResult()
                 let status = unsafe {
                     let key = acquireArrayRawData(field.rawData())
-                    try { ats_rt_ext_get_named(session.state, target.cell, key.pointer, UIntNative(key.array.size), cellOf(hint), inout out) }
+                    try { ats_rt_ext_get_named(environment.state, target.cell, key.pointer, UIntNative(key.array.size), cellOf(hint), inout out) }
                     finally { releaseArrayRawData(key) }
                 }
-                if (status == 0) { return Extern<ArkTSRuntime>(payloadOfRead(session, out, receiver, target, field, hint)) }
-                try { opFailed(session, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
+                if (status == 0) { return Extern<ArkTSRuntime>(payloadOfRead(environment, out, receiver, target, field, hint)) }
+                try { opFailed(environment, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
             }
         }
         memberAccessSlow(e, field)
@@ -180,30 +188,30 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     public static func indexedAccess(e: Extern<ArkTSRuntime>, arg: Any): Extern<ArkTSRuntime> {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
-                let session = context.session
+                let environment = ArkTSRuntime.environment
                 var out = NativeOpResult()
                 // `None`: the index is neither a position nor a name, so no fused op applies.
                 let status: ?Int32 = match (arg) {
-                    case position: Int64 => unsafe { ats_rt_ext_element_get(session.state, target.cell, position, inout out) }
+                    case position: Int64 => unsafe { ats_rt_ext_element_get(environment.state, target.cell, position, inout out) }
                     case name: String => unsafe {
                         let key = acquireArrayRawData(name.rawData())
-                        try { ats_rt_ext_get_named(session.state, target.cell, key.pointer, UIntNative(key.array.size), CPointer<Unit>(), inout out) }
+                        try { ats_rt_ext_get_named(environment.state, target.cell, key.pointer, UIntNative(key.array.size), CPointer<Unit>(), inout out) }
                         finally { releaseArrayRawData(key) }
                     }
                     case _ => None
                 }
                 if (let Some(status) <- status) {
-                    if (status == 0) { return Extern<ArkTSRuntime>(payloadOfResult(session, out, receiver)) }
+                    if (status == 0) { return Extern<ArkTSRuntime>(payloadOfResult(environment, out, receiver)) }
                     if (status == AR_NOT_OWNER) { return indexedAccessSlow(e, arg) }
                     indexedOpFailed(status)
                 }
             }
         }
-        if (context.session.isOnOwnerThread()) {
+        if (environment.isOnOwnerThread()) {
             match (arg) {
                 case position: Int64 =>
                     // `None`: `e` is not an array, so the generic read below applies.
-                    let read: ?Extern<ArkTSRuntime> = context.session.runtimeFrame {
+                    let read: ?Extern<ArkTSRuntime> = environment.runtimeFrame {
                         match (arrayOwnerOf(e)) {
                             case Some(owner) =>
                                 try { Some(ArkTSRuntime.retain(owner.elementRead(position), receiver: e)) }
@@ -227,20 +235,20 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
                 if (let Some(arg) <- opArgOf(value)) {
-                    let session = context.session
+                    let environment = ArkTSRuntime.environment
                     let status = unsafe {
                         let key = acquireArrayRawData(field.rawData())
                         try {
                             let lent = lend(arg)
                             try {
                                 var native = lent.native
-                                ats_rt_ext_set_named(session.state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
+                                ats_rt_ext_set_named(environment.state, target.cell, key.pointer, UIntNative(key.array.size), inout native)
                             } finally { lent.release() }
                         } finally { releaseArrayRawData(key) }
                     }
                     if (status == 0) { return }
                     if (status != AR_NOT_OWNER) {
-                        try { opFailed(session, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
+                        try { opFailed(environment, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
                     }
                     return memberUpdateSlow(e, field, value)
                 }
@@ -268,11 +276,11 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 }
             }
         }
-        if (context.session.isOnOwnerThread()) {
+        if (environment.isOnOwnerThread()) {
             match (field) {
                 case position: Int64 where position >= 0 && position < Int64(UInt32.Max) =>
                     // `false`: `e` is not an array, so the generic write below applies.
-                    let written = context.session.runtimeFrame {
+                    let written = environment.runtimeFrame {
                         match (arrayOwnerOf(e)) {
                             case Some(owner) =>
                                 try { owner.elementWrite(UInt32(position), ArkTSRuntime.toJSValue(value)) }
@@ -290,7 +298,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     /** The fused op's status; `None` when `field` is neither a position nor a name, so none applies. */
     private static func indexedUpdateFused(target: Pinned, field: Any, arg: OpArg): ?Int32 {
-        let state = context.session.state
+        let state = environment.state
         match (field) {
             case position: Int64 where position >= 0 && position < Int64(UInt32.Max) => unsafe {
                 let lent = lend(arg)
@@ -367,15 +375,15 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 }
                 natives[i] = lent.native
             }
-            let session = context.session
+            let environment = ArkTSRuntime.environment
             var result = NativeOpResult()
             let status = unsafe {
                 let buffer = acquireArrayRawData(natives)
-                try { ats_rt_ext_call(session.state, function.cell, buffer.pointer, buffer.pointer + 1, UIntNative(args.size), inout result) }
+                try { ats_rt_ext_call(environment.state, function.cell, buffer.pointer, buffer.pointer + 1, UIntNative(args.size), inout result) }
                 finally { releaseArrayRawData(buffer) }
             }
-            if (status == 0) { return Extern<ArkTSRuntime>(payloadOfResult(session, result, None)) }
-            if (status != AR_NOT_OWNER) { opFailed(session, status) }
+            if (status == 0) { return Extern<ArkTSRuntime>(payloadOfResult(environment, result, None)) }
+            if (status != AR_NOT_OWNER) { opFailed(environment, status) }
             functionCallSlow(e, args)
         } finally {
             if (let Some(list) <- lentTexts) {
@@ -485,14 +493,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     private static func toIndex(index: Any): ArkTSIndex {
         match (index) {
             case position: Int64 => Element(position)
-            case name: String => Key(context.string(name))
-            case number: Float64 => Key(context.number(number))
-            case name: Utf16String => Key(context.string(name))
+            case name: String => Key(js.string(name))
+            case number: Float64 => Key(js.number(number))
+            case name: Utf16String => Key(js.string(name))
             case external: Extern<ArkTSRuntime> =>
                 let value = ArkTSRuntime.jsValueOf(external)
                 let t = value.typeof()
                 match {
-                    case t == JSType.NUMBER => Key(context.number(value.toNumber()))
+                    case t == JSType.NUMBER => Key(js.number(value.toNumber()))
                     case t == JSType.STRING => Key(value.asString())
                     case t == JSType.SYMBOL => Key(value.asSymbol())
                     case _ => throw ExternIndexedAccessException("Unsupported ArkTS index type")
@@ -520,8 +528,8 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             case _ => ()
         }
         if (let Some((kind, x)) <- immediateOfAny(boxed)) {
-            context.session.checkAlive()
-            return Extern<ArkTSRuntime>(Imm(NativeJSValue(context.session, NapiValue(), kind, number: x,
+            environment.checkAlive()
+            return Extern<ArkTSRuntime>(Imm(NativeJSValue(environment, NapiValue(), kind, number: x,
                 boolean: kind == JSType.BOOLEAN && x != 0.0)))
         }
         toExternSlow(boxed)
@@ -564,23 +572,23 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (let Some(Text(text)) <- (Extern<ArkTSRuntime>.getPayload(value) as ArkTSPayload)) {
             match (probeOf<R>(probeString, probeComparableString, probeInt64)) {
                 case Hit =>
-                    context.session.checkAlive()
+                    environment.checkAlive()
                     return asR<R>(text)
                 case _ => ()
             }
             match (probeOf<R>(probeOptionString, probeOptionInt64, probeSentinel)) {
                 case Hit =>
-                    context.session.checkAlive()
+                    environment.checkAlive()
                     return asR<R>(Some(text))
                 case _ => ()
             }
         }
         if (let Some(immediate) <- ArkTSRuntime.immediateOf(value)) {
-            if (context.isOnOwnerThread()) {
+            if (environment.isOnOwnerThread()) {
                 return ArkTSRuntime.fromJSValue<R>(immediate)
             }
             if (isCopiedScalarReader<R>()) {
-                context.session.checkAlive()
+                environment.checkAlive()
                 return ArkTSRuntime.fromJSValue<R>(immediate)
             }
         }
@@ -648,7 +656,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     private static func valueOfPayload(payload: ArkTSPayload): NativeJSValue {
         match (payload) {
             case Imm(value) => value
-            case Text(s) => nativeString(context.session, s)
+            case Text(s) => nativeString(environment, s)
             case Pin(owner) => owner.toJSValue()
             case Method(function, _) => function.toJSValue()
         }
@@ -725,19 +733,19 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      */
     private static func indexedOpFailed(status: Int32): Unit {
         if (status == NAPI_PENDING_EXCEPTION || status == AR_DEAD) {
-            try { opFailed(context.session, status) } catch (x: ArkTSNativeException) { throw indexError(x) }
+            try { opFailed(environment, status) } catch (x: ArkTSNativeException) { throw indexError(x) }
         }
     }
 
     static func nativeStats(): NativeStats {
         var out = NativeStats()
-        unsafe { ats_rt_ext_stats(context.session.state, inout out) }
+        unsafe { ats_rt_ext_stats(environment.state, inout out) }
         out
     }
 
-    /** Posts task `id` through the entry point `NativeSession.post` uses, and returns its status. */
+    /** Posts task `id` through the entry point `Environment.post` uses, and returns its status. */
     static func nativePost(id: Int64): Int32 {
-        unsafe { ats_rt_ext_post(context.session.state, id) }
+        unsafe { ats_rt_ext_post(environment.state, id) }
     }
 
     private static func cellOf(pin: ?Pinned): CPointer<Unit> {
@@ -747,35 +755,35 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    private static func payloadOfRead(session: NativeSession, out: NativeOpResult, receiver: ArkTSPayload, target: Pinned,
+    private static func payloadOfRead(environment: Environment, out: NativeOpResult, receiver: ArkTSPayload, target: Pinned,
         field: String, hint: ?Pinned): ArkTSPayload {
         if (out.kind > JSType.NUMBER && (out.flags & AR_RESULT_HIT) != 0) {
             if (let Some(p) <- hint) {
                 return if (p.kind == JSType.FUNCTION) { Method(p, receiver) } else { ArkTSPayload.Pin(p) }
             }
         }
-        let payload = payloadOfResult(session, out, receiver)
+        let payload = payloadOfResult(environment, out, receiver)
         match (payload) {
-            case Pin(p) => session.pinCache.remember(target.cell, field, p)
-            case Method(p, _) => session.pinCache.remember(target.cell, field, p)
+            case Pin(p) => environment.pinCache.remember(target.cell, field, p)
+            case Method(p, _) => environment.pinCache.remember(target.cell, field, p)
             case _ => ()
         }
         payload
     }
 
-    private static func payloadOfResult(session: NativeSession, out: NativeOpResult, receiver: ?ArkTSPayload): ArkTSPayload {
+    private static func payloadOfResult(environment: Environment, out: NativeOpResult, receiver: ?ArkTSPayload): ArkTSPayload {
         if ((out.flags & AR_RESULT_TEXT) != 0) {
             let bytes = Array<UInt8>(Int64(out.textLength), repeat: 0)
             unsafe {
                 let buffer = acquireArrayRawData(bytes)
-                try { ats_rt_ext_text_take(session.state, buffer.pointer, out.textLength) } finally { releaseArrayRawData(buffer) }
+                try { ats_rt_ext_text_take(environment.state, buffer.pointer, out.textLength) } finally { releaseArrayRawData(buffer) }
                 return Text(String.withRawData(bytes))
             }
         }
         if (out.kind <= JSType.NUMBER) {
-            return Imm(NativeJSValue(session, NapiValue(), out.kind, number: out.scalar, boolean: out.kind == JSType.BOOLEAN && out.scalar != 0.0))
+            return Imm(NativeJSValue(environment, NapiValue(), out.kind, number: out.scalar, boolean: out.kind == JSType.BOOLEAN && out.scalar != 0.0))
         }
-        let pinned = Pinned.adopt(session, out.pin, out.kind)
+        let pinned = Pinned.adopt(environment, out.pin, out.kind)
         match {
             case out.kind == JSType.FUNCTION => match (receiver) {
                 case Some(r) => Method(pinned, r)
@@ -786,9 +794,9 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    private static func opFailed(session: NativeSession, status: Int32): Nothing {
-        if (status == AR_DEAD) { session.checkAlive() }
-        session.runtimeFrame { nativeCheck(session, status, checkPending: true) }
+    private static func opFailed(environment: Environment, status: Int32): Nothing {
+        if (status == AR_DEAD) { environment.checkAlive() }
+        environment.runtimeFrame { nativeCheck(environment, status, checkPending: true) }
         throw ForeignRuntimeException("N-API operation failed: ${status}")
     }
 
@@ -836,14 +844,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      */
     static func toJSValue(value: Any): NativeJSValue {
         match (value) {
-            case number: Float64 => context.number(number)
+            case number: Float64 => js.number(number)
             case external: Extern<ArkTSRuntime> => jsValueOf(external)
-            case boolean: Bool => context.boolean(boolean)
+            case boolean: Bool => js.boolean(boolean)
             case text: String => text.toJS()
             case integer: Int64 => integer.toJS()
-            case option: Option<Float64> => match (option) { case Some(n) => context.number(n) case None => undefinedValue }
+            case option: Option<Float64> => match (option) { case Some(n) => js.number(n) case None => undefinedValue }
             case option: Option<String> => match (option) { case Some(s) => s.toJS() case None => undefinedValue }
-            case option: Option<Bool> => match (option) { case Some(b) => context.boolean(b) case None => undefinedValue }
+            case option: Option<Bool> => match (option) { case Some(b) => js.boolean(b) case None => undefinedValue }
             case convertible: ToJS => convertible.toJS()
             case _ => throw ExternConversionException("Unsupported conversion to ArkTS")
         }
@@ -868,22 +876,22 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     }
 
     public static func null(): Extern<ArkTSRuntime> {
-        run { retain(context.null().toJSValue()) }
+        run { retain(js.null().toJSValue()) }
     }
 
     /** A fresh empty object. */
     public static func object(): Extern<ArkTSRuntime> {
-        run { retain(context.object().toJSValue()) }
+        run { retain(js.object().toJSValue()) }
     }
 
     /** `globalThis`. */
     public static func global(): Extern<ArkTSRuntime> {
-        run { retain(context.global.toJSValue()) }
+        run { retain(js.global.toJSValue()) }
     }
 
     /** A new symbol; two calls never give the same symbol. */
     public static func symbol(description!: String = ""): Extern<ArkTSRuntime> {
-        run { retain(context.symbol(description: description).toJSValue()) }
+        run { retain(js.symbol(description: description).toJSValue()) }
     }
 
     /** JS `lhs === rhs`. */
@@ -937,12 +945,12 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      * module throws `ArkTSNativeException` 34300006 from the native backend.
      */
     public static func requireArkModule(specifier: String): Extern<ArkTSRuntime> {
-        run { retain(context.requireArkModule(specifier)) }
+        run { retain(js.requireArkModule(specifier)) }
     }
 
     /** Loads a system NAPI module, e.g. `"hilog"`; `undefined` when it cannot be loaded. */
     public static func requireSystemNativeModule(moduleName: String, prefix: ?String): Extern<ArkTSRuntime> {
-        run { retain(context.requireSystemNativeModule(moduleName, prefix: prefix)) }
+        run { retain(js.requireSystemNativeModule(moduleName, prefix: prefix)) }
     }
 
     /**
@@ -953,7 +961,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
      */
     public static func function(body: (Array<Extern<ArkTSRuntime>>) -> Extern<ArkTSRuntime>): Extern<ArkTSRuntime> {
         run {
-            let function = context.function { _, callInfo =>
+            let function = js.function { _, callInfo =>
                 let arguments = Array<Extern<ArkTSRuntime>>(callInfo.size) { i => retain(callInfo[i]) }
                 toJSValue(body(arguments))
             }

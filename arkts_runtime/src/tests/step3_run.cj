@@ -32,14 +32,14 @@ func step3OffThreadScenarios(): Array<(String, OffThreadScenario)> {
 /** The value comes back, and the operation itself ran on the owner thread. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runReturnsValue(): String {
-    let callerOnOwnerThread = ArkTSRuntime.context.isOnOwnerThread()
+    let callerOnOwnerThread = ArkTSRuntime.environment.isOnOwnerThread()
     let (insideOnOwnerThread, value) = ArkTSRuntime.run {
-        (ArkTSRuntime.context.isOnOwnerThread(), 42)
+        (ArkTSRuntime.environment.isOnOwnerThread(), 42)
     }
     firstFailure([
         expectEqual("value", value, 42),
         expectEqual("inside run on owner thread", insideOnOwnerThread, true),
-        expectEqual("after run, caller on owner thread", ArkTSRuntime.context.isOnOwnerThread(),
+        expectEqual("after run, caller on owner thread", ArkTSRuntime.environment.isOnOwnerThread(),
             callerOnOwnerThread)
     ])
 }
@@ -48,9 +48,9 @@ func runReturnsValue(): String {
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runUsesEngine(): String {
     let text = ArkTSRuntime.run {
-        let context = ArkTSRuntime.context
-        let s = context.string("héllo 🦀").toJSValue()
-        let n = context.number(2.5).toJSValue()
+        let js = ArkTSRuntime.js
+        let s = js.string("héllo 🦀").toJSValue()
+        let n = js.number(2.5).toJSValue()
         "${s.toString()} ${n.toNumber()}"
     }
     expectEqual("values built and read in the engine", text, "héllo 🦀 2.500000")
@@ -107,7 +107,7 @@ func runOffThreadRethrowsError(): String {
 func runNested(): String {
     let value = ArkTSRuntime.run {
         ArkTSRuntime.run {
-            (ArkTSRuntime.context.isOnOwnerThread(), 7)
+            (ArkTSRuntime.environment.isOnOwnerThread(), 7)
         }
     }
     firstFailure([
@@ -136,7 +136,7 @@ func runFromManyThreads(): String {
                     if (active.fetchAdd(1) != 0) {
                         overlaps.fetchAdd(1)
                     }
-                    let onOwnerThread = ArkTSRuntime.context.isOnOwnerThread()
+                    let onOwnerThread = ArkTSRuntime.environment.isOnOwnerThread()
                     active.fetchSub(1)
                     (onOwnerThread, id)
                 }

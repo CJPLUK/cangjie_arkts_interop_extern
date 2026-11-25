@@ -25,33 +25,33 @@ func runtimeIsBound(): String {
     expectEqual("ArkTSRuntime.isBound()", ArkTSRuntime.isBound(), true)
 }
 
-/** The bound context is the engine this test is running in. */
+/** The bound environment is the engine this test is running in. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func runtimeBoundToCallerContext(context: NativeContext, _: Array<NativeJSValue>): String {
-    let bound = ArkTSRuntime.context
+func runtimeBoundToCallerContext(js: JS, _: Array<NativeJSValue>): String {
+    let bound = ArkTSRuntime.js
     firstFailure([
-        expectEqual("same global object", bound.global.toJSValue().strictEqual(context.global.toJSValue()), true),
-        expectEqual("on owner thread", bound.isOnOwnerThread(), true)
+        expectEqual("same global object", bound.global.toJSValue().strictEqual(js.global.toJSValue()), true),
+        expectEqual("on owner thread", ArkTSRuntime.environment.isOnOwnerThread(), true)
     ])
 }
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func runtimeRebindThrows(context: NativeContext, _: Array<NativeJSValue>): String {
-    let before = ArkTSRuntime.context
+func runtimeRebindThrows(js: JS, _: Array<NativeJSValue>): String {
+    let before = ArkTSRuntime.js
     firstFailure([
         expectThrows<ArkTSContextAlreadyBoundException>("bind again", ALREADY_BOUND,
-            { => ArkTSRuntime.bind(context.session.env) }),
+            { => ArkTSRuntime.bind(ArkTSRuntime.environment.env) }),
         expectEqual("still bound", ArkTSRuntime.isBound(), true),
-        expectEqual("context unchanged", refEq(ArkTSRuntime.context, before), true)
+        expectEqual("binding unchanged", refEq(ArkTSRuntime.js, before), true)
     ])
 }
 
-/** 8 threads released together try to rebind; every one throws and the context is unchanged. */
+/** 8 threads released together try to rebind; every one throws and the binding is unchanged. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func concurrentRebindAllThrow(context: NativeContext, _: Array<NativeJSValue>): String {
-    let env = context.session.env
+func concurrentRebindAllThrow(js: JS, _: Array<NativeJSValue>): String {
+    let env = ArkTSRuntime.environment.env
     let threads = 8
-    let before = ArkTSRuntime.context
+    let before = ArkTSRuntime.js
     for (round in 0..50) {
         let barrier = Barrier(threads)
         let completed = SyncCounter(threads)
@@ -79,8 +79,8 @@ func concurrentRebindAllThrow(context: NativeContext, _: Array<NativeJSValue>): 
         for (outcome in outcomes) {
             if (!outcome.isEmpty()) { return "round ${round}: ${outcome}" }
         }
-        if (!refEq(ArkTSRuntime.context, before)) {
-            return "round ${round}: context changed"
+        if (!refEq(ArkTSRuntime.js, before)) {
+            return "round ${round}: binding changed"
         }
     }
     ""

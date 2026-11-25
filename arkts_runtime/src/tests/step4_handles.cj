@@ -9,12 +9,12 @@ func step4Scenarios(): Array<(String, Scenario)> {
     [
         ("step4.retainClassifiesEachKind", retainClassifiesEachKind),
         ("step4.payloadRoundTrip", payloadRoundTrip),
-        ("step4.retainedValueOutlivesScope", { context, _ => retainedValueOutlivesScope(context) }),
-        ("step4.rejectsForeignPayload", { context, _ => rejectsForeignPayload(context) }),
+        ("step4.retainedValueOutlivesScope", { js, _ => retainedValueOutlivesScope(js) }),
+        ("step4.rejectsForeignPayload", { js, _ => rejectsForeignPayload(js) }),
         ("step4.keepObject", keepObject),
         ("step4.checkKeptObject", checkKeptObject),
         ("step4.dropKeptObject", { _, _ => dropKeptObject() }),
-        ("step4.releaseManyHandles", { context, _ => releaseManyHandles(context) })
+        ("step4.releaseManyHandles", { js, _ => releaseManyHandles(js) })
     ]
 }
 
@@ -32,20 +32,20 @@ func unwrap(value: Extern<ArkTSRuntime>): NativeJSValue {
  * Rectangle created by ArkTS.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func valuesOfEachKind(context: NativeContext, fixtures: Array<NativeJSValue>): Array<(String, NativeJSValue, String)> {
+func valuesOfEachKind(js: JS, fixtures: Array<NativeJSValue>): Array<(String, NativeJSValue, String)> {
     [
-        ("undefined", context.undefined().toJSValue(), "Imm"),
-        ("null", context.null().toJSValue(), "Imm"),
-        ("boolean", context.boolean(true).toJSValue(), "Imm"),
-        ("number", context.number(1.5).toJSValue(), "Imm"),
-        ("string", context.string("héllo").toJSValue(), "Pin"),
-        ("bigint", context.bigint(10).toJSValue(), "Pin"),
-        ("symbol", context.symbol(description: "s").toJSValue(), "Pin"),
-        ("object", context.object().toJSValue(), "Pin"),
-        ("array", context.array([context.number(1.0).toJSValue()]).toJSValue(), "Pin"),
-        ("function", context.function({ ctx, _ => ctx.undefined().toJSValue() }).toJSValue(), "Pin"),
+        ("undefined", js.undefined().toJSValue(), "Imm"),
+        ("null", js.null().toJSValue(), "Imm"),
+        ("boolean", js.boolean(true).toJSValue(), "Imm"),
+        ("number", js.number(1.5).toJSValue(), "Imm"),
+        ("string", js.string("héllo").toJSValue(), "Pin"),
+        ("bigint", js.bigint(10).toJSValue(), "Pin"),
+        ("symbol", js.symbol(description: "s").toJSValue(), "Pin"),
+        ("object", js.object().toJSValue(), "Pin"),
+        ("array", js.array([js.number(1.0).toJSValue()]).toJSValue(), "Pin"),
+        ("function", js.function({ js, _ => js.undefined().toJSValue() }).toJSValue(), "Pin"),
         ("ArkTS class instance", fixture(fixtures, 0), "Pin"),
-        ("external", context.external(ExternalProbe()).toJSValue(), "Pin")
+        ("external", js.external(ExternalProbe()).toJSValue(), "Pin")
     ]
 }
 
@@ -54,28 +54,28 @@ func valuesOfEachKind(context: NativeContext, fixtures: Array<NativeJSValue>): A
 class ExternalProbe {}
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func retainClassifiesEachKind(context: NativeContext, fixtures: Array<NativeJSValue>): String {
-    let function = context.function({ ctx, _ => ctx.undefined().toJSValue() }).toJSValue()
+func retainClassifiesEachKind(js: JS, fixtures: Array<NativeJSValue>): String {
+    let function = js.function({ js, _ => js.undefined().toJSValue() }).toJSValue()
     let receiver = ArkTSRuntime.retain(fixture(fixtures, 0))
     firstFailure([
-        firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
+        firstFailure(valuesOfEachKind(js, fixtures).map({ entry =>
             let (name, value, kind) = entry
             expectEqual(name, ArkTSRuntime.payloadKind(ArkTSRuntime.retain(value)), kind)
         })),
         expectEqual("function with a receiver",
             ArkTSRuntime.payloadKind(ArkTSRuntime.retain(function, receiver: receiver)), "Method"),
         expectEqual("number with a receiver",
-            ArkTSRuntime.payloadKind(ArkTSRuntime.retain(context.number(1.0).toJSValue(), receiver: receiver)), "Imm")
+            ArkTSRuntime.payloadKind(ArkTSRuntime.retain(js.number(1.0).toJSValue(), receiver: receiver)), "Imm")
     ])
 }
 
 /** `evalPayload(retain(v))` is `v` itself (JS `===`); a method gives its function. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func payloadRoundTrip(context: NativeContext, fixtures: Array<NativeJSValue>): String {
-    let function = context.function({ ctx, _ => ctx.undefined().toJSValue() }).toJSValue()
+func payloadRoundTrip(js: JS, fixtures: Array<NativeJSValue>): String {
+    let function = js.function({ js, _ => js.undefined().toJSValue() }).toJSValue()
     let method = ArkTSRuntime.retain(function, receiver: ArkTSRuntime.retain(fixture(fixtures, 0)))
     firstFailure([
-        firstFailure(valuesOfEachKind(context, fixtures).map({ entry =>
+        firstFailure(valuesOfEachKind(js, fixtures).map({ entry =>
             let (name, value, _) = entry
             expectEqual("${name} === after round trip", unwrap(ArkTSRuntime.retain(value)).strictEqual(value), true)
         })),
@@ -85,19 +85,19 @@ func payloadRoundTrip(context: NativeContext, fixtures: Array<NativeJSValue>): S
 
 /** Values retained inside a scope stay usable after it closes and many others come and go. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func retainedValueOutlivesScope(context: NativeContext): String {
+func retainedValueOutlivesScope(js: JS): String {
     let probe = ExternalProbe()
-    let (keptObject, keptString, keptExternal, keptBigInt, keptSymbol) = context.runtimeFrame {
-        let o = context.object()
-        o["marker"] = context.string("kept").toJSValue()
-        (ArkTSRuntime.retain(o.toJSValue()), ArkTSRuntime.retain(context.string("héllo 🦀").toJSValue()),
-            ArkTSRuntime.retain(context.external(probe).toJSValue()),
-            ArkTSRuntime.retain(context.bigint(123456789).toJSValue()),
-            ArkTSRuntime.retain(context.symbol(description: "kept symbol").toJSValue()))
+    let (keptObject, keptString, keptExternal, keptBigInt, keptSymbol) = ArkTSRuntime.environment.runtimeFrame {
+        let o = js.object()
+        o["marker"] = js.string("kept").toJSValue()
+        (ArkTSRuntime.retain(o.toJSValue()), ArkTSRuntime.retain(js.string("héllo 🦀").toJSValue()),
+            ArkTSRuntime.retain(js.external(probe).toJSValue()),
+            ArkTSRuntime.retain(js.bigint(123456789).toJSValue()),
+            ArkTSRuntime.retain(js.symbol(description: "kept symbol").toJSValue()))
     }
     for (_ in 0..10000) {
-        context.runtimeFrame {
-            context.object()["junk"] = context.string("junk").toJSValue()
+        ArkTSRuntime.environment.runtimeFrame {
+            js.object()["junk"] = js.string("junk").toJSValue()
         }
     }
     gc(heavy: true)
@@ -106,20 +106,20 @@ func retainedValueOutlivesScope(context: NativeContext): String {
         expectEqual("string", unwrap(keptString).toString(), "héllo 🦀"),
         expectEqual("external", refEq(unwrap(keptExternal).asExternal().getData(), probe), true),
         expectEqual("bigint", Int64.fromJS(unwrap(keptBigInt)), 123456789),
-        expectEqual("symbol description", context.global.getProperty("String").call(
-            [unwrap(keptSymbol)], thisArg: context.undefined()).toString(), "Symbol(kept symbol)")
+        expectEqual("symbol description", js.global.getProperty("String").call(
+            [unwrap(keptSymbol)], thisArg: js.undefined()).toString(), "Symbol(kept symbol)")
     ])
 }
 
 /** Payloads not made by `retain` are rejected, including a bare NativeJSValue. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func rejectsForeignPayload(context: NativeContext): String {
+func rejectsForeignPayload(js: JS): String {
     let notOurs = Extern<ArkTSRuntime>(42)
     firstFailure([
         expectThrows<ExternConversionException>("Int64 payload", FOREIGN_PAYLOAD,
             { => ArkTSRuntime.evalPayload(42) }),
         expectThrows<ExternConversionException>("bare NativeJSValue payload", FOREIGN_PAYLOAD,
-            { => ArkTSRuntime.evalPayload(context.number(1.0).toJSValue()) }),
+            { => ArkTSRuntime.evalPayload(js.number(1.0).toJSValue()) }),
         expectThrows<ExternConversionException>("Extern(42)", FOREIGN_PAYLOAD,
             { => unwrap(notOurs) }),
         expectThrows<ExternConversionException>("Extern(42) called", FOREIGN_PAYLOAD,
@@ -140,12 +140,12 @@ var keptObject: ?Extern<ArkTSRuntime> = None
 var keptPrimitives: ?Array<Extern<ArkTSRuntime>> = None
 /** fixtures[0] is a Rectangle that ArkTS will stop referring to. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func keepObject(context: NativeContext, fixtures: Array<NativeJSValue>): String {
+func keepObject(js: JS, fixtures: Array<NativeJSValue>): String {
     keptObject = ArkTSRuntime.retain(fixture(fixtures, 0))
     keptPrimitives = Some([
-        ArkTSRuntime.retain(context.string(String(Array<Rune>(4096, repeat: r'é')))),
-        ArkTSRuntime.retain(context.bigint(123456789)),
-        ArkTSRuntime.retain(context.symbol(description: "survives JS GC"))
+        ArkTSRuntime.retain(js.string(String(Array<Rune>(4096, repeat: r'é')))),
+        ArkTSRuntime.retain(js.bigint(123456789)),
+        ArkTSRuntime.retain(js.symbol(description: "survives JS GC"))
     ])
     ""
 }
@@ -155,18 +155,18 @@ func keepObject(context: NativeContext, fixtures: Array<NativeJSValue>): String 
  * Extern must be that very object. Sets its width to 7 so ArkTS can check the effect.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func checkKeptObject(context: NativeContext, fixtures: Array<NativeJSValue>): String {
+func checkKeptObject(js: JS, fixtures: Array<NativeJSValue>): String {
     let kept = keptObject ?? return "step4.keepObject has not run"
     let result = expectEqual("kept === object behind the WeakRef", unwrap(kept).strictEqual(fixture(fixtures, 0)), true)
-    unwrap(kept).asObject()["width"] = context.number(7.0).toJSValue()
+    unwrap(kept).asObject()["width"] = js.number(7.0).toJSValue()
     let primitives = keptPrimitives.getOrThrow()
     firstFailure([
         result,
         expectEqual("string after JS GC", ArkTSRuntime.fromExtern<String>(primitives[0]),
             String(Array<Rune>(4096, repeat: r'é'))),
         expectEqual("bigint after JS GC", ArkTSRuntime.fromExtern<Int64>(primitives[1]), 123456789),
-        expectEqual("symbol after JS GC", context.global.getProperty("String").call(
-            [unwrap(primitives[2])], thisArg: context.undefined()).toString(), "Symbol(survives JS GC)")
+        expectEqual("symbol after JS GC", js.global.getProperty("String").call(
+            [unwrap(primitives[2])], thisArg: js.undefined()).toString(), "Symbol(survives JS GC)")
     ])
 }
 
@@ -191,9 +191,9 @@ func step4OffThreadScenarios(): Array<(String, OffThreadScenario)> {
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func retainedValueCrossesThreads(): String {
     let kept = ArkTSRuntime.run {
-        let context = ArkTSRuntime.context
-        let o = context.object()
-        o["marker"] = context.string("crossed").toJSValue()
+        let js = ArkTSRuntime.js
+        let o = js.object()
+        o["marker"] = js.string("crossed").toJSValue()
         ArkTSRuntime.retain(o.toJSValue())
     }
     let marker = ArkTSRuntime.run {
@@ -210,7 +210,7 @@ func retainedValueCrossesThreads(): String {
 func releaseHandlesFromOtherThread(): String {
     for (i in 0..10000) {
         let kept = ArkTSRuntime.run {
-            ArkTSRuntime.retain(ArkTSRuntime.context.object().toJSValue())
+            ArkTSRuntime.retain(ArkTSRuntime.js.object().toJSValue())
         }
         if (ArkTSRuntime.payloadKind(kept) != "Pin") {
             return "object ${i} not retained as Pin"
@@ -218,17 +218,17 @@ func releaseHandlesFromOtherThread(): String {
     }
     gc(heavy: true)
     let text = ArkTSRuntime.run {
-        ArkTSRuntime.context.string("still working").toJSValue().toString()
+        ArkTSRuntime.js.string("still working").toJSValue().toString()
     }
     expectEqual("engine after release", text, "still working")
 }
 
 /** Retains and drops 100 000 objects, each created in its own scope, then runs the Cangjie GC. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func releaseManyHandles(context: NativeContext): String {
+func releaseManyHandles(js: JS): String {
     for (i in 0..100000) {
-        let kept = context.runtimeFrame {
-            ArkTSRuntime.retain(context.object().toJSValue())
+        let kept = ArkTSRuntime.environment.runtimeFrame {
+            ArkTSRuntime.retain(js.object().toJSValue())
         }
         if (ArkTSRuntime.payloadKind(kept) != "Pin") {
             return "object ${i} not retained as Pin"

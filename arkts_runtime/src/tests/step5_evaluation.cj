@@ -149,12 +149,12 @@ func extractedMethodKeepsThis(fixtures: Array<NativeJSValue>): String {
  * method stored in the array, has `this` = the array. ArkTS checks the second.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func indexCallThis(context: NativeContext, fixtures: Array<NativeJSValue>): String {
+func indexCallThis(js: JS, fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
     let log = ext(fixtures, 1)
     e["record"](1.0)
     let byName = unwrap(log.self).strictEqual(fixture(fixtures, 0))
-    fixture(fixtures, 0).asObject()["list"] = context.array([fixture(fixtures, 0).getProperty("record")]).toJSValue()
+    fixture(fixtures, 0).asObject()["list"] = js.array([fixture(fixtures, 0).getProperty("record")]).toJSValue()
     e.list[0](1.0)
     firstFailure([
         expectEqual("e[\"record\"](): this === target", byName, true),
@@ -212,9 +212,9 @@ func callNonFunction(fixtures: Array<NativeJSValue>): String {
  * ArkTS checks items == [55, 77, 99] (length 3), str == "via string", num == 4.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func indexReadWrite(context: NativeContext, fixtures: Array<NativeJSValue>): String {
+func indexReadWrite(js: JS, fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
-    let symbol = ArkTSRuntime.retain(context.symbol(description: "k").toJSValue())
+    let symbol = ArkTSRuntime.retain(js.symbol(description: "k").toJSValue())
     let readChecks = [
         expectEqual("e.items[1] (Int64)", number(e.items[1]), 20.0),
         expectEqual("e.items[0.0] (Float64 key)", number(e.items[0.0]), 10.0),
@@ -253,23 +253,23 @@ func indexReadWrite(context: NativeContext, fixtures: Array<NativeJSValue>): Str
  * `undefined` past the end. ArkTS checks items.length == 0.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func indexBoundaries(context: NativeContext, fixtures: Array<NativeJSValue>): String {
+func indexBoundaries(js: JS, fixtures: Array<NativeJSValue>): String {
     let a = ext(fixtures, 0)
-    func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
+    func num(n: Float64): E { ArkTSRuntime.retain(js.number(n).toJSValue()) }
     let reads = [
         expectThrows<ExternIndexedAccessException>("a[3] (just past the end)", "allowed: [0, 3), given: 3",
             { => a[3] }),
         expectThrows<ExternIndexedAccessException>("a[-1]", "given: -1", { => a[-1] }),
         expectEqual("a[Extern 5] (a key: undefined past the end)", ArkTSRuntime.isUndefined(a[num(5.0)]), true)
     ]
-    let prototype = context.global.getProperty("Array").getProperty("prototype")
-    let reflect = context.global.getProperty("Reflect")
-    prototype.setProperty("5", context.number(7.0).toJSValue())
+    let prototype = js.global.getProperty("Array").getProperty("prototype")
+    let reflect = js.global.getProperty("Reflect")
+    prototype.setProperty("5", js.number(7.0).toJSValue())
     let inherited = try {
         expectThrows<ExternIndexedAccessException>("a[5] with Array.prototype[5] set", "allowed: [0, 3), given: 5",
             { => a[5] })
     } finally {
-        reflect.getProperty("deleteProperty").call([prototype, context.string("5").toJSValue()], thisArg: reflect)
+        reflect.getProperty("deleteProperty").call([prototype, js.string("5").toJSValue()], thisArg: reflect)
     }
     func outcome(write: () -> Unit): String {
         try {
@@ -351,9 +351,9 @@ func indexWriteOrder(fixtures: Array<NativeJSValue>): String {
  * not Cangjie's "1.500000"), integral or not: -0 is "0".
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func numberKeys(context: NativeContext, fixtures: Array<NativeJSValue>): String {
+func numberKeys(js: JS, fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)
-    func num(n: Float64): E { ArkTSRuntime.retain(context.number(n).toJSValue()) }
+    func num(n: Float64): E { ArkTSRuntime.retain(js.number(n).toJSValue()) }
     e[num(1e21)] = "huge"
     e[num(0.25)] = "quarter"
     e[num(-0.0)] = "zero"
@@ -413,7 +413,7 @@ func longChainLoop(fixtures: Array<NativeJSValue>): String {
 /** Every operation dispatched from a spawned thread through its own `run`. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func operationsFromOtherThread(): String {
-    let o = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.context.object().toJSValue()) }
+    let o = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.js.object().toJSValue()) }
     o.x = 1.5
     o.items = [1.0, 2.0]
     o.items[1] = 2.5

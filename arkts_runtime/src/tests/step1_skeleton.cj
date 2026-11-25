@@ -10,7 +10,7 @@ func step1Scenarios(): Array<(String, Scenario)> {
         ("step1.alreadyBoundExceptionNames", { _, _ => alreadyBoundExceptionNames() }),
         ("step1.dynamicSyntaxReachesRuntime", { _, _ => dynamicSyntaxReachesRuntime() }),
         ("step1.extendHelperReachable", { _, _ => extendHelperReachable() }),
-        ("step1.directNapiProbe", { context, _ => directNapiProbe(context) }),
+        ("step1.directNapiProbe", { _, _ => directNapiProbe() }),
         ("step1.internalVisibleToSubpackage", { _, _ => internalVisibleToSubpackage() })
     ]
 }
@@ -59,9 +59,9 @@ foreign func napi_get_undefined(env: CPointer<Unit>, result: CPointer<CPointer<U
 foreign func napi_typeof(env: CPointer<Unit>, value: CPointer<Unit>, result: CPointer<Int32>): Int32
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func directNapiProbe(context: NativeContext): String {
-    let env = context.getNapiEnv()
-    if (env.isNull()) { return "getNapiEnv returned null" }
+func directNapiProbe(): String {
+    let env = ArkTSRuntime.environment.env
+    if (env.isNull()) { return "the bound environment's env is null" }
     var value = CPointer<Unit>()
     var kind: Int32 = -1
     let status = unsafe { napi_get_undefined(env, inout value) }

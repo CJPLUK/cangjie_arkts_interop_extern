@@ -4,7 +4,7 @@ import std.collection.HashMap
 import std.sync.Mutex
 import std.sync.SyncCounter
 
-foreign func ats_rt_ext_bind(env: NativeEnv, callback: CFunc<(Int64, Int32) -> Unit>): CPointer<Unit>
+foreign func ats_rt_ext_bind(env: NapiEnv, callback: CFunc<(Int64, Int32) -> Unit>): CPointer<Unit>
 @FastNative
 foreign func ats_rt_ext_release_state(state: CPointer<Unit>): Unit
 @FastNative
@@ -25,7 +25,7 @@ foreign func ats_rt_ext_drain(state: CPointer<Unit>): Unit
 foreign func ats_rt_ext_pin(state: CPointer<Unit>, value: NapiValue, pin: CPointer<CPointer<Unit>>): Int32
 @FastNative
 foreign func ats_rt_ext_pin_value(state: CPointer<Unit>, pin: CPointer<Unit>, value: CPointer<NapiValue>): Int32
-// Only queues deletion (or frees dead-session bookkeeping); never invokes callbacks.
+// Only queues deletion (or frees a dead environment's bookkeeping); never invokes callbacks.
 @FastNative
 foreign func ats_rt_ext_unpin(pin: CPointer<Unit>): Unit
 
@@ -49,28 +49,31 @@ private enum NativeResult<R> {
     | Failed(Error)
 }
 
-/** Owns dispatch and lifecycle bookkeeping for a borrowed environment; used only through ArkTSRuntime. */
-class NativeSession {
-    private let environment: NativeEnv
+/**
+ * The bound environment: owns frames, posting, pins, the pin cache, the owner check and the
+ * borrowed raw env. Used only through ArkTSRuntime.
+ */
+class Environment {
+    private let raw: NapiEnv
     let state: CPointer<Unit>
     let pinCache = PinCache()
 
-    init(env: NativeEnv) {
+    init(env: NapiEnv) {
         if (env.isNull()) { throw IllegalArgumentException("ArkTS environment is null") }
-        environment = env
+        raw = env
         state = unsafe { ats_rt_ext_bind(env, ats_rt_ext_executeNativeTask) }
         if (state.isNull()) { throw ForeignRuntimeException("Cannot initialize ArkTS dispatch queue") }
     }
 
     ~init() { unsafe { ats_rt_ext_release_state(state) } }
 
-    prop env: NativeEnv {
+    prop env: NapiEnv {
         get() {
             // One leaf call checks the tombstone and native OS thread together.
             let status = unsafe { ats_rt_ext_access_status(state) }
             if (status == 1) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
             if (status != 0) { throw ForeignRuntimeException("Thread mismatch") }
-            environment
+            raw
         }
     }
     func isOnOwnerThread(): Bool { unsafe { ats_rt_ext_is_owner(state) != 0 } }

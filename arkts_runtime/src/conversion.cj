@@ -31,11 +31,11 @@ extend<T> TypeTag<T> <: JSReader where T <: FromJS<T> {
 }
 
 private func jsNumber(n: Float64): NativeJSValue {
-    ArkTSRuntime.context.number(n).toJSValue()
+    ArkTSRuntime.js.number(n).toJSValue()
 }
 
 private func jsBigInt(n: BigInt): NativeJSValue {
-    ArkTSRuntime.context.bigint(n).toJSValue()
+    ArkTSRuntime.js.bigint(n).toJSValue()
 }
 
 private func mismatch(value: NativeJSValue, target: String): ExternConversionException {
@@ -90,7 +90,7 @@ extend Unit <: ToJS & FromJS<Unit> {
 }
 
 extend Bool <: ToJS & FromJS<Bool> {
-    public func toJS(): NativeJSValue { ArkTSRuntime.context.boolean(this).toJSValue() }
+    public func toJS(): NativeJSValue { ArkTSRuntime.js.boolean(this).toJSValue() }
     public static func fromJS(value: NativeJSValue): Bool {
         if (!value.isBoolean()) { throw mismatch(value, "Bool") }
         value.toBoolean()
@@ -119,7 +119,7 @@ extend Int32 <: ToJS & FromJS<Int32> {
 }
 
 extend Int64 <: ToJS & FromJS<Int64> {
-    public func toJS(): NativeJSValue { ArkTSRuntime.context.bigint(this).toJSValue() }
+    public func toJS(): NativeJSValue { ArkTSRuntime.js.bigint(this).toJSValue() }
     public static func fromJS(value: NativeJSValue): Int64 {
         readBigInt(value, "Int64", BigInt(Int64.Min), BigInt(Int64.Max)).toInt64()
     }
@@ -177,7 +177,7 @@ extend BigInt <: ToJS & FromJS<BigInt> {
 }
 
 extend String <: ToJS & FromJS<String> {
-    public func toJS(): NativeJSValue { ArkTSRuntime.context.string(this).toJSValue() }
+    public func toJS(): NativeJSValue { ArkTSRuntime.js.string(this).toJSValue() }
     public static func fromJS(value: NativeJSValue): String {
         if (!value.isString()) { throw mismatch(value, "String") }
         value.toString()
@@ -205,10 +205,10 @@ extend<T> Option<T> <: ToJS & FromJS<Option<T>> {
 extend<T> Array<T> <: ToJS & FromJS<Array<T>> {
     public func toJS(): NativeJSValue {
         if (let Some(numbers) <- (this as Array<Float64>)) {
-            return ArkTSRuntime.context.numberArray(numbers)
+            return ArkTSRuntime.js.numberArray(numbers)
         }
         let elements = Array<NativeJSValue>(this.size) { i => ArkTSRuntime.toJSValue(this[i]) }
-        ArkTSRuntime.context.array(elements).toJSValue()
+        ArkTSRuntime.js.array(elements).toJSValue()
     }
 
     public static func fromJS(value: NativeJSValue): Array<T> {

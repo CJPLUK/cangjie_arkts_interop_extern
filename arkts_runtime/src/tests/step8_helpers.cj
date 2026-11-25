@@ -37,7 +37,7 @@ func foreignPayloadFails(what: String, block: () -> Any): String {
  * isNull are true only for their own kind.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func undefinedAndNull(context: NativeContext, fixtures: Array<NativeJSValue>): String {
+func undefinedAndNull(js: JS, fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
     sink.u = ArkTSRuntime.undefined()
     sink.n = ArkTSRuntime.null()
@@ -51,7 +51,7 @@ func undefinedAndNull(context: NativeContext, fixtures: Array<NativeJSValue>): S
         ("0n", to(0)),
         ("object", ArkTSRuntime.object()),
         ("array", to(Array<Int32>())),
-        ("function", ArkTSRuntime.retain(context.global.getProperty("String"))),
+        ("function", ArkTSRuntime.retain(js.global.getProperty("String"))),
         ("symbol", ArkTSRuntime.symbol()),
         ("class instance", ext(fixtures, 1))
     ]

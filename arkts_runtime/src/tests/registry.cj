@@ -12,7 +12,7 @@ import arkts_runtime.*
  * returns "" on success or a failure message.
  */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-type Scenario = (NativeContext, Array<NativeJSValue>) -> String
+type Scenario = (JS, Array<NativeJSValue>) -> String
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func allScenarios(): Array<(String, Scenario)> {
@@ -52,11 +52,11 @@ public func scenarioNames(): Array<String> {
 
 /** Runs the scenario called `name`. Exceptions become failure messages. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func runScenario(context: NativeContext, name: String, fixtures: Array<NativeJSValue>): String {
+func runScenario(js: JS, name: String, fixtures: Array<NativeJSValue>): String {
     for ((scenarioName, scenario) in concat([allScenarios(), lifetimeScenarios()])) {
         if (scenarioName == name) {
             return try {
-                scenario(context, fixtures)
+                scenario(js, fixtures)
             } catch (e: Exception) {
                 "unexpected exception ${e}"
             }
@@ -127,10 +127,10 @@ func fixture(fixtures: Array<NativeJSValue>, index: Int64): NativeJSValue {
 /** Consumer adapter: ArkTS fixtures are transferred through a JS-owned array in this env. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 public func runNativeScenario(env: CPointer<Unit>, name: String): String {
-    let context = ArkTSRuntime.context
-    if (context.session.env.toUIntNative() != env.toUIntNative()) {
+    let js = ArkTSRuntime.js
+    if (ArkTSRuntime.environment.env.toUIntNative() != env.toUIntNative()) {
         return "Runtime is bound to a different host environment"
     }
-    let fixtures = context.global.getProperty("__arkts_test_fixtures")
-    runScenario(context, name, Array<NativeJSValue>(fixtures.size) { i => fixtures[i] })
+    let fixtures = js.global.getProperty("__arkts_test_fixtures")
+    runScenario(js, name, Array<NativeJSValue>(fixtures.size) { i => fixtures[i] })
 }

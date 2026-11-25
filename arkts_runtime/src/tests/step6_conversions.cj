@@ -205,7 +205,7 @@ func externInputs(fixtures: Array<NativeJSValue>): String {
 func conversionFailures(fixtures: Array<NativeJSValue>): String {
     let v = ext(fixtures, 0)
     let external = ArkTSRuntime.run {
-        ArkTSRuntime.retain(ArkTSRuntime.context.external(ExternalProbe()).toJSValue())
+        ArkTSRuntime.retain(ArkTSRuntime.js.external(ExternalProbe()).toJSValue())
     }
     func fails(what: String, fragment: String, block: () -> Any): String {
         expectThrows<ExternConversionException>(what, fragment, block)

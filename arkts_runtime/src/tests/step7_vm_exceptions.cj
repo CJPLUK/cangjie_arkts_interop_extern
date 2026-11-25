@@ -91,7 +91,7 @@ func usableAfterJSException(fixtures: Array<NativeJSValue>): String {
 /** `JSON.parse("{")` from a spawned thread: the SyntaxError is rethrown on this thread. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func jsExceptionFromOtherThread(): String {
-    let json = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.context.global.getProperty("JSON")) }
+    let json = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.js.global.getProperty("JSON")) }
     firstFailure([
         expectThrows<ForeignRuntimeException>("JSON.parse(\"{\")", "SyntaxError", { => json.parse("{") }),
         expectEqual("JSON.parse(\"1\") afterwards", from<Float64>(json.parse("1")), 1.0)
