@@ -77,16 +77,21 @@ function format(row: Row): string {
 struct Index {
   @State status: string = 'running';
   @State lines: string[] = [];
+  @State header: string = 'benchmark | N | ark_interop ns/op | arkts_runtime ns/op | ratio | heap KB';
 
   aboutToAppear(): void {
     const suite = AppStorage.get<string>('suite');
+    if (suite === 'dispatch') {
+      this.header = 'case | N | type probes ns/op | reflective ns/op | saving ns';
+    }
     setTimeout(() => suite === 'dispatch' ? this.runDispatch() : this.runAll(), 500);
   }
 
   /**
    * Times each dispatch case through the type probes and the reflective conversion. The two
    * variants alternate within each run, and their order flips from run to run, so drift in
-   * the CPU's speed falls on both. Logs DISPATCH|case|N|probes ns/op|reflective ns/op|saving.
+   * the CPU's speed falls on both. Logs DISPATCH|case|N|probes ns/op|reflective ns/op|saving,
+   * each the median over the runs; the saving is the median of each run's paired difference.
    */
   async runDispatch(): Promise<void> {
     hilog.info(DOMAIN, TAG, 'START');
@@ -109,8 +114,9 @@ struct Index {
         }
         const probes = median(runs[0]) / DISPATCH_ITERATIONS;
         const reflective = median(runs[1]) / DISPATCH_ITERATIONS;
+        const saving = median(runs[1].map((r: number, i: number) => r - runs[0][i])) / DISPATCH_ITERATIONS;
         const line = `${name}|${DISPATCH_ITERATIONS}|${probes.toFixed(1)}|${reflective.toFixed(1)}|` +
-          `${(reflective - probes).toFixed(1)}`;
+          `${saving.toFixed(1)}`;
         hilog.info(DOMAIN, TAG, 'DISPATCH|%{public}s', line);
         this.lines.push(line);
       } catch (e) {
@@ -165,7 +171,7 @@ struct Index {
   build() {
     Column() {
       Text(this.status).fontSize(18).margin({ bottom: 8 })
-      Text('benchmark | N | ark_interop ns/op | arkts_runtime ns/op | ratio | heap KB').fontSize(11)
+      Text(this.header).fontSize(11)
       List() {
         ForEach(this.lines, (line: string) => {
           ListItem() {

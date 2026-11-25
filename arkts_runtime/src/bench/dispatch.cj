@@ -21,41 +21,52 @@ var dispatchSink: Float64 = 0.0
 class DispatchCase {
     DispatchCase(
         let name: String,
-        let value: (JS) -> NativeJSValue,
-        let probes: (NativeJSValue, Int64) -> Unit,
+        let makeValue: (JS) -> NativeJSValue,
+        let typeProbes: (NativeJSValue, Int64) -> Unit,
         let reflective: (NativeJSValue, Int64) -> Unit
     ) {}
 }
 
 /** `R` reaches both paths as a type parameter, as it does through `fromExtern<R>`. */
 @When[bundle == "com.example.arkts.benchmarks"]
-func dispatchCase<R>(name: String, value: (JS) -> NativeJSValue, consume: (R) -> Float64): DispatchCase {
-    DispatchCase(name, value,
+func dispatchCase<R>(name: String, makeValue: (JS) -> NativeJSValue, consume: (R) -> Float64): DispatchCase {
+    DispatchCase(name, makeValue,
         { v, n => for (_ in 0..n) { dispatchSink += consume(probedFromJSValue<R>(v)) } },
         { v, n => for (_ in 0..n) { dispatchSink += consume(ArkTSRuntime.fromJSValueReflective<R>(v)) } })
 }
 
 @When[bundle == "com.example.arkts.benchmarks"]
-func flag(b: Bool): Float64 { if (b) { 1.0 } else { 0.0 } }
+func asNumber(b: Bool): Float64 { if (b) { 1.0 } else { 0.0 } }
 
-/** The probe table's order is `probedFromJSValue`'s: a later type pays for every earlier miss. */
+/**
+ * In `probeTable`'s order: a type later in the table pays for every earlier miss. The last case
+ * misses every row, so its type probes are pure overhead before the reflective conversion.
+ */
 @When[bundle == "com.example.arkts.benchmarks"]
 func dispatchCases(): Array<DispatchCase> {
     [
         dispatchCase<Float64>("Float64", { js => js.number(1.5) }, { r => r }),
-        dispatchCase<Bool>("Bool", { js => js.boolean(true) }, { r => flag(r) }),
+        dispatchCase<Bool>("Bool", { js => js.boolean(true) }, { r => asNumber(r) }),
         dispatchCase<String>("String", { js => js.string("abcdefghij") }, { r => Float64(r.size) }),
         dispatchCase<Int64>("Int64", { js => js.bigint(Int64(7)) }, { r => Float64(r) }),
         dispatchCase<Int32>("Int32", { js => js.number(7.0) }, { r => Float64(r) }),
+        dispatchCase<Int16>("Int16", { js => js.number(7.0) }, { r => Float64(r) }),
+        dispatchCase<Int8>("Int8", { js => js.number(7.0) }, { r => Float64(r) }),
+        dispatchCase<UInt64>("UInt64", { js => js.bigint(UInt64(7)) }, { r => Float64(r) }),
+        dispatchCase<UInt32>("UInt32", { js => js.number(7.0) }, { r => Float64(r) }),
+        dispatchCase<UInt16>("UInt16", { js => js.number(7.0) }, { r => Float64(r) }),
         dispatchCase<UInt8>("UInt8", { js => js.number(7.0) }, { r => Float64(r) }),
         dispatchCase<Float32>("Float32", { js => js.number(1.5) }, { r => Float64(r) }),
-        dispatchCase<BigInt>("BigInt", { js => js.bigint(Int64(123456789)) }, { r => flag(r.sign < 0) }),
+        dispatchCase<Float16>("Float16", { js => js.number(1.5) }, { r => Float64(r) }),
+        dispatchCase<BigInt>("BigInt", { js => js.bigint(Int64(123456789)) }, { r => asNumber(r.sign < 0) }),
         dispatchCase<Unit>("Unit", { js => js.undefined() }, { _ => 1.0 }),
         dispatchCase<Option<Float64>>("Option<Float64>", { js => js.number(1.5) }, { r => r ?? 0.0 }),
         dispatchCase<Option<Float64>>("Option<Float64>.None", { js => js.undefined() }, { r => r ?? 0.0 }),
         dispatchCase<Option<String>>("Option<String>", { js => js.string("abcdefghij") },
             { r => Float64((r ?? "").size) }),
-        dispatchCase<Option<Bool>>("Option<Bool>", { js => js.boolean(true) }, { r => flag(r ?? false) })
+        dispatchCase<Option<Bool>>("Option<Bool>", { js => js.boolean(true) }, { r => asNumber(r ?? false) }),
+        dispatchCase<Option<Int32>>("Option<Int32>.missesEveryRow", { js => js.number(7.0) },
+            { r => Float64(r ?? 0) })
     ]
 }
 
@@ -67,7 +78,7 @@ public func dispatchCaseNames(): Array<String> {
 
 /**
  * Reads case `name`'s value `iterations` times on the owner thread, through `variant`
- * ("probes" or "reflective"), and returns the elapsed nanoseconds. The value is made before
+ * ("probes", through the type probes, or "reflective"), and returns the elapsed nanoseconds. The value is made before
  * the clock starts.
  */
 @When[bundle == "com.example.arkts.benchmarks"]
@@ -75,12 +86,12 @@ public func timeDispatch(name: String, variant: String, iterations: Int64): Int6
     for (c in dispatchCases()) {
         if (c.name != name) { continue }
         let loop = match (variant) {
-            case "probes" => c.probes
+            case "probes" => c.typeProbes
             case "reflective" => c.reflective
             case _ => throw IllegalArgumentException("unknown variant ${variant}")
         }
         return ArkTSRuntime.run {
-            let value = c.value(ArkTSRuntime.js)
+            let value = c.makeValue(ArkTSRuntime.js)
             let start = MonoTime.now()
             loop(value, iterations)
             (MonoTime.now() - start).toNanoseconds()

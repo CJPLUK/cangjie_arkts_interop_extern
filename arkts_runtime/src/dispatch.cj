@@ -77,8 +77,8 @@ func asR<R>(value: Any): R {
 }
 
 /**
- * One type `probedFromJSValue` reads directly: its probe, the two probes that tell an interface
- * it shares apart from the type itself (see `probeOf`), and its reader.
+ * One type `probedFromJSValue` reads directly: its type probe, the two type probes that tell an
+ * interface it shares apart from the type itself (see `probeOf`), and its reader.
  */
 class ProbeRow {
     ProbeRow(let probe: Any, let rival: Any, let sentinel: Any, let read: (NativeJSValue) -> Any) {}
