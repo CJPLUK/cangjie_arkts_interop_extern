@@ -45,7 +45,10 @@ The results below are medians in ns per conversion. They come from a Huawei ALN-
 
 The samples do not overlap. For each of the three deciding types, the slowest probed sample is at least 280 ns faster than the fastest reflective one. A type later in the probe table pays for every earlier miss, yet even the last row, `Option<Bool>`, saves 248 ns. The probes stay.
 
+Since the probes stay, the 18 repeated match blocks became one table, `probeTable`, with one row (probe, rival, sentinel, reader) per type. This moved the probed timings by -21 to +19 ns per case, which is within run-to-run noise (`results/dispatch-ALN-AL80-2026-11-25-1356.csv`).
+
 ## Consequences
 
 - Scalar and option conversions cost a few type checks against preallocated probes.
+- Reading a further type directly means adding a row to `probeTable`, at the position its frequency deserves.
 - The rival and sentinel scheme is subtle. The measurement above is what justifies it, and `run.sh --dispatch` repeats it.
