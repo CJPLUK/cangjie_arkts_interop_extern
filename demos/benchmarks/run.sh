@@ -5,6 +5,9 @@
 #   ./run.sh                          # first connected device
 #   DEVICE=127.0.0.1:5555 ./run.sh
 #   ./run.sh --all                    # every connected device, one after the other
+#   ./run.sh --dispatch               # only the dispatch benchmark (issue #7, ADR-0006):
+#                                     # fromExtern's type probes against the reflective
+#                                     # conversion; writes results/dispatch-<device>-<date>.csv
 #
 # Only writes files under results/ and .devicetest/; never runs git.
 set -e
@@ -21,9 +24,14 @@ RESULTS="$HERE/results"
 TIMEOUT=300
 
 ALL=false
-if [ "$1" = "--all" ]; then
-    ALL=true
-fi
+SUITE=pairs
+for arg in "$@"; do
+    case "$arg" in
+        --all) ALL=true ;;
+        --dispatch) SUITE=dispatch ;;
+        *) echo "unknown argument $arg"; exit 1 ;;
+    esac
+done
 
 # Same environment as devicetest.sh (hvigor's Cangjie support outside the IDE).
 mkdir -p "$WORK/node_modules/@ohos" "$RESULTS"
@@ -382,7 +390,7 @@ for device in $DEVICES; do
     "$HDC" -t "$device" shell hilog -T ArkTSBench > "$log" 2>/dev/null &
     reader=$!
     sleep 1
-    "$HDC" -t "$device" shell aa start -a EntryAbility -b "$BUNDLE" > /dev/null
+    "$HDC" -t "$device" shell aa start -a EntryAbility -b "$BUNDLE" --ps suite "$SUITE" > /dev/null
 
     waited=0
     while :; do
@@ -409,10 +417,23 @@ for device in $DEVICES; do
     model="$("$HDC" -t "$device" shell param get const.product.model | tr -d '\r' | sed 's/[[:space:]]*$//' | tr -c 'A-Za-z0-9\n-' '_')"
     stamp="$(date +%Y-%m-%d-%H%M)"
     lines="$WORK/results.txt"
-    # Some devices log every line twice.
-    sed -n 's/.*RESULT|//p' "$log" | tr -d '\r' | awk '!seen[$0]++' > "$lines"
     base="$RESULTS/$model-$stamp"
-    write_results "$lines" "$model" "$stamp" "$base"
+    if [ "$SUITE" = dispatch ]; then
+        # Some devices log every line twice.
+        sed -n 's/.*DISPATCH|//p' "$log" | tr -d '\r' | awk '!seen[$0]++' > "$lines"
+        # Not <device>-*.csv: those are the paired suite's chart history.
+        base="$RESULTS/dispatch-$model-$stamp"
+        {
+            echo "date,device,build,case,iterations,probes_ns_per_op,reflective_ns_per_op,saving_ns"
+            while IFS='|' read -r name n probes reflective saving; do
+                echo "$stamp,$model,$BUILD_MODE,$name,$n,$probes,$reflective,$saving"
+            done < "$lines"
+        } > "$base.csv"
+    else
+        # Some devices log every line twice.
+        sed -n 's/.*RESULT|//p' "$log" | tr -d '\r' | awk '!seen[$0]++' > "$lines"
+        write_results "$lines" "$model" "$stamp" "$base"
+    fi
     # Keep complete sample groups alongside the report, outside chart-history CSVs.
     sed -n -e 's/.*SAMPLE|/I|/p' -e 's/.*SAMPLES|/A|/p' "$log" | tr -d '\r' | awk -F'|' '
         BEGIN { OFS="\t"; print "benchmark", "variant", "sample", "iterations", "total_ns" }
@@ -424,7 +445,7 @@ for device in $DEVICES; do
             }
         }
     ' > "$base.samples.tsv"
-    echo "== $(wc -l < "$lines" | tr -d ' ') results: $base.csv, $base.html"
+    echo "== $(wc -l < "$lines" | tr -d ' ') results: $base.csv$([ "$SUITE" = dispatch ] || echo ", $base.html")"
     column -t -s '|' "$lines" | sed 's/^/  /'
 done
 exit $FAILED

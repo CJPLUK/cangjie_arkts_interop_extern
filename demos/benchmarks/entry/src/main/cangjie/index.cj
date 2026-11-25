@@ -11,4 +11,6 @@ let EXPORT_MODULE = JSModule.registerModule {
     exports["benchmarkNames"] = context.function(benchmarkNames).toJSValue()
     exports["iterations"] = context.function(iterationsOf).toJSValue()
     exports["runBenchmark"] = context.function(runBenchmark).toJSValue()
+    exports["dispatchCases"] = context.function(dispatchCasesOf).toJSValue()
+    exports["timeDispatch"] = context.function(timeDispatchOf).toJSValue()
 }

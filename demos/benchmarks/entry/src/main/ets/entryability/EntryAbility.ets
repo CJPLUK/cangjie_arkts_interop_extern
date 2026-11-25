@@ -5,6 +5,8 @@ import { window } from '@kit.ArkUI';
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
+    // run.sh --dispatch starts the app with `--ps suite dispatch`; Index reads it.
+    AppStorage.setOrCreate('suite', String(want.parameters?.['suite'] ?? 'pairs'));
   }
 
   onDestroy(): void {

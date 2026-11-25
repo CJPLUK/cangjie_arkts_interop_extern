@@ -4,7 +4,8 @@
 #   ./hostcheck.sh
 #
 # 1. Type-checks the Cangjie package with the SDK compiler, as shipped and for the test app's
-#    bundle (see @When[bundle == ...]), then the step tests' package against the latter.
+#    bundle (see @When[bundle == ...]), then the step tests' package against the latter; then
+#    again for the benchmarks app's bundle, with the dispatch benchmark's package.
 # 2. Syntax-checks the native sources against the SDK's N-API headers.
 # 3. Builds and runs native/budget_test.cpp (ADR-0002).
 #
@@ -16,6 +17,7 @@ DEVECO="${DEVECO_HOME:-/Applications/DevEco-Studio.app/Contents}"
 CANGJIE_SDK="${CANGJIE_SDK:-$HOME/.cangjie-sdk/6.1/cangjie}"
 SYSROOT_INCLUDE="$DEVECO/sdk/default/openharmony/native/sysroot/usr/include"
 TEST_BUNDLE=com.example.testArkTSForeignRuntime
+BENCH_BUNDLE=com.example.arkts.benchmarks
 WORK="$ROOT/.hostcheck"
 
 # The SDK's cjc reads its standard library from CANGJIE_HOME; a host Cangjie install's value breaks it.
@@ -36,6 +38,9 @@ cjc_package src shipped
 cjc_package src "$TEST_BUNDLE"
 # The step tests are their own package, arkts_runtime.tests, compiled against the one above.
 cjc_package src/tests "$TEST_BUNDLE"
+# The dispatch benchmark (issue #7) is its own package too, built only by the benchmarks app.
+cjc_package src "$BENCH_BUNDLE"
+cjc_package src/bench "$BENCH_BUNDLE"
 
 # -idirafter: the host's libc headers win, and only napi/ and info/ come from the device sysroot.
 # Both build modes: release (-DNDEBUG) compiles out the fused ops' worst-case check.

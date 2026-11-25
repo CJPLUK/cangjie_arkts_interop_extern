@@ -1,5 +1,5 @@
 import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
-import { benchmarkNames, iterations, runBenchmark } from 'libohos_app_cangjie_entry.so';
+import { benchmarkNames, dispatchCases, iterations, runBenchmark, timeDispatch } from 'libohos_app_cangjie_entry.so';
 import '../Bench';
 
 // run.sh collects the lines logged with this tag.
@@ -10,6 +10,10 @@ const RUNS = 5;
 // watchdog kills the app (THREAD_BLOCK_6S).
 const PAUSE_MS = 20;
 const VARIANTS = ['arkInterop', 'arktsRuntime'];
+// The dispatch benchmark (issue #7): more paired runs, as the gap it looks for is small.
+const DISPATCH_RUNS = 9;
+const DISPATCH_ITERATIONS = 200000;
+const DISPATCH_VARIANTS = ['probes', 'reflective'];
 
 interface Row {
   name: string;
@@ -75,7 +79,47 @@ struct Index {
   @State lines: string[] = [];
 
   aboutToAppear(): void {
-    setTimeout(() => this.runAll(), 500);
+    const suite = AppStorage.get<string>('suite');
+    setTimeout(() => suite === 'dispatch' ? this.runDispatch() : this.runAll(), 500);
+  }
+
+  /**
+   * Times each dispatch case through the type probes and the reflective conversion. The two
+   * variants alternate within each run, and their order flips from run to run, so drift in
+   * the CPU's speed falls on both. Logs DISPATCH|case|N|probes ns/op|reflective ns/op|saving.
+   */
+  async runDispatch(): Promise<void> {
+    hilog.info(DOMAIN, TAG, 'START');
+    for (const name of dispatchCases()) {
+      this.status = `running ${name}`;
+      try {
+        const runs: number[][] = [[], []];
+        for (let i = 0; i < DISPATCH_RUNS; i++) {
+          const order = i % 2 === 0 ? [0, 1] : [1, 0];
+          for (const v of order) {
+            // Untimed run right before each timed one, as in runAll.
+            timeDispatch(name, DISPATCH_VARIANTS[v], DISPATCH_ITERATIONS);
+            runs[v].push(timeDispatch(name, DISPATCH_VARIANTS[v], DISPATCH_ITERATIONS));
+          }
+          await sleep(PAUSE_MS);
+        }
+        for (let v = 0; v < DISPATCH_VARIANTS.length; v++) {
+          hilog.info(DOMAIN, TAG, 'SAMPLES|%{public}s',
+            `dispatch.${name}|${DISPATCH_VARIANTS[v]}|${DISPATCH_ITERATIONS}|${runs[v].join(',')}`);
+        }
+        const probes = median(runs[0]) / DISPATCH_ITERATIONS;
+        const reflective = median(runs[1]) / DISPATCH_ITERATIONS;
+        const line = `${name}|${DISPATCH_ITERATIONS}|${probes.toFixed(1)}|${reflective.toFixed(1)}|` +
+          `${(reflective - probes).toFixed(1)}`;
+        hilog.info(DOMAIN, TAG, 'DISPATCH|%{public}s', line);
+        this.lines.push(line);
+      } catch (e) {
+        hilog.error(DOMAIN, TAG, 'ERROR|%{public}s|%{public}s', name, String(e));
+        this.lines.push(`${name}: ${String(e)}`);
+      }
+    }
+    this.status = 'done';
+    hilog.info(DOMAIN, TAG, 'DONE');
   }
 
   async runAll(): Promise<void> {
