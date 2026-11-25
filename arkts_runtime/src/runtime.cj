@@ -735,6 +735,11 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         out
     }
 
+    /** Posts task `id` through the entry point `NativeSession.post` uses, and returns its status. */
+    static func nativePost(id: Int64): Int32 {
+        unsafe { ats_rt_ext_post(context.session.state, id) }
+    }
+
     private static func cellOf(pin: ?Pinned): CPointer<Unit> {
         match (pin) {
             case Some(p) => p.cell

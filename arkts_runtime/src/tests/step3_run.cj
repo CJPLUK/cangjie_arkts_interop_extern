@@ -11,7 +11,8 @@ func step3Scenarios(): Array<(String, Scenario)> {
         ("step3.runOnJSThreadReturnsValue", { _, _ => runReturnsValue() }),
         ("step3.runOnJSThreadUsesEngine", { _, _ => runUsesEngine() }),
         ("step3.runOnJSThreadPropagatesException", { _, _ => runPropagatesException() }),
-        ("step3.runOnJSThreadNested", { _, _ => runNested() })
+        ("step3.runOnJSThreadNested", { _, _ => runNested() }),
+        ("step3.postRejectsReservedIds", { _, _ => postRejectsReservedIds() })
     ]
 }
 
@@ -153,5 +154,19 @@ func runFromManyThreads(): String {
     firstFailure([
         firstFailure(failures),
         expectEqual("overlapping operations", overlaps.load(), 0)
+    ])
+}
+
+/**
+ * Ids below 1 belong to the runtime (the wake and the turn marker): the post entry point
+ * rejects them without queueing anything, and `run` still works afterwards.
+ */
+@When[bundle == "com.example.testArkTSForeignRuntime"]
+func postRejectsReservedIds(): String {
+    firstFailure([
+        expectEqual("status for id 0", ArkTSRuntime.nativePost(0), NAPI_INVALID_ARG),
+        expectEqual("status for id -1", ArkTSRuntime.nativePost(-1), NAPI_INVALID_ARG),
+        expectEqual("status for Int64.Min", ArkTSRuntime.nativePost(Int64.Min), NAPI_INVALID_ARG),
+        expectEqual("run usable afterwards", ArkTSRuntime.run { 7 }, 7)
     ])
 }

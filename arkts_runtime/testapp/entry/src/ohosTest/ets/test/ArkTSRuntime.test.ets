@@ -66,6 +66,7 @@ export default function arkTSRuntimeTest() {
         'step3.runOnJSThreadUsesEngine',
         'step3.runOnJSThreadPropagatesException',
         'step3.runOnJSThreadNested',
+        'step3.postRejectsReservedIds',
         'step4.retainClassifiesEachKind',
         'step4.payloadRoundTrip',
         'step4.retainedValueOutlivesScope',
@@ -243,6 +244,10 @@ export default function arkTSRuntimeTest() {
 
     it('runOnJSThreadNested', 0, () => {
       expect(runArkTSTest('step3.runOnJSThreadNested')).assertEqual('');
+    });
+
+    it('postRejectsReservedIds', 0, () => {
+      expect(runArkTSTest('step3.postRejectsReservedIds')).assertEqual('');
     });
 
     it('runOffThreadReturnsValue', 0, async (done: Function) => {

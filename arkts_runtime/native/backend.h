@@ -121,10 +121,10 @@ typedef struct {
 ats_rt_ext_value_info ats_rt_ext_decode_value(void *env, void *value);
 
 /**
- * Queue an ID from any thread without executing its callback synchronously.
- * ID 0 only wakes reference draining; it does not invoke ats_rt_ext_task_callback.
- * Return napi_closing for dead/NULL state. Accepted nonzero IDs are dispatched
- * normally or receive cancellation during teardown.
+ * Queue a task ID from any thread without executing its callback synchronously.
+ * IDs are 1 or above: lower IDs belong to the runtime, and are rejected with
+ * napi_invalid_arg without queueing anything. Return napi_closing for dead/NULL
+ * state. Accepted IDs are dispatched normally or receive cancellation during teardown.
  */
 int32_t ats_rt_ext_post(void *state, int64_t id);
 

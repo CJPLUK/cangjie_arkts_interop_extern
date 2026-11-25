@@ -11,8 +11,11 @@
 #include <thread>
 #include <vector>
 
+// Task ids below kFirstUserTask belong to the runtime; Cangjie's own tasks are numbered from it.
 constexpr int64_t kTaskWake = 0;
 constexpr int64_t kTaskTurnEnd = -1;
+constexpr int64_t kFirstUserTask = 1;
+inline bool isUserTask(int64_t id) { return id >= kFirstUserTask; }
 
 struct State {
     napi_env env;

@@ -33,6 +33,8 @@ Operations off the owner thread are posted to it as TSFN tasks (`ats_rt_ext_post
 - `kTaskWake` (0) drains finalized pins;
 - `kTaskTurnEnd` (-1) is the budget's turn marker.
 
+`ats_rt_ext_post`, the entry point Cangjie posts through, rejects an id below 1 with `napi_invalid_arg` and queues nothing; native code posts the runtime's tasks by name.
+
 ### `postMutex`
 
 `postMutex` serializes every TSFN post against environment cleanup. N-API forbids using a threadsafe function after `napi_release_threadsafe_function(..., napi_tsfn_abort)`, so a finalizer's wake must never reach a TSFN that cleanup has already aborted.
@@ -43,4 +45,4 @@ After cleanup, posting returns `napi_closing`.
 
 - The fast path (ADR-0001) only compares the current thread with the owner thread.
 - Other threads pay a post and a wait per operation. The differential suite (ADR-0008) runs every program off the owner thread as well, with eight threads at once and a GC thread for the thread program.
-- `State` mixes the two kinds of field, and the runtime's task ids sit in the same `Int64` space as user tasks. See issue #3.
+- `State` mixes the two kinds of field (kept so: see `.out-of-scope/state-split-by-thread.md`). The runtime's task ids share the `Int64` space with user tasks, but Cangjie cannot post one of them.

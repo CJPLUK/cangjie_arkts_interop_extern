@@ -32,11 +32,11 @@ void dispatch(napi_env env, napi_value, void *context, void *data) {
     int64_t task = id ? *id : kTaskWake;
     if (task == kTaskTurnEnd) { s->budget.turnEnded(); return; }
     if (!env || !s->alive.load()) {
-        if (task > 0) s->callback(task, 1);
+        if (isUserTask(task)) s->callback(task, 1);
         return;
     }
     if (s->inFlightCount == 0) s->pins.drain(s);
-    if (task > 0) s->callback(task, 0);
+    if (isUserTask(task)) s->callback(task, 0);
 }
 
 void cleanup(void *data) {
@@ -94,7 +94,7 @@ void Pins::drain(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
         bool kept = false;
         for (size_t i = 0; i < keepCount; ++i) kept = kept || keep[i] == head;
         if (kept) {
-            if (push(head) == PushResult::QueuedWakeNeeded) post(s, 0);
+            if (push(head) == PushResult::QueuedWakeNeeded) post(s, kTaskWake);
         } else {
             napi_delete_strong_reference(s->env, head->strong);
             delete head;
@@ -168,6 +168,7 @@ extern "C" int32_t ats_rt_ext_access_status(void *raw) {
 extern "C" int32_t ats_rt_ext_post(void *raw, int64_t id) {
     auto *s = static_cast<State *>(raw);
     if (!s) return napi_closing;
+    if (!isUserTask(id)) return napi_invalid_arg;
     return post(s, id);
 }
 extern "C" int32_t ats_rt_ext_open_scope(void *raw, void **scope, int32_t flags) {
@@ -211,7 +212,7 @@ extern "C" void ats_rt_ext_unpin(void *raw) {
     auto *pin = static_cast<AtsRtExtPin *>(raw);
     if (!pin) return;
     State *s = pin->state;
-    if (s->pins.push(pin) == PushResult::QueuedWakeNeeded) post(s, 0);
+    if (s->pins.push(pin) == PushResult::QueuedWakeNeeded) post(s, kTaskWake);
 }
 extern "C" int32_t ats_rt_ext_pin_read_mode(void *raw) {
     return static_cast<State *>(raw)->pins.read == PinRead::Alias ? 1 : 0;
