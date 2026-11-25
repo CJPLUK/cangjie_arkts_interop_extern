@@ -52,6 +52,7 @@ Unseen callers open an outer scope per turn, frames are scopes the runtime sees 
 - frame restores, checked directly;
 - admit at capacity (scoped once full), checked directly;
 - the turn marker's posting, through a fake post;
+- the open-frames stack (`native/frames.h`): room is made before a frame's scope opens, recording a frame cannot throw, and frames pop last-in, first-out;
 - a negative control that breaks the scope rule, so ops spill into the root and Sound must be seen to fail.
 
 Run it on the host:

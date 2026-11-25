@@ -1,4 +1,5 @@
 #include "budget.h"
+#include "frames.h"
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
@@ -157,6 +158,26 @@ void markerPosting() {
     check(b.postMarkerIfWanted(post) && posts == 3, "a later turn posts its own marker");
 }
 
+// The open-frames stack: room is made before a frame's scope opens, so recording it cannot fail.
+void frameStack() {
+    FrameStack frames;
+    static_assert(noexcept(frames.push({0, false})), "recording a frame cannot throw");
+    static_assert(noexcept(frames.makeRoom()), "making room reports failure instead of throwing");
+    check(frames.empty(), "a new stack is empty");
+    for (uint32_t i = 0; i < 100; ++i) {
+        check(frames.makeRoom() && frames.hasRoom(), "making room leaves room for one frame");
+        check(frames.makeRoom() && frames.hasRoom(), "making room again, with room, still succeeds");
+        frames.push({i, i % 2 == 1});
+    }
+    bool lifo = true;
+    for (uint32_t i = 100; i-- > 0;) {
+        OpenFrame f = frames.pop();
+        lifo = lifo && f.units == i && f.inFlight == (i % 2 == 1);
+    }
+    check(lifo, "frames pop last-in, first-out");
+    check(frames.empty() && frames.hasRoom(), "popping leaves room");
+}
+
 void negativeControl() {
     check(!run(99, 3000000, ScopeRule::Broken).sound, "Sound fails once the scope rule is broken");
 }
@@ -169,6 +190,7 @@ const Case kCases[] = {
     {"frame restore", frameRestore},
     {"scoped once full", scopedOnceFull},
     {"marker posting", markerPosting},
+    {"frame stack", frameStack},
     {"negative control", negativeControl},
 };
 

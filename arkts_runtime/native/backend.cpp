@@ -170,19 +170,19 @@ extern "C" int32_t ats_rt_ext_post(void *raw, int64_t id) {
     if (!s) return napi_closing;
     return post(s, id);
 }
-extern "C" int32_t ats_rt_ext_open_scope(void *raw, void **scope, int32_t flags) try {
+extern "C" int32_t ats_rt_ext_open_scope(void *raw, void **scope, int32_t flags) {
     auto *s = static_cast<State *>(raw);
     if (ats_rt_ext_access_status(raw) != 0) return napi_generic_failure;
     bool inFlight = flags & ATS_RT_EXT_SCOPE_IN_FLIGHT;
     if ((flags & ATS_RT_EXT_SCOPE_DRAIN_CHECK) && s->inFlightCount == 0 && s->pins.hasDeaths()) return ATS_RT_EXT_DRAIN_FIRST;
-    if (s->openFrames.size() == s->openFrames.capacity()) s->openFrames.reserve(2 * s->openFrames.size() + 8);
+    if (!s->openFrames.makeRoom()) return napi_generic_failure;
     auto status = napi_open_handle_scope(s->env, reinterpret_cast<napi_handle_scope *>(scope));
     if (status == napi_ok) {
         if (inFlight) ++s->inFlightCount;
-        s->openFrames.push_back({s->budget.enter(), inFlight});
+        s->openFrames.push({s->budget.enter(), inFlight});
     }
     return status;
-} catch (...) { return napi_generic_failure; }
+}
 extern "C" void ats_rt_ext_drain(void *raw) {
     auto *s = static_cast<State *>(raw);
     if (ats_rt_ext_access_status(raw) == 0 && s->inFlightCount == 0) s->pins.drain(s);
@@ -190,8 +190,7 @@ extern "C" void ats_rt_ext_drain(void *raw) {
 extern "C" int32_t ats_rt_ext_close_scope(void *raw, void *scope) {
     auto *s = static_cast<State *>(raw);
     if (ats_rt_ext_access_status(raw) != 0) return napi_generic_failure;
-    auto frame = s->openFrames.back();
-    s->openFrames.pop_back();
+    OpenFrame frame = s->openFrames.pop();
     if (frame.inFlight) --s->inFlightCount;
     s->budget.exit(frame.units);
     return napi_close_handle_scope(s->env, static_cast<napi_handle_scope>(scope));

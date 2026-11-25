@@ -224,7 +224,8 @@ int32_t ats_rt_ext_get_named(void *state, void *target, const uint8_t *key, size
  * With ATS_RT_EXT_SCOPE_IN_FLIGHT it also counts as in flight, so no pin is deleted until it closes.
  * With ATS_RT_EXT_SCOPE_DRAIN_CHECK, returns ATS_RT_EXT_DRAIN_FIRST, having opened nothing, when nothing is in
  * flight and finalized pins are waiting; the open after that drain omits it, as finalizers may
- * keep queueing pins meanwhile.
+ * keep queueing pins meanwhile. Any other failure, including no memory to record the frame, returns
+ * an error status having opened nothing.
  */
 int32_t ats_rt_ext_open_scope(void *state, void **scope, int32_t flags);
 

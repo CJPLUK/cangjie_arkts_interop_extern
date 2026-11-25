@@ -2,6 +2,7 @@
 #define ARKTS_RUNTIME_STATE_H
 #include "backend.h"
 #include "budget.h"
+#include "frames.h"
 #include "pins.h"
 #include <napi/native_api.h>
 #include <atomic>
@@ -25,8 +26,7 @@ struct State {
     std::mutex postMutex;
     Pins pins;
     ats_rt_ext::HostBudget budget;
-    struct OpenFrame { uint32_t units; bool inFlight; };
-    std::vector<OpenFrame> openFrames;
+    FrameStack openFrames;
     uint32_t inFlightCount = 0;
     uint64_t opsSpilled = 0, opsScoped = 0;
     std::vector<char16_t> text16;
