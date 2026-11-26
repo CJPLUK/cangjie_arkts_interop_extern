@@ -4,8 +4,6 @@ import std.sync.*
 
 import arkts_runtime.*
 
-// The runtime is bound when the module is registered, before any test runs, and binding is
-// permanent: the unbound state cannot be observed here.
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func step2Scenarios(): Array<(String, Scenario)> {
     [
@@ -19,13 +17,11 @@ func step2Scenarios(): Array<(String, Scenario)> {
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 const ALREADY_BOUND = "ArkTS runtime is already associated with a host ArkTS environment"
 
-/** index.cj binds the runtime when the module is registered. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runtimeIsBound(): String {
     expectEqual("ArkTSRuntime.isBound()", ArkTSRuntime.isBound(), true)
 }
 
-/** The bound environment is the engine this test is running in. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func runtimeBoundToCallerContext(js: JS, _: Array<NativeJSValue>): String {
     let bound = ArkTSRuntime.js
@@ -46,36 +42,20 @@ func runtimeRebindThrows(js: JS, _: Array<NativeJSValue>): String {
     ])
 }
 
-/** 8 threads released together try to rebind; every one throws and the binding is unchanged. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func concurrentRebindAllThrow(js: JS, _: Array<NativeJSValue>): String {
     let env = ArkTSRuntime.environment.env
     let threads = 8
     let before = ArkTSRuntime.js
     for (round in 0..50) {
-        let barrier = Barrier(threads)
-        let completed = SyncCounter(threads)
-        let outcomes = Array<String>(threads, repeat: "worker did not complete")
-        // Assert binding outcomes directly. Future.get() can itself report an
-        // unexpected internal result under this SDK's concurrent completion race.
-        for (index in 0..threads) {
-            spawn {
-                try {
-                    barrier.wait()
-                    try {
-                        ArkTSRuntime.bind(env)
-                        outcomes[index] = "a rebind succeeded"
-                    } catch (_: ArkTSContextAlreadyBoundException) {
-                        outcomes[index] = ""
-                    } catch (e: Exception) {
-                        outcomes[index] = "unexpected exception ${e}"
-                    }
-                } catch (e: Error) {
-                    outcomes[index] = "unexpected error ${e}"
-                } finally { completed.dec() }
+        let outcomes = outcomesWithoutFutureGetBecauseOfSdkCompletionRace(threads) {
+            try {
+                ArkTSRuntime.bind(env)
+                "a rebind succeeded"
+            } catch (_: ArkTSContextAlreadyBoundException) {
+                ""
             }
         }
-        completed.waitUntilZero()
         for (outcome in outcomes) {
             if (!outcome.isEmpty()) { return "round ${round}: ${outcome}" }
         }
@@ -84,4 +64,25 @@ func concurrentRebindAllThrow(js: JS, _: Array<NativeJSValue>): String {
         }
     }
     ""
+}
+
+@When[bundle == "com.example.testArkTSForeignRuntime"]
+func outcomesWithoutFutureGetBecauseOfSdkCompletionRace(threads: Int64, worker: () -> String): Array<String> {
+    let barrier = Barrier(threads)
+    let completed = SyncCounter(threads)
+    let outcomes = Array<String>(threads, repeat: "worker did not complete")
+    for (index in 0..threads) {
+        spawn {
+            try {
+                barrier.wait()
+                outcomes[index] = worker()
+            } catch (e: Exception) {
+                outcomes[index] = "unexpected exception ${e}"
+            } catch (e: Error) {
+                outcomes[index] = "unexpected error ${e}"
+            } finally { completed.dec() }
+        }
+    }
+    completed.waitUntilZero()
+    outcomes
 }

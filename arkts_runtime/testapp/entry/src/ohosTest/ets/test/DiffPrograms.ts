@@ -29,11 +29,11 @@ export function fmtStr(s: string): string {
   return out + '"';
 }
 
-/** fromExtern<String> (and ark_interop's toString) of a lone surrogate gives a String that is not valid UTF-8. */
 function convertible(s: string): boolean {
   for (const ch of s) {
     const cp = ch.codePointAt(0) as number;
-    if (cp >= 0xd800 && cp <= 0xdfff) {
+    const isLoneSurrogate = cp >= 0xd800 && cp <= 0xdfff;
+    if (isLoneSurrogate) {
       return false;
     }
   }
@@ -468,7 +468,6 @@ export const PROGRAMS: Program[] = [
   },
   {
     name: 'longTurn',
-    // Too many operations to run through posting.
     offThreadRuns: 0,
     world: () => ({ t: { a: { b: 1.5 } }, fresh(i: number): any { return { id: i }; } }),
     arkts: (w: any, log: Log) => {
@@ -493,7 +492,6 @@ export const PROGRAMS: Program[] = [
   },
   {
     name: 'gcChurn',
-    // Too many operations to run through posting.
     offThreadRuns: 0,
     world: () => ({ store: [], fresh(i: number): any { return { id: i, payload: [i, i + 1] }; } }),
     arkts: (w: any, log: Log) => {

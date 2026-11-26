@@ -3,10 +3,8 @@ package ohos_app_cangjie_entry
 import ohos.ark_interop.*
 import arkts_runtime.ArkTSRuntime
 
-/**
- * Each operation keeps an ArkTS object (`target.a`) in a Cangjie value and drops it. The page
- * also measures the ArkTS heap after full collections around one run of each variant.
- */
+// @report Each operation keeps an ArkTS object (`target.a`) in a Cangjie value and drops it. The page
+// @report also measures the ArkTS heap after full collections around one run of each variant.
 func handleBenchmarks(): Array<Benchmark> {
     [
         Benchmark("handles.createAndDrop", 20000,

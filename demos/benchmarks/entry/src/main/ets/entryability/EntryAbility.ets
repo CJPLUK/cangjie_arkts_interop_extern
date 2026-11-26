@@ -5,7 +5,6 @@ import { window } from '@kit.ArkUI';
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
-    // run.sh --dispatch starts the app with `--ps suite dispatch`; Index reads it.
     AppStorage.setOrCreate('suite', String(want.parameters?.['suite'] ?? 'pairs'));
   }
 
@@ -14,7 +13,6 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    // Main window is created, set main page for this ability
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
     windowStage.loadContent('pages/Index', (err) => {
@@ -24,22 +22,22 @@ export default class EntryAbility extends UIAbility {
       }
       hilog.info(0x0000, 'testTag', 'Succeeded in loading the content.');
     });
-    // A backgrounded app is frozen, so the screen must not turn off while the benchmarks run.
+    this.keepScreenOnSinceBackgroundedAppsAreFrozen(windowStage);
+  }
+
+  private keepScreenOnSinceBackgroundedAppsAreFrozen(windowStage: window.WindowStage): void {
     windowStage.getMainWindow().then((mainWindow: window.Window) => mainWindow.setWindowKeepScreenOn(true));
   }
 
   onWindowStageDestroy(): void {
-    // Main window is destroyed, release UI related resources
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
   }
 
   onForeground(): void {
-    // Ability has brought to foreground
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onForeground');
   }
 
   onBackground(): void {
-    // Ability has back to background
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onBackground');
   }
 }

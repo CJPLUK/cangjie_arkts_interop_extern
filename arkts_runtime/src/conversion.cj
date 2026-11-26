@@ -3,12 +3,6 @@ package arkts_runtime
 import std.math.trunc
 import std.math.numeric.BigInt
 
-
-/**
- * Cangjie types with an ArkTS mapping. `Extern<ArkTSRuntime>` cannot be extended, so it is
- * handled apart in `toJSValue` / `fromJSValue`; `Array` and `Option` convert their elements
- * through those, so unsupported element types fail only when an element is converted.
- */
 interface ToJS {
     func toJS(): NativeJSValue
 }
@@ -17,7 +11,6 @@ interface FromJS<T> {
     static func fromJS(value: NativeJSValue): T
 }
 
-/** Reaches `FromJS<T>` from code where `T` is unconstrained (`fromExtern<R>`). */
 interface JSReader {
     func read(value: NativeJSValue): Any
 }
@@ -65,7 +58,6 @@ private func readNumber(value: NativeJSValue, target: String): Float64 {
     value.toNumber()
 }
 
-/** A JS number that is an integer in `min..=max`. */
 private func readInteger(value: NativeJSValue, target: String, min: Float64, max: Float64): Float64 {
     let n = readNumber(value, target)
     if (n.isNaN() || n < min || n > max || n != trunc(n)) {
@@ -74,7 +66,6 @@ private func readInteger(value: NativeJSValue, target: String, min: Float64, max
     n
 }
 
-/** A JS bigint in `min..=max`. */
 private func readBigInt(value: NativeJSValue, target: String, min: BigInt, max: BigInt): BigInt {
     if (!value.isBigInt()) { throw mismatch(value, target) }
     let n = value.toBigInt()
@@ -184,7 +175,6 @@ extend String <: ToJS & FromJS<String> {
     }
 }
 
-/** `Some(x)` is `x`, `None` is `undefined`; `undefined` and `null` read as `None`. */
 extend<T> Option<T> <: ToJS & FromJS<Option<T>> {
     public func toJS(): NativeJSValue {
         match (this) {

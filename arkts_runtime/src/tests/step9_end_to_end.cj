@@ -4,8 +4,6 @@ import std.math.numeric.BigInt
 
 import arkts_runtime.*
 
-// The step 9 scenarios need no test-package fixtures beyond a plain sink object, so the smoke
-// page in Index.ets runs them too.
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func step9Scenarios(): Array<(String, Scenario)> {
     [
@@ -19,11 +17,6 @@ func step9OffThreadScenarios(): Array<(String, OffThreadScenario)> {
     [("step9.mixedScenarioOffThread", { => mixedScenario(100) })]
 }
 
-/**
- * fixtures: sink. The example of the design's section 1, except the explicit `fromExtern` (until
- * the forced cast parses) and `blob.width += 2.0` (compound assignment is not supported). Stores
- * the rectangle as sink.rect; the caller checks from ArkTS that width == 5 and area() == 25.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func designExample(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -41,7 +34,6 @@ func designExample(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** Runs `mixedOnce` `iterations` times; stops at the first failure. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func mixedScenario(iterations: Int64): String {
     for (i in 0..iterations) {
@@ -53,12 +45,10 @@ func mixedScenario(iterations: Int64): String {
     ""
 }
 
-/** Every runtime feature once, on objects made from JS built-ins (so it also runs off-thread). */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func mixedOnce(i: Int64): String {
     let g = ArkTSRuntime.global()
 
-    // Member updates (every leaf type), nested members.
     let o = ArkTSRuntime.object()
     o.name = "item${i}!"
     o.count = 0.25
@@ -68,7 +58,6 @@ func mixedOnce(i: Int64): String {
     o.big = i + 1
     o.flag = true
 
-    // Arrays and indexing with Int64, Float64, String, Extern number and Extern symbol keys.
     o.items = [1.0, 2.0, 3.0]
     o.items[0] = 10.0
     o.items[1.0] = 7.0
@@ -79,12 +68,10 @@ func mixedOnce(i: Int64): String {
     let key = ArkTSRuntime.symbol(description: "k")
     o[key] = true
 
-    // Calls: free call (this = undefined), built-ins, construction through Reflect.
     let max = g.Math.max
     let m = g.Reflect.construct(g.Map, to(Array<E>()))
     m.set("a", Int32(1))
 
-    // Helpers.
     let hiddenDefined = ArkTSRuntime.objectDefineOwnProperty(o, "hidden", "h", isEnumerable: false)
     let hilog = ArkTSRuntime.requireSystemNativeModule("hilog", None)
     let back = from<E>(o.nested)
@@ -118,7 +105,6 @@ func mixedOnce(i: Int64): String {
         expectEqual("isUndefined(undefined())", ArkTSRuntime.isUndefined(ArkTSRuntime.undefined()), true),
         expectEqual("hilog.info", ArkTSRuntime.objectHasProperty(hilog, "info"), true),
 
-        // Conversions.
         expectEqual("options", from<Array<?Float64>>(to([Some(1.5), None<Float64>])), [Some(1.5), None]),
         expectEqual("nested arrays", from<Array<Array<Int64>>>(to([[1, 2], [Int64.Max]])), [[1, 2], [Int64.Max]]),
         expectEqual("UInt64.Max", from<UInt64>(to(UInt64.Max)), UInt64.Max),
@@ -129,7 +115,6 @@ func mixedOnce(i: Int64): String {
         expectEqual("String", from<String>(to("héllo 😀")), "héllo 😀"),
         expectEqual("Unit", from<Unit>(to(())) == (), true),
 
-        // Exceptions.
         expectThrows<ForeignRuntimeException>("JSON.parse", "SyntaxError", { => g.JSON.parse("{") }),
         expectThrows<ExternMemberAccessException>("o.missing.x", "expect: object, given: undefined",
             { => o.missing.x }),

@@ -22,10 +22,6 @@ class Counter {
     var count = 0.0
 }
 
-/**
- * fixtures: sink. Stores Cangjie functions on the sink; ArkTS calls them (directly, through
- * `Array.prototype.map` and from a timer) and checks the results.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func functionCalls(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -50,7 +46,6 @@ func functionCalls(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: sink. `fails` throws a Cangjie exception; ArkTS records what it sees. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func functionThrows(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -58,10 +53,6 @@ func functionThrows(fixtures: Array<NativeJSValue>): String {
     ""
 }
 
-/**
- * A function created from a spawned thread and called from it: the body runs on the owner thread
- * (not the calling one) and the result comes back.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func functionFromOtherThread(): String {
     let callers = AtomicInt64(0)

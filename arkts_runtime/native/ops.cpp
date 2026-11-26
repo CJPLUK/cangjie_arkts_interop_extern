@@ -7,40 +7,27 @@
 
 namespace {
 
-/**
- * What each local a fused op creates weighs (ADR-0002). An op charges one of these where it creates
- * the local, through OpPlacement, and declares its worst case as a sum of the same names.
- */
 namespace units {
-constexpr uint32_t kPinFetch = ats_rt_ext::kUnitLocal;  // a pin's value, read in Fetch mode; none in Alias mode
-constexpr uint32_t kScalar = ats_rt_ext::kUnitLocal;    // an argument made from a scalar
-constexpr uint32_t kResult = ats_rt_ext::kUnitLocal;    // an engine call's result
-// A result that turns out to be a fresh heap value: what it may root beyond its local, so that the
-// result weighs kUnitFreshHeap in all.
+constexpr uint32_t kPinFetch = ats_rt_ext::kUnitLocal;
+constexpr uint32_t kScalar = ats_rt_ext::kUnitLocal;
+constexpr uint32_t kResult = ats_rt_ext::kUnitLocal;
 constexpr uint32_t kFreshHeap = ats_rt_ext::kUnitFreshHeap - kResult;
-// Created text: a text argument, or a property key, which the engine creates from the name (or the
-// op does, when the key has an embedded NUL).
 inline uint32_t text(size_t bytes) { return ats_rt_ext::unitsForCreatedText(bytes); }
 inline uint32_t arg(const ats_rt_ext_arg &arg) {
     switch (arg.tag) {
         case ATS_RT_EXT_ARG_PIN: return kPinFetch;
-        case ATS_RT_EXT_ARG_UTF8: return text(arg.length);
+        case ATS_RT_EXT_ARG_UTF8: return text(arg.utf8_length);
         default: return kScalar;
     }
 }
 }
 
+bool namedCallsWouldCutShort(const uint8_t *key, size_t length) { return length && std::memchr(key, 0, length); }
+
 const AtsRtExtPin *pinOf(const ats_rt_ext_arg &arg) {
-    return arg.tag == ATS_RT_EXT_ARG_PIN ? static_cast<const AtsRtExtPin *>(arg.ptr) : nullptr;
+    return arg.tag == ATS_RT_EXT_ARG_PIN ? static_cast<const AtsRtExtPin *>(arg.pin_or_utf8) : nullptr;
 }
 
-/**
- * Where one fused op's locals live: spilled into the caller's scope, or in a scope of the op's own
- * (HostBudget::admit). Every local the op creates goes through one of the methods below, which
- * charge its units, so none is created uncharged. On exit a spilled op adds the charge to the
- * budget. In debug builds an op whose charge exceeds its declared worst case aborts: the budget's
- * Bound invariant rests on that never happening.
- */
 class OpPlacement {
 public:
     OpPlacement(State *state, const char *op, uint32_t worst)
@@ -68,19 +55,17 @@ public:
     OpPlacement(const OpPlacement &) = delete;
     OpPlacement &operator=(const OpPlacement &) = delete;
 
-    /** A pin's value: units::kPinFetch in Fetch mode. */
     napi_status pin(const AtsRtExtPin *pin, napi_value *result) {
         if (s->pins.read == PinRead::Fetch) charged += units::kPinFetch;
         return s->pins.value(s, pin, result);
     }
 
-    /** An argument's value: a pin's as pin(), otherwise units::arg(arg). */
     napi_status arg(const ats_rt_ext_arg &arg, napi_value *result) {
         if (arg.tag == ATS_RT_EXT_ARG_PIN) return pin(pinOf(arg), result);
         charged += units::arg(arg);
         switch (arg.tag) {
             case ATS_RT_EXT_ARG_UTF8:
-                return napi_create_string_utf8(s->env, static_cast<const char *>(arg.ptr), arg.length, result);
+                return napi_create_string_utf8(s->env, static_cast<const char *>(arg.pin_or_utf8), arg.utf8_length, result);
             default:
                 switch (arg.kind) {
                     case napi_undefined: return napi_get_undefined(s->env, result);
@@ -91,7 +76,6 @@ public:
         }
     }
 
-    /** Runs an engine call that may run JS (a getter, setter or callee) and creates no local, in flight. */
     template <class Call>
     napi_status inFlight(Call call) {
         ++s->inFlightCount;
@@ -100,38 +84,31 @@ public:
         return status;
     }
 
-    /** As inFlight, for a call that creates its result: units::kResult. */
     template <class Call>
     napi_status result(Call call) {
         charged += units::kResult;
         return inFlight(call);
     }
 
-    /**
-     * Runs named(const char *key) with a NUL-terminated copy of the key, or keyed(napi_value key) when
-     * the key has an embedded NUL, which the named N-API calls would cut short. Either way the key is
-     * created, by the op or by the engine from the name: units::text(length).
-     */
-    template <class Named, class Keyed>
-    napi_status key(const uint8_t *bytes, size_t length, Named named, Keyed keyed) try {
+    template <class ByCString, class ByKeyValue>
+    napi_status key(const uint8_t *bytes, size_t length, ByCString byCString, ByKeyValue byKeyValue) try {
         charged += units::text(length);
-        if (length && std::memchr(bytes, 0, length)) {
+        if (namedCallsWouldCutShort(bytes, length)) {
             napi_value key;
             auto status = napi_create_string_utf8(s->env, reinterpret_cast<const char *>(bytes), length, &key);
             if (status != napi_ok) return status;
-            return keyed(key);
+            return byKeyValue(key);
         }
         char small[64];
         if (length < sizeof(small)) {
             std::memcpy(small, bytes, length);
             small[length] = 0;
-            return named(small);
+            return byCString(small);
         }
         std::string key(reinterpret_cast<const char *>(bytes), length);
-        return named(key.c_str());
+        return byCString(key.c_str());
     } catch (...) { return napi_generic_failure; }
 
-    /** Pins a result that is a fresh heap value: units::kFreshHeap on top of its local. */
     AtsRtExtPin *pinFresh(napi_value local, napi_status *status) {
         charged += units::kFreshHeap;
         return s->pins.create(s, local, status);
@@ -140,7 +117,7 @@ public:
     State *const s;
 
 private:
-    [[maybe_unused]] const char *const op;  // read only by the debug check
+    [[maybe_unused]] const char *const op;
     [[maybe_unused]] const uint32_t worst;
     const ats_rt_ext::Placement placement;
     napi_handle_scope scope = nullptr;
@@ -150,13 +127,12 @@ private:
 int32_t opEnter(State *s, const AtsRtExtPin *const *keep, size_t keepCount) {
     if (!s->alive.load(std::memory_order_relaxed)) return ATS_RT_EXT_DEAD;
     if (!stateIsOwner(s)) return ATS_RT_EXT_NOT_OWNER;
-    if (s->inFlightCount == 0 && s->pins.hasDeaths()) s->pins.drain(s, keep, keepCount);
+    if (s->pins.hasDeaths()) s->pins.drainUnlessInFlight(s, keep, keepCount);
     return napi_ok;
 }
 int32_t opEnter(State *s, std::initializer_list<const AtsRtExtPin *> keep) { return opEnter(s, keep.begin(), keep.size()); }
 
-/** A thrown getter, setter or callee leaves a pending exception, sometimes with napi_ok. */
-int32_t pendingOr(napi_env env, napi_status status) {
+int32_t pendingExceptionEvenIfOk(napi_env env, napi_status status) {
     bool pending = false;
     napi_is_exception_pending(env, &pending);
     return pending ? napi_pending_exception : status;
@@ -196,7 +172,8 @@ bool copyText(State *s, napi_value value, size_t *bytes) try {
     if (units.size() < kTextCopyMax + 2) units.resize(kTextCopyMax + 2);
     size_t count = 0;
     if (napi_get_value_string_utf16(s->env, value, units.data(), units.size(), &count) != napi_ok) return false;
-    if (count > kTextCopyMax) return false;  // possibly truncated: too long to copy
+    const bool possiblyTruncated = count > kTextCopyMax;
+    if (possiblyTruncated) return false;
     if (!utf8Of(units.data(), count, s->text)) return false;
     *bytes = s->text.size();
     return true;
@@ -228,7 +205,7 @@ int32_t decodeResult(OpPlacement &place, napi_value local, ats_rt_ext_op_result 
         }
         case napi_string:
             out->flags = 0;
-            if (copyText(s, local, &out->text_length)) {
+            if (copyText(s, local, &out->text_utf8_length)) {
                 out->flags = ATS_RT_EXT_RESULT_TEXT;
                 return napi_ok;
             }
@@ -260,8 +237,8 @@ extern "C" int32_t ats_rt_ext_get_named(void *raw, void *targetPin, const uint8_
     auto *hint = static_cast<const AtsRtExtPin *>(hintPin);
     if (auto entered = opEnter(s, {target, hint})) return entered;
     OpPlacement place(s, "get_named",
-        units::kPinFetch /* receiver */ + units::text(keyLength) /* key */ + units::kResult + units::kFreshHeap +
-        (hint ? units::kPinFetch /* hint */ : 0));
+        units::kPinFetch + units::text(keyLength) + units::kResult + units::kFreshHeap +
+        (hint ? units::kPinFetch : 0));
     if (!place.ok()) return napi_generic_failure;
     napi_value receiver, result;
     auto status = place.pin(target, &receiver);
@@ -272,7 +249,7 @@ extern "C" int32_t ats_rt_ext_get_named(void *raw, void *targetPin, const uint8_
             [&](const char *name) { return napi_get_named_property(env, receiver, name, &result); },
             [&](napi_value k) { return napi_get_property(env, receiver, k, &result); });
     });
-    if (auto thrown = pendingOr(env, status)) return thrown;
+    if (auto thrown = pendingExceptionEvenIfOk(env, status)) return thrown;
     return decodeResult(place, result, out, hint);
 }
 
@@ -280,7 +257,7 @@ extern "C" int32_t ats_rt_ext_set_named(void *raw, void *targetPin, const uint8_
     auto *s = static_cast<State *>(raw);
     auto *target = static_cast<const AtsRtExtPin *>(targetPin);
     if (auto entered = opEnter(s, {target, pinOf(*value)})) return entered;
-    OpPlacement place(s, "set_named", units::kPinFetch /* receiver */ + units::arg(*value) + units::text(keyLength) /* key */);
+    OpPlacement place(s, "set_named", units::kPinFetch + units::arg(*value) + units::text(keyLength));
     if (!place.ok()) return napi_generic_failure;
     napi_value receiver, element;
     auto status = place.pin(target, &receiver);
@@ -293,26 +270,24 @@ extern "C" int32_t ats_rt_ext_set_named(void *raw, void *targetPin, const uint8_
             [&](const char *name) { return napi_set_named_property(env, receiver, name, element); },
             [&](napi_value k) { return napi_set_property(env, receiver, k, element); });
     });
-    return pendingOr(env, status);
+    return pendingExceptionEvenIfOk(env, status);
 }
 
 namespace {
-/** Fills pin->isArray from the pin's value. Owner thread only. */
 napi_status learnArray(State *s, const AtsRtExtPin *pin, napi_value value) {
-    if (pin->isArray != IsArray::Unknown) return napi_ok;
+    if (pin->isArray() != IsArray::Unknown) return napi_ok;
     bool isArray = false;
     auto status = napi_is_array(s->env, value, &isArray);
-    if (status == napi_ok) pin->isArray = isArray ? IsArray::Yes : IsArray::No;
+    if (status == napi_ok) pin->learnIsArray(isArray ? IsArray::Yes : IsArray::No);
     return status;
 }
 
-/** The value of an array pin; ATS_RT_EXT_GENERIC if it is not an array. Owner thread only. */
 int32_t arrayValue(OpPlacement &place, const AtsRtExtPin *pin, napi_value *array) {
     auto status = place.pin(pin, array);
     if (status != napi_ok) return status;
     status = learnArray(place.s, pin, *array);
     if (status != napi_ok) return status;
-    return pin->isArray == IsArray::Yes ? napi_ok : ATS_RT_EXT_GENERIC;
+    return pin->isArray() == IsArray::Yes ? napi_ok : ATS_RT_EXT_GENERIC;
 }
 }
 
@@ -320,19 +295,19 @@ extern "C" int32_t ats_rt_ext_pin_is_array(void *raw, void *pinRaw) {
     auto *s = static_cast<State *>(raw);
     auto *pin = static_cast<const AtsRtExtPin *>(pinRaw);
     if (!pin || !s->alive.load(std::memory_order_relaxed) || !stateIsOwner(s)) return 0;
-    if (pin->isArray == IsArray::Unknown) {
+    if (pin->isArray() == IsArray::Unknown) {
         napi_value value;
         if (s->pins.value(s, pin, &value) != napi_ok || learnArray(s, pin, value) != napi_ok) return 0;
     }
-    return pin->isArray == IsArray::Yes ? 1 : 0;
+    return pin->isArray() == IsArray::Yes ? 1 : 0;
 }
 
 extern "C" int32_t ats_rt_ext_element_get(void *raw, void *targetPin, int64_t index, ats_rt_ext_op_result *out) {
     auto *s = static_cast<State *>(raw);
     auto *target = static_cast<const AtsRtExtPin *>(targetPin);
     if (auto entered = opEnter(s, {target})) return entered;
-    if (target->isArray == IsArray::No) return ATS_RT_EXT_GENERIC;  // known already: skip the placement
-    OpPlacement place(s, "element_get", units::kPinFetch /* array */ + units::kResult + units::kFreshHeap);
+    if (target->isArray() == IsArray::No) return ATS_RT_EXT_GENERIC;
+    OpPlacement place(s, "element_get", units::kPinFetch + units::kResult + units::kFreshHeap);
     if (!place.ok()) return napi_generic_failure;
     napi_value array, result;
     if (auto status = arrayValue(place, target, &array)) return status;
@@ -341,7 +316,7 @@ extern "C" int32_t ats_rt_ext_element_get(void *raw, void *targetPin, int64_t in
     if (status != napi_ok) return status;
     if (index < 0 || static_cast<uint64_t>(index) >= length) return ATS_RT_EXT_INDEX_OUT_OF_RANGE;
     status = place.result([&] { return napi_get_element(s->env, array, static_cast<uint32_t>(index), &result); });
-    if (auto thrown = pendingOr(s->env, status)) return thrown;
+    if (auto thrown = pendingExceptionEvenIfOk(s->env, status)) return thrown;
     return decodeResult(place, result, out);
 }
 
@@ -349,15 +324,15 @@ extern "C" int32_t ats_rt_ext_element_set(void *raw, void *targetPin, uint32_t i
     auto *s = static_cast<State *>(raw);
     auto *target = static_cast<const AtsRtExtPin *>(targetPin);
     if (auto entered = opEnter(s, {target, pinOf(*value)})) return entered;
-    if (target->isArray == IsArray::No) return ATS_RT_EXT_GENERIC;  // known already: skip the placement
-    OpPlacement place(s, "element_set", units::kPinFetch /* array */ + units::arg(*value));
+    if (target->isArray() == IsArray::No) return ATS_RT_EXT_GENERIC;
+    OpPlacement place(s, "element_set", units::kPinFetch + units::arg(*value));
     if (!place.ok()) return napi_generic_failure;
     napi_value array, element;
     if (auto status = arrayValue(place, target, &array)) return status;
     auto status = place.arg(*value, &element);
     if (status != napi_ok) return status;
     status = place.inFlight([&] { return napi_set_element(s->env, array, index, element); });
-    return pendingOr(s->env, status);
+    return pendingExceptionEvenIfOk(s->env, status);
 }
 
 extern "C" int32_t ats_rt_ext_call(void *raw, void *functionPin, const ats_rt_ext_arg *thisArg, const ats_rt_ext_arg *args, size_t argc,
@@ -379,7 +354,7 @@ extern "C" int32_t ats_rt_ext_call(void *raw, void *functionPin, const ats_rt_ex
     }
     keep[0] = function;
     keep[1] = pinOf(*thisArg);
-    uint32_t worst = units::kPinFetch /* callee */ + units::arg(*thisArg) + units::kResult + units::kFreshHeap;
+    uint32_t worst = units::kPinFetch + units::arg(*thisArg) + units::kResult + units::kFreshHeap;
     for (size_t i = 0; i < argc; ++i) {
         keep[i + 2] = pinOf(args[i]);
         worst += units::arg(args[i]);
@@ -397,6 +372,6 @@ extern "C" int32_t ats_rt_ext_call(void *raw, void *functionPin, const ats_rt_ex
         if (status != napi_ok) return status;
     }
     status = place.result([&] { return napi_call_function(s->env, receiver, callee, argc, values, &result); });
-    if (auto thrown = pendingOr(s->env, status)) return thrown;
+    if (auto thrown = pendingExceptionEvenIfOk(s->env, status)) return thrown;
     return decodeResult(place, result, out);
 } catch (...) { return napi_generic_failure; }

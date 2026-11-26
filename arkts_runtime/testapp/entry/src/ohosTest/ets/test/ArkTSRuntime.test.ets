@@ -227,8 +227,6 @@ export default function arkTSRuntimeTest() {
     });
   });
 
-  // The off-thread scenarios run on a spawned Cangjie thread and resolve a promise; the JS
-  // thread must stay free meanwhile, because `run` posts the operations to it.
   describe('Step3_Run', () => {
     it('runOnJSThreadReturnsValue', 0, () => {
       expect(runArkTSTest('step3.runOnJSThreadReturnsValue')).assertEqual('');
@@ -298,17 +296,14 @@ export default function arkTSRuntimeTest() {
       expect(runArkTSTest('step4.rejectsForeignPayload')).assertEqual('');
     });
 
-    // ArkTS keeps only WeakRefs. The control object has no other reference, so once it is gone
-    // a collection has certainly run; the retained one must still be there. After Cangjie
-    // drops its Extern, the retained object must be collectable too.
     it('retainedObjectSurvivesGCAndIsReleased', 0, async (done: Function) => {
       const refs = keepOneOfTwo();
-      const kept = refs[0];
-      const control = refs[1];
+      const kept = refs.kept;
+      const control = refs.control;
       const controlGone = await collectUntil(() => control.deref() === undefined);
       expect(controlGone ? 'control collected' : 'control never collected').assertEqual('control collected');
       expect(kept.deref() !== undefined ? 'kept alive' : 'kept collected').assertEqual('kept alive');
-      checkKeptObject(kept);
+      checkKeptObjectWithoutRetainingIt(kept);
 
       expect(runArkTSTest('step4.dropKeptObject')).assertEqual('');
       const keptGone = await collectUntil(() => kept.deref() === undefined);
@@ -317,9 +312,6 @@ export default function arkTSRuntimeTest() {
       done();
     });
 
-    // Measures the ArkTS heap after full collections. Measured once with the handles deliberately
-    // kept: it grew ~37 MB from round 4 to round 10 on both devices; released, at most 1.7 MB.
-    // Process memory (PSS) was too noisy for this.
     it('releaseManyHandles', 0, async (done: Function) => {
       const pss: number[] = [];
       const vm: number[] = [];
@@ -473,7 +465,6 @@ export default function arkTSRuntimeTest() {
   });
 
   describe('Step6_Conversions', () => {
-    // [field, typeof, String(value)] for each value stored by step6.toExternTypes.
     it('toExternTypes', 0, () => {
       const sink: Record<string, Object | null | undefined> = {};
       const rect = new Rectangle(1, 2);
@@ -507,7 +498,11 @@ export default function arkTSRuntimeTest() {
         ['int64Array', 'object', '1,2']
       ];
       for (const row of rows) {
-        expect(`${row[0]}: ${typeof sink[row[0]]} ${String(sink[row[0]])}`).assertEqual(`${row[0]}: ${row[1]} ${row[2]}`);
+        const field = row[0];
+        const expectedTypeof = row[1];
+        const expectedString = row[2];
+        expect(`${field}: ${typeof sink[field]} ${String(sink[field])}`)
+          .assertEqual(`${field}: ${expectedTypeof} ${expectedString}`);
       }
       expect(Object.keys(sink).includes('unit')).assertTrue();
       expect(1 / (sink['negZero'] as number)).assertEqual(-Infinity);
@@ -662,7 +657,6 @@ export default function arkTSRuntimeTest() {
     });
   });
 
-  // The same scenarios run from the smoke page in entry/src/main/ets/pages/Index.ets.
   describe('Step9_EndToEnd', () => {
     it('designExample', 0, () => {
       const sink: Record<string, Object | null | undefined> = {};
@@ -738,31 +732,36 @@ function resetCallLog(): void {
   callLog.calls = 0;
 }
 
-/** Two fresh Rectangles; Cangjie retains the first. Returns WeakRefs to both. */
-function keepOneOfTwo(): WeakRef<Rectangle>[] {
+interface KeptAndControl {
+  kept: WeakRef<Rectangle>;
+  control: WeakRef<Rectangle>;
+}
+
+function keepOneOfTwo(): KeptAndControl {
   const kept = new Rectangle(1, 2);
   const control = new Rectangle(3, 4);
   expect(runArkTSTest('step4.keepObject', kept)).assertEqual('');
-  return [new WeakRef(kept), new WeakRef(control)];
+  return { kept: new WeakRef(kept), control: new WeakRef(control) };
 }
 
-/** A separate function, so the caller's frame holds no strong reference to the object. */
-function checkKeptObject(kept: WeakRef<Rectangle>): void {
+function checkKeptObjectWithoutRetainingIt(kept: WeakRef<Rectangle>): void {
   const rect = kept.deref() as Rectangle;
   expect(runArkTSTest('step4.checkKeptObject', rect)).assertEqual('');
   expect(rect.width).assertEqual(7);
 }
 
-/**
- * Forces full collections, yielding to the event loop in between (queued pin releases run
- * there), until `done()` holds; false after 5 rounds. Allocating garbage only triggers young
- * collections, which never cleared the WeakRefs here; dumping a heap snapshot runs a full one.
- */
+const FULL_COLLECTION_ROUNDS = 5;
+const PAUSE_FOR_QUEUED_PIN_RELEASES_MS = 100;
+
+function forceFullCollectionByDumpingHeapSnapshot(): void {
+  hidebug.dumpJsHeapData('arkts-runtime-test-gc');
+}
+
 async function collectUntil(done: () => boolean): Promise<boolean> {
-  for (let round = 0; round < 5; round++) {
-    await sleep(100);
-    hidebug.dumpJsHeapData('arkts-runtime-test-gc');
-    await sleep(100);
+  for (let round = 0; round < FULL_COLLECTION_ROUNDS; round++) {
+    await sleep(PAUSE_FOR_QUEUED_PIN_RELEASES_MS);
+    forceFullCollectionByDumpingHeapSnapshot();
+    await sleep(PAUSE_FOR_QUEUED_PIN_RELEASES_MS);
     if (done()) {
       return true;
     }

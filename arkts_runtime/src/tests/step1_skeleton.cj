@@ -42,10 +42,6 @@ func alreadyBoundExceptionNames(): String {
     ])
 }
 
-/**
- * `e.f` must be compiled into a call of `ArkTSRuntime.memberAccess` on the device toolchain: on
- * a payload the runtime did not make, only our `evalPayload` throws this.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func dynamicSyntaxReachesRuntime(): String {
     let e = payload()
@@ -76,7 +72,6 @@ func extendHelperReachable(): String {
     expectEqual("isUndefined(undefined())", ArkTSRuntime.isUndefined(ArkTSRuntime.undefined()), true)
 }
 
-/** Tests in this subpackage rely on reaching internal members of the runtime package. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func internalVisibleToSubpackage(): String {
     expectEqual("payloadKind", ArkTSRuntime.payloadKind(payload()), "foreign payload")

@@ -32,10 +32,6 @@ func foreignPayloadFails(what: String, block: () -> Any): String {
     expectThrows<ExternConversionException>(what, "Extern payload was not produced by ArkTSRuntime", block)
 }
 
-/**
- * fixtures: sink, Rectangle. Stores undefined() and null(); ArkTS checks them. isUndefined /
- * isNull are true only for their own kind.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func undefinedAndNull(js: JS, fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -70,7 +66,6 @@ func undefinedAndNull(js: JS, fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: sink. ArkTS checks o1 and o2 are distinct empty objects. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func objectIsFresh(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -84,7 +79,6 @@ func objectIsFresh(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: ArkTS's `Math`, reached from the page's global object. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func globalIsGlobalThis(fixtures: Array<NativeJSValue>): String {
     let g = ArkTSRuntime.global()
@@ -94,10 +88,6 @@ func globalIsGlobalThis(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/**
- * fixtures: sink. Symbols have no members here (not objects), so descriptions are read with JS
- * `String(symbol)`. ArkTS checks String(s1) === "Symbol(d)", s1 !== s2, and the default description.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func symbols(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -113,10 +103,6 @@ func symbols(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/**
- * fixtures: pairs (array of [a, b]), expected (ArkTS `a === b` for each pair), Rectangle.
- * Then pairs made in Cangjie, and member reads as operands.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func strictEqualTable(fixtures: Array<NativeJSValue>): String {
     let pairs = from<Array<Array<E>>>(ext(fixtures, 0))
@@ -136,7 +122,6 @@ func strictEqualTable(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: Rectangle, [1, 2]. `objectHasProperty` follows JS `in`; `objectKeys` is `Object.keys`. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func objectProperties(fixtures: Array<NativeJSValue>): String {
     let rect = ext(fixtures, 0)
@@ -167,11 +152,6 @@ func objectProperties(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/**
- * fixtures: sink. Defines one property per flag combination (named by its flags, e.g. "wEc" =
- * writable, not enumerable, configurable) and reads each descriptor back with JS's own
- * `Object.getOwnPropertyDescriptor`; ArkTS checks the values and which keys are enumerable.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func defineOwnProperty(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -233,10 +213,6 @@ func requireSystemNativeModule(): String {
     ])
 }
 
-/**
- * Every helper from a spawned thread. `requireArkModule` is the exception: without ArkTS code on
- * the stack the engine cannot resolve the specifier (known limitation).
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func helpersFromOtherThread(): String {
     let o = ArkTSRuntime.object()
@@ -244,8 +220,9 @@ func helpersFromOtherThread(): String {
     let defined = ArkTSRuntime.objectDefineOwnProperty(o, "k", 1.5)
     let hilog = ArkTSRuntime.requireSystemNativeModule("hilog", None)
     firstFailure([
-        expectThrows<ForeignRuntimeException>("requireArkModule", "Unable to get recordName",
-            { => ArkTSRuntime.requireArkModule(TEST_MODULE) }),
+        expectThrows<ForeignRuntimeException>(
+            "requireArkModule, known limitation: no ArkTS code on the stack to resolve the specifier against",
+            "Unable to get recordName", { => ArkTSRuntime.requireArkModule(TEST_MODULE) }),
         expectEqual("isUndefined(undefined())", ArkTSRuntime.isUndefined(ArkTSRuntime.undefined()), true),
         expectEqual("isNull(null())", ArkTSRuntime.isNull(ArkTSRuntime.null()), true),
         expectEqual("global().JSON", ArkTSRuntime.isUndefined(ArkTSRuntime.global().JSON), false),

@@ -4,39 +4,27 @@ import std.collection.ArrayList
 import std.math.numeric.BigInt
 import std.sync.{AtomicOptionReference, Mutex}
 
-/** `ArkTSNativeException.code` of `ark_interop`'s "The accessing index is out of range". */
 const INDEX_OUT_OF_RANGE_CODE: Int32 = 34300001
 
-/** `ArkTSNativeException.code` of `ark_interop`'s "The ArkTS data types do not match". */
 const TYPE_MISMATCH_CODE: Int32 = 34300005
 
-/** What an `Extern<ArkTSRuntime>` made by the runtime holds as its payload. */
 private enum ArkTSPayload {
-    | Imm(NativeJSValue)      // undefined / null / boolean / number
+    | Imm(NativeJSValue)
     | Text(String)
-    | Pin(Pinned) // string / bigint / symbol / object (arrays too) / function / external
-    | Method(Pinned, ArkTSPayload) // a function read as a member or element, with its receiver
+    | Pin(Pinned)
+    | Method(Pinned, ArkTSPayload)
 }
 
-/**
- * A value a fused op passes to native code: a plain value, or text, whose bytes the op acquires
- * for as long as the native call runs.
- */
 private enum OpArg {
     | Plain(PlainArg)
     | Text(String)
 }
 
-/** What `OpArg.Plain` carries: a value native code takes as is (`nativeArgOf`). */
 private enum PlainArg {
-    | Scalar(Int32, Float64) // undefined / null / boolean / number, as `NativeArg.kind` and `scalar`
+    | Scalar(JSTypeCode, Float64)
     | Pin(Pinned)
 }
 
-/**
- * An `OpArg` lent to native code (`ArkTSRuntime.lend`): the `NativeArg` the op passes, and the
- * bytes of a text, acquired until `release` once the native call has returned.
- */
 private struct LentArg {
     LentArg(let native: NativeArg, let bytes: ?CPointerHandle<UInt8>) {}
 
@@ -45,28 +33,38 @@ private struct LentArg {
     }
 }
 
-/** How an index is accessed: an array element, or a property key. */
+private struct HeldTexts {
+    var bytes: ?ArrayList<CPointerHandle<UInt8>> = None
+
+    mut func hold(lent: LentArg, capacity: Int64): NativeArg {
+        if (let Some(handle) <- lent.bytes) {
+            match (bytes) {
+                case Some(list) => list.add(handle)
+                case None =>
+                    let list = ArrayList<CPointerHandle<UInt8>>(capacity)
+                    list.add(handle)
+                    bytes = list
+            }
+        }
+        lent.native
+    }
+
+    unsafe func releaseAll(): Unit {
+        if (let Some(list) <- bytes) {
+            for (handle in list) { releaseArrayRawData(handle) }
+        }
+    }
+}
+
 private enum ArkTSIndex {
     | Element(Int64)
     | Key(NativeJSValue)
 }
 
-/**
- * The ArkTS foreign runtime: runs the operations the compiler generates for dynamic syntax on
- * `Extern<ArkTSRuntime>` (`e.f`, `e(...)`, `e[i]`, updates), one `run` each, and converts values
- * between Cangjie and ArkTS. Backed directly by the host N-API C interface.
- *
- * All members are static; the class is never instantiated.
- */
 public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
     private static let bindMutex = Mutex()
     private static let js_ = AtomicOptionReference<JS>()
 
-    /**
-     * Associates the runtime with the JS engine instance `env`. Only the first call
-     * succeeds; every later call throws `ArkTSContextAlreadyBoundException`, even with the
-     * same environment.
-     */
     public static func bind(env: CPointer<Unit>): Unit {
         synchronized(bindMutex) {
             if (js_.load().isSome()) {
@@ -81,10 +79,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         js_.load().isSome()
     }
 
-    /**
-     * Makes values and calls JS operations in the bound environment; throws
-     * `ArkTSContextNotBoundException` before `bind`.
-     */
     static prop js: JS {
         get() {
             match (js_.load()) {
@@ -95,12 +89,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** The bound environment; throws `ArkTSContextNotBoundException` before `bind`. */
     static prop environment: Environment {
         get() { js.environment }
     }
 
-    /** The `undefined` the runtime returns and passes, built on first use. Bind thread only. */
     private static var undefined_: ?(NativeJSValue, Extern<ArkTSRuntime>) = None
 
     private static func undefinedPair(): (NativeJSValue, Extern<ArkTSRuntime>) {
@@ -114,22 +106,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** ArkTS `undefined`, shared by the whole runtime. Bind thread only. */
     static prop undefinedValue: NativeJSValue {
         get() { undefinedPair()[0] }
     }
 
-    /** `undefinedValue` as an `Extern`, shared by the whole runtime. Bind thread only. */
     static prop undefinedExtern: Extern<ArkTSRuntime> {
         get() { undefinedPair()[1] }
     }
 
-    /**
-     * Runs `operation` on the owner thread inside a runtime frame and returns its result,
-     * or rethrows its exception or error on the calling thread. Blocks callers on other threads
-     * until the owner thread has run it, so the owner thread must never wait for a thread that is
-     * inside `run`. Public entry points call it exactly once; internal recursion never does.
-     */
     static func run<R>(operation: () -> R): R {
         if (environment.isOnOwnerThread()) {
             return environment.runtimeFrame(operation)
@@ -144,36 +128,28 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /**
-     * Runs `body` inside a fresh ArkTS handle scope that closes when `body` returns or throws.
-     * Wrap code that runs where no ArkTS caller closes a scope for you, such as Cangjie UI event
-     * handlers and `postJSTask` bodies: there, every ArkTS value created would otherwise stay
-     * alive until the environment is destroyed, as with `ark_interop` without `newScope`.
-     * `Extern` values created inside stay valid after it returns. Off the owner thread it only
-     * runs `body`.
-     */
     public static func newScope<T>(body: () -> T): T {
         let environment = ArkTSRuntime.environment
         if (!environment.isOnOwnerThread()) { return body() }
         environment.userFrame(body)
     }
 
-    /** `e.f`. A function keeps `e` as the `this` of a later `functionCall`. */
     public static func memberAccess(e: Extern<ArkTSRuntime>, field: String): Extern<ArkTSRuntime> {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
                 let environment = ArkTSRuntime.environment
-                // The pin cache is owner-thread only (ADR-0005), and off it the op could only
-                // return not-owner.
-                if (!environment.isOnOwnerThread()) { return memberAccessSlow(e, field) }
-                let hint = environment.pinCache.hint(target.cell, field)
+                let pinCache = match (environment.pinCacheIfOwnerThread()) {
+                    case Some(cache) => cache
+                    case None => return memberAccessSlow(e, field)
+                }
+                let hint = pinCache.hint(target.cell, field)
                 var out = NativeOpResult()
                 let status = unsafe {
                     let key = acquireArrayRawData(field.rawData())
                     try { ats_rt_ext_get_named(environment.state, target.cell, key.pointer, UIntNative(key.array.size), cellOf(hint), inout out) }
                     finally { releaseArrayRawData(key) }
                 }
-                if (status == 0) { return Extern<ArkTSRuntime>(payloadOfRead(environment, out, receiver, target, field, hint)) }
+                if (status == 0) { return Extern<ArkTSRuntime>(payloadOfRead(environment, pinCache, out, receiver, target, field, hint)) }
                 try { opFailed(environment, status) } catch (x: ArkTSNativeException) { throw memberError(x) }
             }
         }
@@ -184,18 +160,16 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { ArkTSRuntime.retain(readMember(ArkTSRuntime.jsValueOf(e), field), receiver: e) }
     }
 
-    /** `e[arg]`. A function keeps `e` as the `this` of a later `functionCall`. */
     public static func indexedAccess(e: Extern<ArkTSRuntime>, arg: Any): Extern<ArkTSRuntime> {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
                 let environment = ArkTSRuntime.environment
                 var out = NativeOpResult()
-                // `None`: the index is neither a position nor a name, so no fused op applies.
                 let status: ?Int32 = match (arg) {
                     case position: Int64 => unsafe { ats_rt_ext_element_get(environment.state, target.cell, position, inout out) }
                     case name: String => unsafe {
                         let key = acquireArrayRawData(name.rawData())
-                        try { ats_rt_ext_get_named(environment.state, target.cell, key.pointer, UIntNative(key.array.size), CPointer<Unit>(), inout out) }
+                        try { ats_rt_ext_get_named(environment.state, target.cell, key.pointer, UIntNative(key.array.size), NativePin(), inout out) }
                         finally { releaseArrayRawData(key) }
                     }
                     case _ => None
@@ -210,7 +184,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (environment.isOnOwnerThread()) {
             match (arg) {
                 case position: Int64 =>
-                    // `None`: `e` is not an array, so the generic read below applies.
                     let read: ?Extern<ArkTSRuntime> = environment.runtimeFrame {
                         match (arrayOwnerOf(e)) {
                             case Some(owner) =>
@@ -230,7 +203,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { ArkTSRuntime.retain(readIndex(ArkTSRuntime.jsValueOf(e), arg), receiver: e) }
     }
 
-    /** `e.f = value`. */
     public static func memberUpdate(e: Extern<ArkTSRuntime>, field: String, value: Any): Unit {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
@@ -261,7 +233,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { writeMember(ArkTSRuntime.jsValueOf(e), field, ArkTSRuntime.toJSValue(value)) }
     }
 
-    /** `e[field] = value`. */
     public static func indexedUpdate(e: Extern<ArkTSRuntime>, field: Any, value: Any): Unit {
         if (let Some(receiver) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             if (let Some(target) <- objectPinOf(receiver)) {
@@ -279,7 +250,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         if (environment.isOnOwnerThread()) {
             match (field) {
                 case position: Int64 where position >= 0 && position < Int64(UInt32.Max) =>
-                    // `false`: `e` is not an array, so the generic write below applies.
                     let written = environment.runtimeFrame {
                         match (arrayOwnerOf(e)) {
                             case Some(owner) =>
@@ -296,7 +266,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         indexedUpdateSlow(e, field, value)
     }
 
-    /** The fused op's status; `None` when `field` is neither a position nor a name, so none applies. */
     private static func indexedUpdateFused(target: Pinned, field: Any, arg: OpArg): ?Int32 {
         let state = environment.state
         match (field) {
@@ -325,10 +294,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { writeIndex(ArkTSRuntime.jsValueOf(e), field, value) }
     }
 
-    /**
-     * `e(args)`. `this` is the receiver a member or element read kept, `undefined` for any
-     * other function.
-     */
     public static func functionCall(e: Extern<ArkTSRuntime>, args: Array<Any>): Extern<ArkTSRuntime> {
         if (let Some(callee) <- (Extern<ArkTSRuntime>.getPayload(e) as ArkTSPayload)) {
             let fused: ?Extern<ArkTSRuntime> = match (callee) {
@@ -341,20 +306,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         functionCallSlow(e, args)
     }
 
-    /**
-     * Calls `function` with the fused op, `None` when an argument has no `OpArg`. The receiver
-     * and the arguments are classified once, in order. Their number varies, so unlike the other
-     * ops the bytes of each text among them are not released by a `finally` of their own: they
-     * stay acquired, in `lentTexts`, until the outer `finally` releases them all, on every exit.
-     * An argument with no `OpArg` after a text releases that text without calling.
-     */
     private static func callFused(function: Pinned, receiver: OpArg, e: Extern<ArkTSRuntime>,
         args: Array<Any>): ?Extern<ArkTSRuntime> {
-        // `this`, then the arguments: one buffer, so one loop classifies them all.
         let natives = Array<NativeArg>(args.size + 1, repeat: NativeArg())
-        // Allocated with the first text, sized for every value still to classify: an upper
-        // bound, which saves counting the texts in a pass of its own.
-        var lentTexts: ?ArrayList<CPointerHandle<UInt8>> = None
+        var texts = HeldTexts()
         try {
             for (i in 0..natives.size) {
                 let arg = if (i == 0) { receiver } else {
@@ -363,17 +318,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                         case None => return None
                     }
                 }
-                let lent = unsafe { lend(arg) }
-                if (let Some(bytes) <- lent.bytes) {
-                    match (lentTexts) {
-                        case Some(list) => list.add(bytes)
-                        case None =>
-                            let list = ArrayList<CPointerHandle<UInt8>>(natives.size - i)
-                            list.add(bytes)
-                            lentTexts = list
-                    }
-                }
-                natives[i] = lent.native
+                natives[i] = texts.hold(unsafe { lend(arg) }, natives.size - i)
             }
             let environment = ArkTSRuntime.environment
             var result = NativeOpResult()
@@ -386,13 +331,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             if (status != AR_NOT_OWNER) { opFailed(environment, status) }
             functionCallSlow(e, args)
         } finally {
-            if (let Some(list) <- lentTexts) {
-                for (bytes in list) { unsafe { releaseArrayRawData(bytes) } }
-            }
+            unsafe { texts.releaseAll() }
         }
     }
 
-    /** What a payload the runtime made passes to a fused op: always one, unlike any value (`opArgOf`). */
     private static func opArgOfPayload(payload: ArkTSPayload): OpArg {
         match (payload) {
             case Imm(v) => Plain(Scalar(v.kind, v.scalar))
@@ -402,7 +344,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** `arg` as the `NativeArg` native code takes: a scalar by value, a pin by its cell. */
     private static func nativeArgOf(arg: PlainArg): NativeArg {
         var native = NativeArg()
         match (arg) {
@@ -411,7 +352,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 native.scalar = x
             case Pin(p) =>
                 native.tag = AR_ARG_PIN
-                native.ptr = p.cell
+                native.pinOrUtf8 = p.cell
         }
         native
     }
@@ -422,12 +363,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
             ArkTSRuntime.retain(invoke(function, args, receiver ?? undefinedValue))
         }
     }
-
-    /*
-     * Member and index access behave as in `ark_interop`: `getProperty` / `setProperty` work only
-     * on objects, integer indices use `getElement` / `setElement`. Its "types do not match" and
-     * "index out of range" errors become the `Extern` exceptions, with its message.
-     */
 
     private static func readMember(receiver: NativeJSValue, field: String): NativeJSValue {
         try {
@@ -471,25 +406,21 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** Resolves the index before converting the value: target, index, value order. */
     private static func writeIndex(target: NativeJSValue, index: Any, value: Any): Unit {
-        let resolved = toIndex(index)
-        let converted = ArkTSRuntime.toJSValue(value)
+        writeResolvedIndex(target, toIndex(index), ArkTSRuntime.toJSValue(value))
+    }
+
+    private static func writeResolvedIndex(target: NativeJSValue, index: ArkTSIndex, value: NativeJSValue): Unit {
         try {
-            match (resolved) {
-                case Element(position) => target.setElement(position, converted)
-                case Key(key) => target.setProperty(key, converted)
+            match (index) {
+                case Element(position) => target.setElement(position, value)
+                case Key(key) => target.setProperty(key, value)
             }
         } catch (e: ArkTSNativeException) {
             throw indexError(e)
         }
     }
 
-    /**
-     * The Cangjie types `ark_interop` accepts: `Int64` is an element position; `String`,
-     * `Utf16String` and `Float64` are property keys. An `Extern` holding a number, a string or a
-     * symbol is a property key, the number as a `Float64`.
-     */
     private static func toIndex(index: Any): ArkTSIndex {
         match (index) {
             case position: Int64 => Element(position)
@@ -517,10 +448,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         function.asFunction().call(converted, thisArg: thisArg)
     }
 
-    /**
-     * Converts a Cangjie value to ArkTS (type mapping in `conversion.cj`). An `Extern` is
-     * returned as is.
-     */
     public static func toExtern<R>(value: R): Extern<ArkTSRuntime> {
         let boxed: Any = value
         match (boxed) {
@@ -539,7 +466,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { ArkTSRuntime.retain(ArkTSRuntime.toJSValue(value)) }
     }
 
-    /** These readers touch only copied payloads for immediate JS values, including type errors. */
     private static func isCopiedScalarReader<R>(): Bool {
         match (None<R>) {
             case _: Option<Float64> => true
@@ -561,13 +487,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /**
-     * Reads `value` as `R`; wrong JS types throw `ExternConversionException`. A number, boolean,
-     * `undefined` or `null` is an immediate: scalar readers can use its copied payload on
-     * any thread without `run`. Off-thread reads still reject a destroyed environment.
-     * Readers requiring VM operations retain dispatch. Read as an `Extern`, `value` is
-     * returned as is.
-     */
     public static func fromExtern<R>(value: Extern<ArkTSRuntime>): R {
         if (let Some(Text(text)) <- (Extern<ArkTSRuntime>.getPayload(value) as ArkTSPayload)) {
             match (probeOf<R>(probeString, probeComparableString, probeInt64)) {
@@ -604,13 +523,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { ArkTSRuntime.fromJSValue<R>(ArkTSRuntime.jsValueOf(value)) }
     }
 
-    /**
-     * Wraps a `NativeJSValue` produced by the engine as an `Extern`. Heap values become engine-global
-     * handles, so the result outlives the current scope. A function read from `receiver` keeps
-     * it, as the `this` of a later `functionCall`. Bind thread only.
-     */
     static func retain(value: NativeJSValue, receiver!: ?Extern<ArkTSRuntime> = None): Extern<ArkTSRuntime> {
-        // `JSType` constants are not patterns, hence `match` without a selector.
         let t = value.typeof()
         let payload = match {
             case t == JSType.NUMBER || t == JSType.UNDEFINED || t == JSType.NULL || t == JSType.BOOLEAN => Imm(value)
@@ -628,15 +541,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         Extern<ArkTSRuntime>(payload)
     }
 
-    /**
-     * The `NativeJSValue` held by an `Extern` made by `retain`, valid in the current scope; a method
-     * gives its function. Throws `ExternConversionException` for any other payload. Bind thread only.
-     */
     static func jsValueOf(value: Extern<ArkTSRuntime>): NativeJSValue {
         evalPayload(Extern<ArkTSRuntime>.getPayload(value))
     }
 
-    /** `jsValueOf` for a payload. */
     static func evalPayload(payload: Any): NativeJSValue {
         match (payload as ArkTSPayload) {
             case Some(h) => valueOfPayload(h)
@@ -644,7 +552,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** The function and, for a method, its receiver. Bind thread only. */
     static func calleeOf(callee: Extern<ArkTSRuntime>): (NativeJSValue, ?NativeJSValue) {
         match (Extern<ArkTSRuntime>.getPayload(callee) as ArkTSPayload) {
             case Some(Method(function, receiver)) => (function.toJSValue(), valueOfPayload(receiver))
@@ -673,7 +580,7 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     private static func scalarOf(boolean: Bool): Float64 { if (boolean) { 1.0 } else { 0.0 } }
 
-    private static func immediateOfAny(value: Any): ?(Int32, Float64) {
+    private static func immediateOfAny(value: Any): ?(JSTypeCode, Float64) {
         match (value) {
             case number: Float64 => (JSType.NUMBER, number)
             case boolean: Bool => (JSType.BOOLEAN, scalarOf(boolean))
@@ -690,15 +597,16 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** `value` as an op argument; `None` when no fused op can pass it, so the operation takes the generic path. */
-    private static func opArgOf(value: Any): ?OpArg {
-        // Text first, so that a `None` `Option<String>` falls through to `immediateOfAny`, which
-        // takes it as undefined.
+    private static func textOf(value: Any): ?String {
         match (value) {
-            case text: String => return Text(text)
-            case option: Option<String> => if (let Some(text) <- option) { return Text(text) }
-            case _ => ()
+            case text: String => text
+            case option: Option<String> => option
+            case _ => None
         }
+    }
+
+    private static func opArgOf(value: Any): ?OpArg {
+        if (let Some(text) <- textOf(value)) { return Text(text) }
         if (let Some((kind, x)) <- immediateOfAny(value)) { return Plain(Scalar(kind, x)) }
         match (value) {
             case external: Extern<ArkTSRuntime> => match (Extern<ArkTSRuntime>.getPayload(external) as ArkTSPayload) {
@@ -709,10 +617,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /**
-     * `arg` as native code takes it. A text's bytes are acquired here; the caller releases them
-     * (`LentArg.release`) once the native call has returned.
-     */
     private static unsafe func lend(arg: OpArg): LentArg {
         match (arg) {
             case Plain(plain) => LentArg(nativeArgOf(plain), None)
@@ -720,17 +624,12 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
                 let bytes = acquireArrayRawData(text.rawData())
                 var native = NativeArg()
                 native.tag = AR_ARG_UTF8
-                native.ptr = CPointer<Unit>(bytes.pointer)
-                native.length = UIntNative(bytes.array.size)
+                native.pinOrUtf8 = CPointer<Unit>(bytes.pointer)
+                native.utf8Length = UIntNative(bytes.array.size)
                 LentArg(native, bytes)
         }
     }
 
-    /**
-     * Handles an indexed op's status other than success or not-owner: throws for a pending
-     * exception or a dead environment. Any other status, out of range and a non-array included,
-     * leaves the operation to the generic path, which throws ark_interop's errors.
-     */
     private static func indexedOpFailed(status: Int32): Unit {
         if (status == NAPI_PENDING_EXCEPTION || status == AR_DEAD) {
             try { opFailed(environment, status) } catch (x: ArkTSNativeException) { throw indexError(x) }
@@ -743,20 +642,19 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         out
     }
 
-    /** Posts task `id` through the entry point `Environment.post` uses, and returns its status. */
     static func nativePost(id: Int64): Int32 {
         unsafe { ats_rt_ext_post(environment.state, id) }
     }
 
-    private static func cellOf(pin: ?Pinned): CPointer<Unit> {
+    private static func cellOf(pin: ?Pinned): NativePin {
         match (pin) {
             case Some(p) => p.cell
-            case None => CPointer<Unit>()
+            case None => NativePin()
         }
     }
 
-    private static func payloadOfRead(environment: Environment, out: NativeOpResult, receiver: ArkTSPayload, target: Pinned,
-        field: String, hint: ?Pinned): ArkTSPayload {
+    private static func payloadOfRead(environment: Environment, pinCache: PinCache, out: NativeOpResult,
+        receiver: ArkTSPayload, target: Pinned, field: String, hint: ?Pinned): ArkTSPayload {
         if (out.kind > JSType.NUMBER && (out.flags & AR_RESULT_HIT) != 0) {
             if (let Some(p) <- hint) {
                 return if (p.kind == JSType.FUNCTION) { Method(p, receiver) } else { ArkTSPayload.Pin(p) }
@@ -764,8 +662,8 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
         let payload = payloadOfResult(environment, out, receiver)
         match (payload) {
-            case Pin(p) => environment.pinCache.remember(target.cell, field, p)
-            case Method(p, _) => environment.pinCache.remember(target.cell, field, p)
+            case Pin(p) => pinCache.remember(target.cell, field, p)
+            case Method(p, _) => pinCache.remember(target.cell, field, p)
             case _ => ()
         }
         payload
@@ -773,10 +671,10 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
 
     private static func payloadOfResult(environment: Environment, out: NativeOpResult, receiver: ?ArkTSPayload): ArkTSPayload {
         if ((out.flags & AR_RESULT_TEXT) != 0) {
-            let bytes = Array<UInt8>(Int64(out.textLength), repeat: 0)
+            let bytes = Array<UInt8>(Int64(out.textUtf8Length), repeat: 0)
             unsafe {
                 let buffer = acquireArrayRawData(bytes)
-                try { ats_rt_ext_text_take(environment.state, buffer.pointer, out.textLength) } finally { releaseArrayRawData(buffer) }
+                try { ats_rt_ext_text_take(environment.state, buffer.pointer, out.textUtf8Length) } finally { releaseArrayRawData(buffer) }
                 return Text(String.withRawData(bytes))
             }
         }
@@ -811,7 +709,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         ExternConversionException("Extern payload was not produced by ArkTSRuntime")
     }
 
-    /** The `NativeJSValue` of a payload holding an immediate, `None` for anything else. */
     static func immediateOf(value: Extern<ArkTSRuntime>): ?NativeJSValue {
         match (Extern<ArkTSRuntime>.getPayload(value) as ArkTSPayload) {
             case Some(Imm(immediate)) => immediate
@@ -819,7 +716,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** Test hook: whether `a` and `b` hold the same pin (for a method, its function's pin). */
     static func samePin(a: Extern<ArkTSRuntime>, b: Extern<ArkTSRuntime>): Bool {
         match ((Extern<ArkTSRuntime>.getPayload(a) as ArkTSPayload, Extern<ArkTSRuntime>.getPayload(b) as ArkTSPayload)) {
             case (Some(Pin(p)), Some(Pin(q))) => refEq(p, q)
@@ -838,10 +734,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /**
-     * Converts an assigned value, call argument or array element to a `NativeJSValue`. An `Extern`
-     * gives the value it holds (a method its function). Bind thread only.
-     */
     static func toJSValue(value: Any): NativeJSValue {
         match (value) {
             case number: Float64 => js.number(number)
@@ -857,7 +749,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** Reads `value` as a Cangjie `R`; `Extern<ArkTSRuntime>` is the identity. Bind thread only. */
     static func fromJSValue<R>(value: NativeJSValue): R { probedFromJSValue<R>(value) }
 
     static func fromJSValueReflective<R>(value: NativeJSValue): R {
@@ -870,7 +761,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    // ArkTS-specific entry points. Each runs in one `run`.
     public static func undefined(): Extern<ArkTSRuntime> {
         run { undefinedExtern }
     }
@@ -879,22 +769,18 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { retain(js.null().toJSValue()) }
     }
 
-    /** A fresh empty object. */
     public static func object(): Extern<ArkTSRuntime> {
         run { retain(js.object().toJSValue()) }
     }
 
-    /** `globalThis`. */
     public static func global(): Extern<ArkTSRuntime> {
         run { retain(js.global.toJSValue()) }
     }
 
-    /** A new symbol; two calls never give the same symbol. */
     public static func symbol(description!: String = ""): Extern<ArkTSRuntime> {
         run { retain(js.symbol(description: description).toJSValue()) }
     }
 
-    /** JS `lhs === rhs`. */
     public static func strictEqual(lhs: Extern<ArkTSRuntime>, rhs: Extern<ArkTSRuntime>): Bool {
         run { jsValueOf(lhs).strictEqual(jsValueOf(rhs)) }
     }
@@ -907,21 +793,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         run { jsValueOf(value).isUndefined() }
     }
 
-    /** JS `key in value`: own or inherited. Throws `ExternMemberAccessException` for non-objects. */
     public static func objectHasProperty(value: Extern<ArkTSRuntime>, key: String): Bool {
         run { objectOf(jsValueOf(value)).hasProperty(key) }
     }
 
-    /** JS `Object.keys(value)`: own enumerable string keys. */
     public static func objectKeys(value: Extern<ArkTSRuntime>): Array<String> {
         run { objectOf(jsValueOf(value)).keys() }
     }
 
-    /**
-     * Defines (or redefines) an own data property. As with JS `Object.defineProperty`, a refusal
-     * (frozen object, read-only non-configurable property) throws: a `ForeignRuntimeException`
-     * with "TypeError Cannot define property".
-     */
     public static func objectDefineOwnProperty(
         value: Extern<ArkTSRuntime>,
         key: String,
@@ -937,28 +816,14 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /**
-     * Loads an ArkTS module, e.g. `"entry/src/main/ets/Utils"` (no extension; the file must be
-     * listed in `arkOptions.runtimeOnly.sources`), `"@ohos.hilog"` or `"libfoo.so"`. Works only
-     * while ArkTS code is on the stack: from a spawned thread (the call then runs in a posted
-     * JS task) it throws `ForeignRuntimeException` ("Unable to get recordName ..."). A missing
-     * module throws `ArkTSNativeException` 34300006 from the native backend.
-     */
     public static func requireArkModule(specifier: String): Extern<ArkTSRuntime> {
         run { retain(js.requireArkModule(specifier)) }
     }
 
-    /** Loads a system NAPI module, e.g. `"hilog"`; `undefined` when it cannot be loaded. */
     public static func requireSystemNativeModule(moduleName: String, prefix: ?String): Extern<ArkTSRuntime> {
         run { retain(js.requireSystemNativeModule(moduleName, prefix: prefix)) }
     }
 
-    /**
-     * An ArkTS function that runs `body` when called (on the owner thread), with the arguments as
-     * `Extern` values; the result is converted like any value passed to ArkTS. `this` is not
-     * passed. An exception thrown by `body` reaches ArkTS as an `Error` whose message is the
-     * exception's text.
-     */
     public static func function(body: (Array<Extern<ArkTSRuntime>>) -> Extern<ArkTSRuntime>): Extern<ArkTSRuntime> {
         run {
             let function = js.function { _, callInfo =>
@@ -969,7 +834,6 @@ public abstract class ArkTSRuntime <: ForeignRuntime<ArkTSRuntime> {
         }
     }
 
-    /** As member access, a non-object throws `ExternMemberAccessException` with `ark_interop`'s message. */
     private static func objectOf(value: NativeJSValue): NativeJSValue {
         try {
             value.asObject()

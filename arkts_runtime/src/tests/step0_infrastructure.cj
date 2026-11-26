@@ -16,7 +16,6 @@ func step0Scenarios(): Array<(String, Scenario)> {
     ]
 }
 
-/** `expectThrows` must accept the right exception and report every other outcome. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func expectThrowsHelper(): String {
     firstFailure([
@@ -33,7 +32,6 @@ func expectThrowsHelper(): String {
     ])
 }
 
-/** fixtures[0] is a Rectangle(3, 4); reads it with plain ark_interop. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func readFixture(_: JS, fixtures: Array<NativeJSValue>): String {
     let rect = fixture(fixtures, 0).asObject()
@@ -43,7 +41,6 @@ func readFixture(_: JS, fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures[0] is a Rectangle; sets width = 5 with plain ark_interop. ArkTS checks the effect. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func writeFixture(js: JS, fixtures: Array<NativeJSValue>): String {
     fixture(fixtures, 0).asObject()["width"] = js.number(5.0).toJSValue()

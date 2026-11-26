@@ -4,18 +4,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 
-// Apps using arkts_runtime ship the Cangjie libraries in dependencies_libs/base (exactly one
-// std-core per app), and apps with a Cangjie UI also those in dependencies_libs/ui. hvigor
-// does not package a symlinked libs folder, so they are copied on every build.
+function copyCangjieLibsBecauseHvigorSkipsSymlinkedLibs(libs: string, folders: string[]): void {
+  fs.rmSync(libs, { recursive: true, force: true });
+  for (const folder of folders) {
+    fs.cpSync(path.resolve(__dirname, '../../../dependencies_libs', folder), libs, { recursive: true });
+  }
+}
+
 const libs = path.resolve(__dirname, 'libs');
-fs.rmSync(libs, { recursive: true, force: true });
-fs.cpSync(path.resolve(__dirname, '../../../dependencies_libs/base'), libs, { recursive: true });
-fs.cpSync(path.resolve(__dirname, '../../../dependencies_libs/ui'), libs, { recursive: true });
+copyCangjieLibsBecauseHvigorSkipsSymlinkedLibs(libs, ['base', 'ui']);
 
 const nativeLibs = path.join(libs, 'arm64-v8a');
-// The build mode (-p buildMode=...) picks the native library's: debug keeps its checks.
+const nativeBuildMode = hvigor.getParameter().getExtParam('buildMode') ?? 'debug';
 execFileSync('/bin/sh', [path.resolve(__dirname, '../../../arkts_runtime/native/build.sh'), nativeLibs,
-  hvigor.getParameter().getExtParam('buildMode') ?? 'debug']);
+  nativeBuildMode]);
 process.env.ARKTS_RUNTIME_NATIVE_LIB = nativeLibs;
 
 export default {

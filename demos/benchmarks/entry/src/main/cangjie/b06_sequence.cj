@@ -3,7 +3,7 @@ package ohos_app_cangjie_entry
 import ohos.ark_interop.*
 import arkts_runtime.ArkTSRuntime
 
-/** Consecutive statements: one operation is the whole sequence of writes. */
+// @report Consecutive statements: one operation is the whole sequence of writes.
 func sequenceBenchmarks(): Array<Benchmark> {
     [
         Benchmark("sequence.twoWrites", 25000,

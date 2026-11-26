@@ -1,8 +1,6 @@
 import { testCJ, runArkTSTest, runArkTSTestOffThread } from 'libohos_app_cangjie_entry.so';
 import { Rectangle } from '../arkts/TestModule';
 
-// Smoke check for the ArkTS runtime without the test runner: runs the step 9 scenarios (the
-// design example and the mixed scenario using every feature) and shows one line per scenario.
 @Entry
 @Component
 struct Index {

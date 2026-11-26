@@ -35,60 +35,55 @@ func nativeJSException(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/** fixtures: Thrower. Every public entry point turns a JS throw into a ForeignRuntimeException. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func jsThrowsBecomeForeignRuntimeException(fixtures: Array<NativeJSValue>): String {
-    let t = ext(fixtures, 0)
+    let thrower = ext(fixtures, 0)
     func fails(what: String, fragment: String, block: () -> Any): String {
         expectThrows<ForeignRuntimeException>(what, fragment, block)
     }
     firstFailure([
-        fails("t.boom()", "boom", { => t.boom() }),
-        fails("t.throwString()", "boom string", { => t.throwString() }),
-        fails("t.typeError()", "missing is not callable", { => t.typeError() }),
-        fails("t.failingGetter", "boom getter", { => t.failingGetter })
+        fails("thrower.boom()", "boom", { => thrower.boom() }),
+        fails("thrower.throwString()", "boom string", { => thrower.throwString() }),
+        fails("thrower.typeError()", "missing is not callable", { => thrower.typeError() }),
+        fails("thrower.failingGetter", "boom getter", { => thrower.failingGetter })
     ])
 }
 
-/**
- * fixtures: Target. Our exceptions, and native backend errors that are not JS throws (type
- * mismatch, 34300005), keep their type.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func ownExceptionsNotWrapped(fixtures: Array<NativeJSValue>): String {
-    let e = ext(fixtures, 0)
+    let target = ext(fixtures, 0)
     let mismatch = try {
-        ArkTSRuntime.run { unwrap(e.num).toString() }
+        ArkTSRuntime.run { unwrap(target.num).toString() }
         "toString of a number: expected an exception"
     } catch (ex: ArkTSNativeException) {
         expectEqual("toString of a number: code", ex.code, 34300005)
     }
     firstFailure([
-        expectThrows<ExternIndexedAccessException>("e[UInt8(1)]", "Unsupported ArkTS index type", { => e[UInt8(1)] }),
-        expectThrows<ExternMemberAccessException>("e.nothing.x", "expect: object, given: undefined",
-            { => e.nothing.x }),
-        expectThrows<ExternFunctionAccessException>("e.num()", "ArkTS value is not a function", { => e.num() }),
+        expectThrows<ExternIndexedAccessException>("target[UInt8(1)]", "Unsupported ArkTS index type",
+            { => target[UInt8(1)] }),
+        expectThrows<ExternMemberAccessException>("target.nothing.x", "expect: object, given: undefined",
+            { => target.nothing.x }),
+        expectThrows<ExternFunctionAccessException>("target.num()", "ArkTS value is not a function",
+            { => target.num() }),
         expectThrows<ExternConversionException>("Bool from a number", "Cannot convert ArkTS number to Bool",
-            { => from<Bool>(e.num) }),
+            { => from<Bool>(target.num) }),
         mismatch
     ])
 }
 
-/** fixtures: Thrower. ArkTS checks calls == 2: the second call after a JS exception ran too. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func usableAfterJSException(fixtures: Array<NativeJSValue>): String {
-    let t = ext(fixtures, 0)
-    let first = expectThrows<ForeignRuntimeException>("first call", "boom", { => t.boom() })
-    let second = expectThrows<ForeignRuntimeException>("second call", "boom", { => t.boom() })
+    let thrower = ext(fixtures, 0)
+    let first = expectThrows<ForeignRuntimeException>("first call", "boom", { => thrower.boom() })
+    let second = expectThrows<ForeignRuntimeException>("second call", "boom", { => thrower.boom() })
     firstFailure([
         first,
         second,
-        expectEqual("t.calls", from<Float64>(t.calls), 2.0),
+        expectEqual("thrower.calls", from<Float64>(thrower.calls), 2.0),
         expectEqual("toExtern", from<String>(to("still works")), "still works")
     ])
 }
 
-/** `JSON.parse("{")` from a spawned thread: the SyntaxError is rethrown on this thread. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func jsExceptionFromOtherThread(): String {
     let json = ArkTSRuntime.run { ArkTSRuntime.retain(ArkTSRuntime.js.global.getProperty("JSON")) }

@@ -1,15 +1,4 @@
 #!/bin/sh
-# Benchmarks: builds the app (release), installs it, starts it, waits for the end and writes
-# results/<device>-<date>.csv and .html from the lines the app logs (hilog tag ArkTSBench).
-#
-#   ./run.sh                          # first connected device
-#   DEVICE=127.0.0.1:5555 ./run.sh
-#   ./run.sh --all                    # every connected device, one after the other
-#   ./run.sh --dispatch               # only the dispatch benchmark (issue #7, ADR-0006):
-#                                     # fromExtern's type probes against the reflective
-#                                     # conversion; writes results/dispatch-<device>-<date>.csv
-#
-# Only writes files under results/ and .devicetest/; never runs git.
 set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -22,6 +11,7 @@ BUILD_MODE=release
 WORK="$HERE/.devicetest"
 RESULTS="$HERE/results"
 TIMEOUT=300
+LOG_TAG_OF_INDEX_ETS=ArkTSBench
 
 ALL=false
 SUITE=pairs
@@ -33,7 +23,6 @@ for arg in "$@"; do
     esac
 done
 
-# Same environment as devicetest.sh (hvigor's Cangjie support outside the IDE).
 mkdir -p "$WORK/node_modules/@ohos" "$RESULTS"
 ln -sfn "$CANGJIE_SDK/build-tools/tools/hvigor/cangjie-build-support" "$WORK/node_modules/@ohos/cangjie-build-support"
 ln -sfn "$DEVECO/tools/hvigor/hvigor" "$WORK/node_modules/@ohos/hvigor"
@@ -67,9 +56,6 @@ HAP=entry/build/default/outputs/default/entry-default-signed.hap
 
 CODE="$WORK/code"
 
-# Copies the code of every benchmark from the sources into HTML fragments in $CODE: <name>.html
-# (the group's description and the two variants) and shared.html (fixtures and helpers). Each
-# variant is the second and third argument of Benchmark("name", N, { ... }, { ... }, offThread).
 write_code() {
     rm -rf "$CODE"
     mkdir -p "$CODE"
@@ -108,13 +94,12 @@ write_code() {
             }
             if (cap) buf = buf (s > 0 ? substr(line, s) : dedent(line, ind)) "\n"
         }
-        FNR == 1 { doc = ""; indoc = 0; ingroup = 0; insetup = 0; name = ""; cap = 0; instr = 0
+        FNR == 1 { doc = ""; inreport = 0; ingroup = 0; insetup = 0; name = ""; cap = 0; instr = 0
                    file = FILENAME; sub(/.*\//, "", file) }
-        !ingroup && /^\/\*\*/ { indoc = 1; doc = "" }
-        indoc { line = $0; sub(/^ *\/?\*+\/? ?/, "", line); sub(/ *\*\/ *$/, "", line)
-                if (line != "") doc = doc (doc == "" ? "" : " ") line
-                if ($0 ~ /\*\//) indoc = 0
-                next }
+        !ingroup && /^\/\/ @report/ { line = $0; sub(/^\/\/ @report ?/, "", line)
+                                      doc = (inreport ? doc " " : "") line; inreport = 1
+                                      next }
+        { inreport = 0 }
         /^func [A-Za-z]+Benchmarks\(\)/ { ingroup = 1; insetup = 1; setup = ""; next }
         insetup && /^    \[/ { insetup = 0
                                if (setup != "") shared = shared "<h3>" file ": values shared by its benchmarks</h3><pre>" esc(setup) "</pre>\n"
@@ -127,23 +112,21 @@ write_code() {
     ' "$HERE"/entry/src/main/cangjie/b*.cj
     {
         echo "<h3>Bench.ets: the ArkTS fixtures</h3><pre>"
-        sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$HERE/entry/src/main/ets/Bench.ets"
+        sed 's|^// @report |// |; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$HERE/entry/src/main/ets/Bench.ets"
         echo "</pre>"
         cat "$CODE/groups.html"
         echo "<h3>harness.cj: helpers used by the benchmarks</h3><pre>"
         awk '
-            /^\/\*\*/ { pending = "" ; incomment = 1 }
-            incomment { pending = pending $0 "\n"; if ($0 ~ /\*\//) incomment = 0; next }
+            /^\/\/ @report/ { line = $0; sub(/^\/\/ @report ?/, "// ", line); pending = pending line "\n"; next }
             /^var sink/ { printf "%s%s\n\n", pending, $0 }
             /^func (onJSThread|interopBench|interopTarget|runtimeBench|runtimeTarget)[<(]/ { infunc = 1; printf "%s", pending }
             infunc { print; if ($0 ~ /^}/) { infunc = 0; print "" } }
-            !/^\/\*\*/ && !infunc { pending = "" }
+            !infunc { pending = "" }
         ' "$HERE/entry/src/main/cangjie/harness.cj" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
         echo "</pre>"
     } > "$CODE/shared.html"
 }
 
-# Render a separate chart for each benchmark, grouped by its name prefix.
 write_chart() {
     awk -F, '
         function esc(s) { gsub(/\&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); gsub(/"/, "\\&quot;", s); return s }
@@ -207,7 +190,6 @@ write_chart() {
                         for (r = 1; r <= runs; r++) if ((b, r, series) in values)
                             printf "<circle class=\"%s point\" cx=\"%.1f\" cy=\"%.1f\" r=\"4\"><title>%s — %s: %.1f ns/op</title></circle>", cls, x(r), y(values[b, r, series]), (cls == "interop" ? "ark_interop" : "arkts_runtime"), esc(stamp[r]), values[b, r, series]
                     }
-                    # Full-height hit areas make dense and overlapping points easy to inspect.
                     for (r = 1; r <= runs; r++) {
                         if (!((b, r, 1) in values) && !((b, r, 2) in values)) continue
                         left = r == 1 ? 52 : (x(r-1) + x(r)) / 2
@@ -224,7 +206,6 @@ write_chart() {
     ' "$@"
 }
 
-# Writes the .csv and .html for one device from the RESULT lines in $1.
 write_results() {
     lines="$1" device="$2" stamp="$3" base="$4"
     {
@@ -370,6 +351,22 @@ EOF
     } > "$base.html"
 }
 
+wake_screen_so_the_app_starts_in_foreground_and_keeps_it_on() {
+    "$HDC" -t "$1" shell "power-shell wakeup" > /dev/null
+}
+
+lift_hilog_quotas_that_drop_app_lines_under_cangjie_gc_logging() {
+    "$HDC" -t "$1" shell "hilog -Q pidoff; hilog -Q domainoff; hilog -r" > /dev/null
+}
+
+restore_hilog_quotas() {
+    "$HDC" -t "$1" shell "hilog -Q pidon; hilog -Q domainon" > /dev/null
+}
+
+drop_lines_some_devices_log_twice() {
+    awk '!seen[$0]++'
+}
+
 write_code
 FAILED=0
 for device in $DEVICES; do
@@ -380,14 +377,12 @@ for device in $DEVICES; do
         *"install bundle successfully"*) ;;
         *) echo "$out"; FAILED=1; continue ;;
     esac
-    # The screen must be on when the app starts (it then keeps it on itself) and the per-process
-    # log quota must be off: the Cangjie GC logs enough to make hilog drop the app's own lines.
-    "$HDC" -t "$device" shell "power-shell wakeup" > /dev/null
-    "$HDC" -t "$device" shell "hilog -Q pidoff; hilog -Q domainoff; hilog -r" > /dev/null
+    wake_screen_so_the_app_starts_in_foreground_and_keeps_it_on "$device"
+    lift_hilog_quotas_that_drop_app_lines_under_cangjie_gc_logging "$device"
 
     log="$WORK/hilog-$(echo "$device" | tr -c 'A-Za-z0-9\n' '_').txt"
     : > "$log"
-    "$HDC" -t "$device" shell hilog -T ArkTSBench > "$log" 2>/dev/null &
+    "$HDC" -t "$device" shell hilog -T "$LOG_TAG_OF_INDEX_ETS" > "$log" 2>/dev/null &
     reader=$!
     sleep 1
     "$HDC" -t "$device" shell aa start -a EntryAbility -b "$BUNDLE" --ps suite "$SUITE" > /dev/null
@@ -401,13 +396,14 @@ for device in $DEVICES; do
         fi
         if [ $waited -ge $TIMEOUT ]; then
             echo "timed out after ${TIMEOUT}s"
+            grep -q 'START' "$log" || echo "no line tagged $LOG_TAG_OF_INDEX_ETS was logged"
             FAILED=1
             break
         fi
     done
     kill $reader 2>/dev/null || true
     wait $reader 2>/dev/null || true
-    "$HDC" -t "$device" shell "hilog -Q pidon; hilog -Q domainon" > /dev/null
+    restore_hilog_quotas "$device"
     echo "== finished in ${waited}s"
     if grep -q 'ERROR|' "$log"; then
         grep 'ERROR|' "$log" | sed 's/.*ERROR|/  ERROR /'
@@ -419,9 +415,7 @@ for device in $DEVICES; do
     lines="$WORK/results.txt"
     base="$RESULTS/$model-$stamp"
     if [ "$SUITE" = dispatch ]; then
-        # Some devices log every line twice.
-        sed -n 's/.*DISPATCH|//p' "$log" | tr -d '\r' | awk '!seen[$0]++' > "$lines"
-        # Not <device>-*.csv: those are the paired suite's chart history.
+        sed -n 's/.*DISPATCH|//p' "$log" | tr -d '\r' | drop_lines_some_devices_log_twice > "$lines"
         base="$RESULTS/dispatch-$model-$stamp"
         {
             echo "date,device,build,case,iterations,probes_ns_per_op,reflective_ns_per_op,saving_ns"
@@ -430,11 +424,9 @@ for device in $DEVICES; do
             done < "$lines"
         } > "$base.csv"
     else
-        # Some devices log every line twice.
-        sed -n 's/.*RESULT|//p' "$log" | tr -d '\r' | awk '!seen[$0]++' > "$lines"
+        sed -n 's/.*RESULT|//p' "$log" | tr -d '\r' | drop_lines_some_devices_log_twice > "$lines"
         write_results "$lines" "$model" "$stamp" "$base"
     fi
-    # Keep complete sample groups alongside the report, outside chart-history CSVs.
     sed -n -e 's/.*SAMPLE|/I|/p' -e 's/.*SAMPLES|/A|/p' "$log" | tr -d '\r' | awk -F'|' '
         BEGIN { OFS="\t"; print "benchmark", "variant", "sample", "iterations", "total_ns" }
         !seen[$0]++ {

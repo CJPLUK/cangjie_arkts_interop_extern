@@ -3,7 +3,8 @@ package ohos_app_cangjie_entry
 import ohos.ark_interop.*
 import arkts_runtime.ArkTSRuntime
 
-/** `property.readNumber` from a spawned thread: every operation goes through `postJSTask`. */
+// @report `property.readNumber` from a spawned thread: every operation is posted to the owner thread,
+// @report with `postJSTask` for `ark_interop` and through the runtime's own queue for `arkts_runtime`.
 func threadBenchmarks(): Array<Benchmark> {
     [
         Benchmark("thread.readNumber", 250,

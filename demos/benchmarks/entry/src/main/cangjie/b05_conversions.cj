@@ -3,7 +3,7 @@ package ohos_app_cangjie_entry
 import ohos.ark_interop.*
 import arkts_runtime.ArkTSRuntime
 
-/** Each operation writes a Cangjie value to `target.slot` and reads it back as the same type. */
+// @report Each operation writes a Cangjie value to `target.slot` and reads it back as the same type.
 func conversionBenchmarks(): Array<Benchmark> {
     let numbers = Array<Float64>(1000) { i => Float64(i) }
     let nested = Array<Array<Float64>>(10) { i => Array<Float64>(100) { j => Float64(i * 100 + j) } }

@@ -8,16 +8,15 @@
 
 namespace {
 
-// The running case: its name, the seed its walk is on (set by run), and its failed checks.
 struct CaseState {
     const char *name = "";
     std::optional<uint64_t> seed;
     int failures = 0;
 } runningCase;
 
-// At most five FAIL lines per case; the count still covers every failed check.
+constexpr int kPrintedFailuresPerCase = 5;
 void fail(const char *what, std::optional<uint64_t> step) {
-    if (runningCase.failures++ >= 5) return;
+    if (runningCase.failures++ >= kPrintedFailuresPerCase) return;
     std::printf("FAIL [%s", runningCase.name);
     if (runningCase.seed) std::printf(", seed %llu", (unsigned long long)*runningCase.seed);
     std::printf("] %s", what);
@@ -38,7 +37,6 @@ struct World {
     uint64_t live() const { uint64_t sum = 0; for (auto &s : scopes) sum += s.spilled; return sum; }
     uint32_t frames() const { uint32_t n = 0; for (auto &s : scopes) n += s.frame; return n; }
 
-    // An op charges at most its worst case (ops.cpp checks this in debug builds), so Bound is exact.
     void op(uint32_t worst, uint32_t spilled) {
         check(spilled <= worst, "an op spills at most its worst case");
         if (budget.admit(worst) == ats_rt_ext::Placement::Scoped) { ++opsScoped; return; }
@@ -59,8 +57,6 @@ struct World {
     }
 };
 
-// Kept: every op runs inside a turn (the outer scope closes before the marker runs), so Sound must
-// hold. Broken: ops also spill into the root scope, which never closes, so Sound must be seen to fail.
 enum class ScopeRule { Kept, Broken };
 
 struct Outcome { bool sound; uint64_t turns, resets, scoped; };
@@ -133,7 +129,6 @@ void scopedOnceFull() {
     check(b.admit(4) == ats_rt_ext::Placement::Scoped, "admit past capacity is scoped");
 }
 
-// The turn marker, through a fake post that counts its calls and succeeds as told.
 void markerPosting() {
     ats_rt_ext::HostBudget b;
     int posts = 0;
@@ -158,7 +153,6 @@ void markerPosting() {
     check(b.postMarkerIfWanted(post) && posts == 3, "a later turn posts its own marker");
 }
 
-// The open-frames stack: room is made before a frame's scope opens, so recording it cannot fail.
 void frameStack() {
     FrameStack frames;
     static_assert(noexcept(frames.push({0, false})), "recording a frame cannot throw");
@@ -172,7 +166,7 @@ void frameStack() {
     bool lifo = true;
     for (uint32_t i = 100; i-- > 0;) {
         OpenFrame f = frames.pop();
-        lifo = lifo && f.units == i && f.inFlight == (i % 2 == 1);
+        lifo = lifo && f.savedUnits == i && f.inFlight == (i % 2 == 1);
     }
     check(lifo, "frames pop last-in, first-out");
     check(frames.empty() && frames.hasRoom(), "popping leaves room");

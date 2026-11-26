@@ -40,8 +40,6 @@ func fusedOpsSpill(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-// Fills the budget with fresh results until an op runs scoped. Every op charges at most its worst
-// case and admit keeps units + worst within capacity, so units never exceed capacity, exactly.
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func budgetFillsThenScoped(fixtures: Array<NativeJSValue>): String {
     let e = ext(fixtures, 0)

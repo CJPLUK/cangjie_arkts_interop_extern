@@ -3,16 +3,11 @@ package arkts_runtime.tests
 import std.collection.*
 import arkts_runtime.*
 
-
-// Every top-level declaration in this package carries the `@When` below, so the package is
-// empty unless the library is built by testapp (bundle com.example.testArkTSForeignRuntime).
-
-/**
- * A device test scenario. Receives the ArkTS fixtures passed after the scenario name and
- * returns "" on success or a failure message.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-type Scenario = (JS, Array<NativeJSValue>) -> String
+public type FailureMessage = String
+
+@When[bundle == "com.example.testArkTSForeignRuntime"]
+type Scenario = (JS, Array<NativeJSValue>) -> FailureMessage
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func allScenarios(): Array<(String, Scenario)> {
@@ -29,12 +24,8 @@ func concat<T>(groups: Array<Array<T>>): Array<T> {
     all.toArray()
 }
 
-/**
- * A device test scenario whose body runs on a spawned Cangjie thread, so the owner thread stays
- * free to serve `run`. Returns "" on success or a failure message.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-public type OffThreadScenario = () -> String
+public type OffThreadScenario = () -> FailureMessage
 
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func allOffThreadScenarios(): Array<(String, OffThreadScenario)> {
@@ -42,7 +33,6 @@ func allOffThreadScenarios(): Array<(String, OffThreadScenario)> {
         step8OffThreadScenarios(), step9OffThreadScenarios(), step10OffThreadScenarios(), step12OffThreadScenarios()])
 }
 
-/** Names of all scenarios: those run on the owner thread first, then the off-thread ones. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 public func scenarioNames(): Array<String> {
     let names = ArrayList<String>(allScenarios().map({ entry => entry[0] }))
@@ -50,9 +40,8 @@ public func scenarioNames(): Array<String> {
     names.toArray()
 }
 
-/** Runs the scenario called `name`. Exceptions become failure messages. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-func runScenario(js: JS, name: String, fixtures: Array<NativeJSValue>): String {
+func runScenario(js: JS, name: String, fixtures: Array<NativeJSValue>): FailureMessage {
     for ((scenarioName, scenario) in concat([allScenarios(), lifetimeScenarios()])) {
         if (scenarioName == name) {
             return try {
@@ -65,12 +54,8 @@ func runScenario(js: JS, name: String, fixtures: Array<NativeJSValue>): String {
     "unknown scenario '${name}'"
 }
 
-/**
- * Runs the off-thread scenario called `name` on the calling thread, which must not be the JS
- * thread. Exceptions become failure messages.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-public func runOffThreadScenario(name: String): String {
+public func runOffThreadScenario(name: String): FailureMessage {
     for ((scenarioName, scenario) in allOffThreadScenarios()) {
         if (scenarioName == name) {
             return try {
@@ -83,16 +68,11 @@ public func runOffThreadScenario(name: String): String {
     "unknown scenario '${name}'"
 }
 
-/** Returns "" when `actual == expected`, otherwise a message naming `what`. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func expectEqual<T>(what: String, actual: T, expected: T): String where T <: Equatable<T> & ToString {
     if (actual == expected) { "" } else { "${what}: expected ${expected}, got ${actual}" }
 }
 
-/**
- * Returns "" when `block` throws an `E` whose `toString()` contains `fragment`, otherwise a
- * message naming `what` and what happened instead.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func expectThrows<E>(what: String, fragment: String, block: () -> Any): String where E <: Exception {
     try {
@@ -107,7 +87,6 @@ func expectThrows<E>(what: String, fragment: String, block: () -> Any): String w
     }
 }
 
-/** Returns the first failure message, or "" if all checks passed. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func firstFailure(results: Array<String>): String {
     for (r in results) {
@@ -124,9 +103,8 @@ func fixture(fixtures: Array<NativeJSValue>, index: Int64): NativeJSValue {
     fixtures[index]
 }
 
-/** Consumer adapter: ArkTS fixtures are transferred through a JS-owned array in this env. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
-public func runNativeScenario(env: CPointer<Unit>, name: String): String {
+public func runNativeScenario(env: CPointer<Unit>, name: String): FailureMessage {
     let js = ArkTSRuntime.js
     if (ArkTSRuntime.environment.env.toUIntNative() != env.toUIntNative()) {
         return "Runtime is bound to a different host environment"

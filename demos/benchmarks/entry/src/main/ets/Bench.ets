@@ -49,7 +49,6 @@ export function thrower(): void {
   throw new Error('bench');
 }
 
-/** Calls `f` `n` times from ArkTS. */
 export function callTimes(f: (x: number) => number, n: number): number {
   let sum = 0;
   for (let i = 0; i < n; i++) {
@@ -58,6 +57,6 @@ export function callTimes(f: (x: number) => number, n: number): number {
   return sum;
 }
 
-// Read from Cangjie with ArkTSRuntime.global().Bench (and context.global in the ark_interop
-// variants).
+// @report Read from Cangjie with ArkTSRuntime.global().Bench (and context.global in the ark_interop
+// @report variants).
 globalThis.Bench = { target: new Target(), f1, thrower, callTimes };

@@ -2,22 +2,13 @@ package arkts_runtime
 
 import std.math.numeric.BigInt
 
-
-
-/** Local N-API value; immediate payloads are copied so they can outlive scopes. */
 struct NativeJSValue <: ToString {
-    /** The owning environment and thread dispatcher; the value keeps the environment alive. */
     let environment: Environment
-    /** Scope-local N-API handle for heap values. Immediates use copied payloads instead. */
     let local: NapiValue
-    /** Cached JS type, using the JSType constants. */
-    let kind: Int32
-    /** Copied numeric payload, meaningful only when kind is JSType.NUMBER. */
+    let kind: JSTypeCode
     let number: Float64
-    /** Copied boolean payload, meaningful only when kind is JSType.BOOLEAN. */
     let boolean: Bool
 
-    /** The copied payload as one number, as native code takes an immediate: a boolean as 1 or 0. */
     prop scalar: Float64 {
         get() { if (kind == JSType.BOOLEAN) { if (boolean) { 1.0 } else { 0.0 } } else { number } }
     }
@@ -32,16 +23,13 @@ struct NativeJSValue <: ToString {
         boolean = decoded.kind == 2 && decoded.scalar != 0.0
     }
 
-    // Factories and retained references already know their type. Immediate values
-    // carry copied payloads, never a handle from a scope which may have closed.
-    init(environment: Environment, value: NapiValue, kind: Int32, number!: Float64 = 0.0, boolean!: Bool = false) {
+    init(environment: Environment, value: NapiValue, kind: JSTypeCode, number!: Float64 = 0.0, boolean!: Bool = false) {
         this.environment = environment; local = value; this.kind = kind
         this.number = number; this.boolean = boolean
     }
 
     prop raw: NapiValue {
         get() {
-            // Heap handles are consumed only by checked N-API entry points.
             if (kind > 3) { return local }
             let env = environment.env
             var result = local
@@ -56,7 +44,7 @@ struct NativeJSValue <: ToString {
         }
     }
     func toJSValue(): NativeJSValue { this }
-    func typeof(): Int32 { kind }
+    func typeof(): JSTypeCode { kind }
     func isUndefined(): Bool { kind == 0 }
     func isNull(): Bool { kind == 1 }
     func isBoolean(): Bool { kind == 2 }
@@ -181,8 +169,9 @@ struct NativeJSValue <: ToString {
     }
     func keys(): Array<String> {
         expectObject()
-        // Some target N-API implementations ignore enumerable filters in
-        // napi_get_all_property_names. Use the engine own-enumerable operation.
+        objectKeysBecauseSomeEnginesIgnoreNapiKeyFilters()
+    }
+    private func objectKeysBecauseSomeEnginesIgnoreNapiKeyFilters(): Array<String> {
         let js = ArkTSRuntime.js
         let object = js.global.getProperty("Object")
         let keys = object.getProperty("keys").call([this], thisArg: object)
@@ -208,7 +197,6 @@ struct NativeJSValue <: ToString {
     func getElement(index: Int64): NativeJSValue {
         var length: UInt32 = 0
         var result = NapiValue()
-        // Keep type/bounds semantics, but cross the ordinary FFI boundary once.
         let status = unsafe { ats_rt_ext_get_array_element(environment.env, raw, index, inout length, inout result) }
         if (status == AR_INDEX_OUT_OF_RANGE) {
             throw ArkTSNativeException(34300001, "The accessing index is out of range, allowed: [0, ${length}), given: ${index}")
@@ -281,7 +269,6 @@ struct NativeJSValue <: ToString {
             throw ArkTSNativeException(34300001, "The accessing index is out of range, allowed: [0, ${length}), given: ${index}")
         }
         if (status == NAPI_NUMBER_EXPECTED) {
-            // Reuse the generic reader's exact conversion error for the first bad element.
             Float64.fromJS(NativeJSValue(environment, badValue))
         }
         nativeCheck(environment, status, checkPending: true)
@@ -306,10 +293,6 @@ struct NativeJSValue <: ToString {
     }
 }
 
-/**
- * The pin cache (ADR-0005). Owner thread only: its slots are plain fields, so an access from
- * another thread would race the owner thread's `remember`.
- */
 class PinCache {
     private static let SLOTS = 256
     private let receivers = Array<UIntNative>(SLOTS, repeat: 0)
@@ -317,17 +300,17 @@ class PinCache {
     private let values = Array<?Pinned>(SLOTS, repeat: None)
 
     @OverflowWrapping
-    private static func slot(receiver: CPointer<Unit>, key: String): Int64 {
+    private static func slot(receiver: NativePin, key: String): Int64 {
         let mixed = UInt64(receiver.toUIntNative() >> 4) ^ UInt64(key.hashCode()) * 0x9E3779B97F4A7C15
         Int64((mixed >> 56) & 0xFF)
     }
 
-    func hint(receiver: CPointer<Unit>, key: String): ?Pinned {
+    func hint(receiver: NativePin, key: String): ?Pinned {
         let i = slot(receiver, key)
         if (receivers[i] == receiver.toUIntNative() && keys[i] == key) { values[i] } else { None }
     }
 
-    func remember(receiver: CPointer<Unit>, key: String, value: Pinned): Unit {
+    func remember(receiver: NativePin, key: String, value: Pinned): Unit {
         let i = slot(receiver, key)
         receivers[i] = receiver.toUIntNative()
         keys[i] = key
@@ -337,28 +320,26 @@ class PinCache {
 
 class Pinned {
     let environment: Environment
-    let cell: CPointer<Unit>
-    let kind: Int32
+    let cell: NativePin
+    let kind: JSTypeCode
     init(value: NativeJSValue) {
         environment = value.environment
         kind = value.kind
-        var result = CPointer<Unit>()
+        var result = NativePin()
         nativeCheck(environment, unsafe { ats_rt_ext_pin(environment.state, value.raw, inout result) })
         cell = result
     }
-    private init(environment: Environment, cell: CPointer<Unit>, kind: Int32) {
+    private init(environment: Environment, cell: NativePin, kind: JSTypeCode) {
         this.environment = environment
         this.cell = cell
         this.kind = kind
     }
 
-    /** Takes ownership of a pin cell an op already created; the new owner releases it. */
-    static func adopt(environment: Environment, cell: CPointer<Unit>, kind: Int32): Pinned {
+    static func adopt(environment: Environment, cell: NativePin, kind: JSTypeCode): Pinned {
         Pinned(environment, cell, kind)
     }
     ~init() { unsafe { ats_rt_ext_unpin(cell) } }
 
-    /** Whether the value is an array. Owner thread only; native keeps the answer on the pin. */
     func isArray(): Bool {
         kind == JSType.OBJECT && unsafe { ats_rt_ext_pin_is_array(environment.state, cell) } == 1
     }
@@ -401,6 +382,28 @@ func nativeString(environment: Environment, value: String): NativeJSValue {
     NativeJSValue(environment, result, 4)
 }
 
+private func stackDiscardingWhatItsGetterThrows(environment: Environment, error: NapiValue): ?String {
+    let env = environment.env
+    var stack = NapiValue()
+    unsafe {
+        let key = LibC.mallocCString("stack")
+        let status = try { napi_get_named_property(env, error, key, inout stack) }
+                     finally { LibC.free(key) }
+        var stackPending = false
+        napi_is_exception_pending(env, inout stackPending)
+        if (status != 0 || stackPending) {
+            var discarded = NapiValue()
+            napi_get_and_clear_last_exception(env, inout discarded)
+            return None
+        }
+        var stackKind: Int32 = -1
+        if (napi_typeof(env, stack, inout stackKind) == 0 && stackKind == 4) {
+            return Some(NativeJSValue(environment, stack).toString())
+        }
+    }
+    None
+}
+
 func nativeCheck(environment: Environment, status: Int32, checkPending!: Bool = false): Unit {
     if (status == 0 && !checkPending) { return }
     let env = environment.env
@@ -418,29 +421,11 @@ func nativeCheck(environment: Environment, status: Int32, checkPending!: Bool = 
             var kind: Int32 = -1
             unsafe { napi_typeof(env, error, inout kind) }
             let formatted = if (kind == 4) { "message: ${text}" } else {
-                // Preserve the existing error name/message spelling in the runtime contract.
                 text.replace(": ", "\n")
             }
-            var stack = NapiValue()
             var detail = formatted
             if (kind == 6 || kind == 7) {
-                unsafe {
-                    let key = LibC.mallocCString("stack")
-                    let status = try { napi_get_named_property(env, error, key, inout stack) }
-                                 finally { LibC.free(key) }
-                    var stackPending = false
-                    napi_is_exception_pending(env, inout stackPending)
-                    if (status == 0 && !stackPending) {
-                        var stackKind: Int32 = -1
-                        if (napi_typeof(env, stack, inout stackKind) == 0 && stackKind == 4) {
-                            detail += "\n" + NativeJSValue(environment, stack).toString()
-                        }
-                    } else {
-                        // A custom stack getter must not replace the original exception.
-                        var ignored = NapiValue()
-                        napi_get_and_clear_last_exception(env, inout ignored)
-                    }
-                }
+                if (let Some(stack) <- stackDiscardingWhatItsGetterThrows(environment, error)) { detail += "\n" + stack }
             }
             throw ForeignRuntimeException(detail)
         }
