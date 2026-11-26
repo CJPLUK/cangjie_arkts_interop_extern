@@ -1,14 +1,4 @@
 #!/bin/sh
-# Device tests: builds testapp's entry and ohosTest HAPs, installs them, runs the hypium suite.
-#
-#   ./devicetest.sh                 # first connected device
-#   DEVICE=127.0.0.1:5555 ./devicetest.sh
-#   ./devicetest.sh --all           # every connected device, one after the other
-#   BUILD_MODE=release ./devicetest.sh --all  # validate optimized libraries too
-#   ./devicetest.sh -s class Step0_Infrastructure   # extra `aa test` arguments
-#
-# Exits non-zero if the build fails or any test fails on any device.
-# Full runner output: .devicetest/last-<device>.log
 set -e
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -26,17 +16,19 @@ if [ "$1" = "--all" ]; then
     shift
 fi
 
-# hvigor only enables the Cangjie build support when these are set (the IDE sets them itself).
-mkdir -p "$WORK/node_modules/@ohos"
-ln -sfn "$CANGJIE_SDK/build-tools/tools/hvigor/cangjie-build-support" "$WORK/node_modules/@ohos/cangjie-build-support"
-ln -sfn "$DEVECO/tools/hvigor/hvigor" "$WORK/node_modules/@ohos/hvigor"
-ln -sfn "$DEVECO/tools/hvigor/hvigor-ohos-plugin" "$WORK/node_modules/@ohos/hvigor-ohos-plugin"
-export NODE_PATH="$WORK/node_modules"
-export DEVECO_SDK_HOME="$DEVECO/sdk"
-export DEVECO_CANGJIE_PLUGIN_ENABLED=true
-export DEVECO_CANGJIE_PATH="$CANGJIE_SDK"
-export JAVA_HOME="$DEVECO/jbr/Contents/Home"
-export PATH="$JAVA_HOME/bin:$DEVECO/tools/node/bin:$PATH"
+set_up_hvigor_cangjie_support_as_the_ide_does() {
+    mkdir -p "$WORK/node_modules/@ohos"
+    ln -sfn "$CANGJIE_SDK/build-tools/tools/hvigor/cangjie-build-support" "$WORK/node_modules/@ohos/cangjie-build-support"
+    ln -sfn "$DEVECO/tools/hvigor/hvigor" "$WORK/node_modules/@ohos/hvigor"
+    ln -sfn "$DEVECO/tools/hvigor/hvigor-ohos-plugin" "$WORK/node_modules/@ohos/hvigor-ohos-plugin"
+    export NODE_PATH="$WORK/node_modules"
+    export DEVECO_SDK_HOME="$DEVECO/sdk"
+    export DEVECO_CANGJIE_PLUGIN_ENABLED=true
+    export DEVECO_CANGJIE_PATH="$CANGJIE_SDK"
+    export JAVA_HOME="$DEVECO/jbr/Contents/Home"
+    export PATH="$JAVA_HOME/bin:$DEVECO/tools/node/bin:$PATH"
+}
+set_up_hvigor_cangjie_support_as_the_ide_does
 
 CONNECTED="$("$HDC" list targets | grep -v '^\[Empty\]$' || true)"
 if $ALL; then
@@ -63,11 +55,12 @@ pick_hap() {
     if [ -f "$1-signed.hap" ]; then echo "$1-signed.hap"; else echo "$1-unsigned.hap"; fi
 }
 
-# Installs both HAPs on device $1. Returns non-zero on failure.
-# Uninstalls first: reinstalling keeps library files that the new build no longer ships, and a
-# leftover second copy of a Cangjie std library breaks runtime type checks.
-install_on() {
+uninstall_so_no_stale_cangjie_std_copy_survives() {
     "$HDC" -t "$1" uninstall "$BUNDLE" > /dev/null || true
+}
+
+install_on() {
+    uninstall_so_no_stale_cangjie_std_copy_survives "$1"
     for hap in "$(pick_hap entry/build/default/outputs/default/entry-default)" \
                "$(pick_hap entry/build/default/outputs/ohosTest/entry-ohosTest)"; do
         echo "== install $hap"
@@ -79,7 +72,6 @@ install_on() {
     done
 }
 
-# Runs the suite on device $1 (remaining arguments go to `aa test`). Returns non-zero on failure.
 run_on() {
     device="$1"
     shift
@@ -88,8 +80,6 @@ run_on() {
     "$HDC" -t "$device" shell aa test -b "$BUNDLE" -m entry_test \
         -s unittest OpenHarmonyTestRunner -s timeout 30000 "$@" > "$log" 2>&1
 
-    # Per-test lines: hypium reports `test=<name>` then `OHOS_REPORT_STATUS_CODE`
-    # (1 start, 0 pass, -1 error, -2 failure) and, for failures, the message in `stream=`.
     awk '
         /OHOS_REPORT_STATUS: class=/ { cls = substr($0, index($0, "=") + 1) }
         /OHOS_REPORT_STATUS: test=/  { test = substr($0, index($0, "=") + 1) }

@@ -1,15 +1,4 @@
 #!/bin/sh
-# Host checks: what can be verified without a device, in about a minute.
-#
-#   ./hostcheck.sh
-#
-# 1. Type-checks the Cangjie package with the SDK compiler, as shipped and for the test app's
-#    bundle (see @When[bundle == ...]), then the step tests' package against the latter; then
-#    again for the benchmarks app's bundle, with the dispatch benchmark's package.
-# 2. Syntax-checks the native sources against the SDK's N-API headers.
-# 3. Builds and runs native/budget_test.cpp (ADR-0002).
-#
-# Exits non-zero on the first failure. The device suite is ./devicetest.sh.
 set -e
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -20,30 +9,50 @@ TEST_BUNDLE=com.example.testArkTSForeignRuntime
 BENCH_BUNDLE=com.example.arkts.benchmarks
 WORK="$ROOT/.hostcheck"
 
-# The SDK's cjc reads its standard library from CANGJIE_HOME; a host Cangjie install's value breaks it.
-export CANGJIE_HOME="$CANGJIE_SDK/build-tools"
+SDK_CANGJIE_HOME="$CANGJIE_SDK/build-tools"
 mkdir -p "$WORK"
 cd "$ROOT"
 
-# Compiles package directory $1 for bundle $2 into $WORK, importing what is already there.
-cjc_package() {
-    echo "== cjc $1 (bundle=$2)"
-    if ! "$CANGJIE_HOME/bin/cjc" --package "$1" --output-type=staticlib --cfg="bundle=$2" \
-            --import-path "$WORK" --output-dir "$WORK" -o "lib$(basename "$1").a" > "$WORK/cjc.log" 2>&1; then
-        cat "$WORK/cjc.log"
+sdk_cjc_ignoring_host_cangjie_home() {
+    CANGJIE_HOME="$SDK_CANGJIE_HOME" "$SDK_CANGJIE_HOME/bin/cjc" "$@"
+}
+
+run_logged_or_show_log() {
+    log="$1"
+    shift
+    if ! "$@" > "$log" 2>&1; then
+        cat "$log"
         exit 1
     fi
 }
-cjc_package src shipped
-cjc_package src "$TEST_BUNDLE"
-# The step tests are their own package, arkts_runtime.tests, compiled against the one above.
-cjc_package src/tests "$TEST_BUNDLE"
-# The dispatch benchmark (issue #7) is its own package too, built only by the benchmarks app.
-cjc_package src "$BENCH_BUNDLE"
-cjc_package src/bench "$BENCH_BUNDLE"
 
-# -idirafter: the host's libc headers win, and only napi/ and info/ come from the device sysroot.
-# Both build modes: release (-DNDEBUG) compiles out the fused ops' worst-case check.
+cjc_package() {
+    package_dir="$1" bundle="$2"
+    echo "== cjc $package_dir (bundle=$bundle)"
+    run_logged_or_show_log "$WORK/cjc.log" sdk_cjc_ignoring_host_cangjie_home --package "$package_dir" \
+        --output-type=staticlib --cfg="bundle=$bundle" --import-path "$WORK" --output-dir "$WORK" \
+        -o "lib$(basename "$package_dir").a"
+}
+every_top_level_declaration_is_gated_to_bundle() {
+    package_dir="$1" bundle="$2"
+    echo "== every top-level declaration in $package_dir has @When[bundle == \"$bundle\"]"
+    awk -v gate="@When[bundle == \"$bundle\"]" '
+        /^(public |private |internal |protected |open |abstract |sealed |unsafe |foreign )*(func|type|const|let|var|class|struct|enum|interface|extend|main)[ <(]/ {
+            if (previous != gate) { print FILENAME ":" FNR ": not gated: " $0; ungated = 1 }
+        }
+        $0 != "" { previous = $0 }
+        END { exit ungated }
+    ' "$package_dir"/*.cj
+}
+every_top_level_declaration_is_gated_to_bundle src/tests "$TEST_BUNDLE"
+every_top_level_declaration_is_gated_to_bundle src/bench "$BENCH_BUNDLE"
+
+for bundle in shipped "$TEST_BUNDLE" "$BENCH_BUNDLE"; do
+    cjc_package src "$bundle"
+    cjc_package src/tests "$bundle"
+    cjc_package src/bench "$bundle"
+done
+
 for source in native/ops.cpp native/backend.cpp; do
     for mode in "" -DNDEBUG; do
         echo "== c++ -fsyntax-only $mode $source"
@@ -53,9 +62,5 @@ done
 
 echo "== budget_test"
 c++ -std=c++17 -O2 native/budget_test.cpp -o "$WORK/budget_test"
-# No pipe: in sh a pipeline's status is its last command's, which would hide a failure.
-if ! "$WORK/budget_test" > "$WORK/budget_test.log" 2>&1; then
-    cat "$WORK/budget_test.log"
-    exit 1
-fi
+run_logged_or_show_log "$WORK/budget_test.log" "$WORK/budget_test"
 tail -1 "$WORK/budget_test.log"

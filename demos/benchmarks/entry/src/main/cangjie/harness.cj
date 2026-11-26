@@ -6,20 +6,17 @@ import std.time.MonoTime
 import ohos.ark_interop.*
 import arkts_runtime.ArkTSRuntime
 
-/** Every measured result is added here, so no variant can skip its work. */
+// @report Every measured result is added here, so no variant can skip its work.
 var sink: Float64 = 0.0
 
-/**
- * One operation written twice: with `ark_interop` and with `Extern<ArkTSRuntime>`. The
- * `prepare` functions do the setup (not timed) and return the timed loop, which runs the
- * operation `iterations` times.
- */
+type TimedLoop = (Int64) -> Unit
+
 class Benchmark {
     Benchmark(
         let name: String,
         let iterations: Int64,
-        let prepareArkInterop: (JSContext) -> (Int64) -> Unit,
-        let prepareArktsRuntime: () -> (Int64) -> Unit,
+        let prepareArkInterop: (JSContext) -> TimedLoop,
+        let prepareArktsRuntime: () -> TimedLoop,
         let offThread: Bool
     ) {}
 }
@@ -44,22 +41,15 @@ func find(name: String): Benchmark {
     throw IllegalArgumentException("unknown benchmark ${name}")
 }
 
-/** `benchmarkNames(): string[]` */
 func benchmarkNames(context: JSContext, _: JSCallInfo): JSValue {
     let benchmarks = allBenchmarks()
     context.array(Array<JSValue>(benchmarks.size) { i => context.string(benchmarks[i].name).toJSValue() }).toJSValue()
 }
 
-/** `iterations(name: string): number` */
 func iterationsOf(context: JSContext, info: JSCallInfo): JSValue {
     context.number(Float64(find(info[0].toString()).iterations)).toJSValue()
 }
 
-/**
- * `runBenchmark(name: string, variant: 'arkInterop' | 'arktsRuntime', done: (ns: number, error: string) => void)`:
- * one timed run of `iterations` operations. `done` gets the elapsed nanoseconds, or -1 and the
- * error. Off-thread benchmarks run on a spawned thread and call `done` later from the owner thread.
- */
 func runBenchmark(context: JSContext, info: JSCallInfo): JSValue {
     let name = info[0].toString()
     let variant = info[1].toString()
@@ -74,7 +64,7 @@ func runBenchmark(context: JSContext, info: JSCallInfo): JSValue {
         if (benchmark.offThread) {
             spawn {
                 let (ns, error) = try {
-                    (timed { => loop(benchmark.iterations) }, "")
+                    (elapsedNanoseconds { => loop(benchmark.iterations) }, "")
                 } catch (e: Exception) {
                     (-1, e.toString())
                 }
@@ -83,10 +73,10 @@ func runBenchmark(context: JSContext, info: JSCallInfo): JSValue {
                 }
             }
         } else if (variant == "arkInterop") {
-            let ns = context.newScope { timed { => loop(benchmark.iterations) } }
+            let ns = context.newScope { elapsedNanoseconds { => loop(benchmark.iterations) } }
             report(context, done, ns, "")
         } else {
-            report(context, done, timed { => loop(benchmark.iterations) }, "")
+            report(context, done, elapsedNanoseconds { => loop(benchmark.iterations) }, "")
         }
     } catch (e: Exception) {
         report(context, done, -1, e.toString())
@@ -94,7 +84,7 @@ func runBenchmark(context: JSContext, info: JSCallInfo): JSValue {
     context.undefined().toJSValue()
 }
 
-func timed(body: () -> Unit): Int64 {
+func elapsedNanoseconds(body: () -> Unit): Int64 {
     let start = MonoTime.now()
     body()
     (MonoTime.now() - start).toNanoseconds()
@@ -104,7 +94,7 @@ func report(context: JSContext, done: JSFunction, ns: Int64, error: String): Uni
     done.call([context.number(Float64(ns)).toJSValue(), context.string(error).toJSValue()])
 }
 
-/** What an `ark_interop` user writes to run engine code from another thread: post it and wait. */
+// @report What an `ark_interop` user writes to run engine code from another thread: post it and wait.
 func onJSThread<T>(context: JSContext, operation: () -> T): T {
     let result = Box(None<T>)
     let mutex = Mutex()

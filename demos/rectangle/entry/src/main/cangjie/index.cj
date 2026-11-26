@@ -24,11 +24,7 @@ import arkts_runtime.ArkTSRuntime
 
 var api: ?Extern<ArkTSRuntime> = None
 
-/**
- * init(): called once by the ArkTS page. `requireArkModule` only works while ArkTS is calling
- * into Cangjie (not while the module registers, nor from a Cangjie UI event).
- */
-func initRectangle(runtime: JSContext, _: JSCallInfo): JSValue {
+func requireRectangleModuleWhileArkTSCallsIn(runtime: JSContext, _: JSCallInfo): JSValue {
     api = ArkTSRuntime.requireArkModule("entry/src/main/ets/Rectangle")
     runtime.undefined().toJSValue()
 }
@@ -38,7 +34,7 @@ let EXPORT_MODULE = JSModule.registerModule {
     if (!ArkTSRuntime.isBound()) {
         ArkTSRuntime.bind(runtime.getNapiEnv())
     }
-    exports["init"] = runtime.function(initRectangle).toJSValue()
+    exports["init"] = runtime.function(requireRectangleModuleWhileArkTSCallsIn).toJSValue()
 }
 
 @HybridComponentEntry
@@ -49,7 +45,6 @@ class RectangleView {
     @State
     var arkTSView: String = ""
 
-    /** The design's section 1 example. */
     func runExample(): Unit {
         let api = api.getOrThrow()
         let blob = api.createRectangle()

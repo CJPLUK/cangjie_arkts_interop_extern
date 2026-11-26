@@ -76,10 +76,6 @@ func asR<R>(value: Any): R {
     }
 }
 
-/**
- * One type `probedFromJSValue` reads directly: its type probe, the two type probes that tell an
- * interface it shares apart from the type itself (see `probeOf`), and its reader.
- */
 class ProbeRow {
     ProbeRow(let probe: Any, let rival: Any, let sentinel: Any, let read: (NativeJSValue) -> Any) {}
 }
@@ -88,7 +84,6 @@ func readOption<T>(value: NativeJSValue, read: (NativeJSValue) -> T): Option<T> 
     if (value.isUndefined() || value.isNull()) { None<T> } else { Some(read(value)) }
 }
 
-/** In probing order: a type later in the table pays for every earlier miss (ADR-0006). */
 let probeTable: Array<ProbeRow> = [
     ProbeRow(probeFloat64, probeComparableFloat64, probeFloat32, { v => Float64.fromJS(v) }),
     ProbeRow(probeBool, probeComparableBool, probeInt64, { v => Bool.fromJS(v) }),

@@ -3,7 +3,7 @@ package ohos_app_cangjie_entry
 import ohos.ark_interop.*
 import arkts_runtime.ArkTSRuntime
 
-/** ArkTS `callTimes(f, n)` calls the Cangjie function `f` `n` times; one operation is one call of `f`. */
+// @report ArkTS `callTimes(f, n)` calls the Cangjie function `f` `n` times; one operation is one call of `f`.
 func callbackBenchmarks(): Array<Benchmark> {
     [
         Benchmark("callback.arkTSCallsCangjie", 30000,

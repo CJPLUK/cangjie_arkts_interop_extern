@@ -32,10 +32,6 @@ func to<T>(value: T): E {
     ArkTSRuntime.toExtern(value)
 }
 
-/**
- * fixtures: sink object, Rectangle. Stores one converted value per mapping row in the sink;
- * ArkTS checks the `typeof` and value of each.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func toExternTypes(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -77,45 +73,44 @@ func toExternTypes(fixtures: Array<NativeJSValue>): String {
     ""
 }
 
-/** fixtures: Values. Each field read as its Cangjie type. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func fromExternTypes(fixtures: Array<NativeJSValue>): String {
-    let v = ext(fixtures, 0)
-    let negZero = from<Float64>(v.negZero)
-    let mixed = from<Array<E>>(v.mixed)
+    let values = ext(fixtures, 0)
+    let negZero = from<Float64>(values.negZero)
+    let mixed = from<Array<E>>(values.mixed)
     firstFailure([
-        expectEqual("Bool", from<Bool>(v.bool), true),
-        expectEqual("Int8.Min", from<Int8>(v.int8Min), Int8.Min),
-        expectEqual("Int8.Max", from<Int8>(v.int8Max), Int8.Max),
-        expectEqual("Int16", from<Int16>(v.int8Min), -128),
-        expectEqual("Int32", from<Int32>(v.int8Max), 127),
-        expectEqual("UInt8", from<UInt8>(v.int8Max), 127),
-        expectEqual("UInt16", from<UInt16>(v.int8Max), 127),
-        expectEqual("UInt32.Max", from<UInt32>(v.uint32Max), UInt32.Max),
-        expectEqual("Int64.Min", from<Int64>(v.int64Min), Int64.Min),
-        expectEqual("Int64.Max", from<Int64>(v.int64Max), Int64.Max),
-        expectEqual("UInt64.Max", from<UInt64>(v.uint64Max), UInt64.Max),
-        expectEqual("BigInt", from<BigInt>(v.big), BigInt("123456789012345678901234567890")),
-        expectEqual("Float64", from<Float64>(v.float), 0.1),
-        expectEqual("Float32", from<Float32>(v.float), Float32(0.1)),
-        expectEqual("Float16", from<Float16>(v.float), Float16(0.1)),
-        expectEqual("Float16 precision", Float64(from<Float16>(v.float)), 0.0999755859375),
-        expectEqual("NaN", from<Float64>(v.nan).isNaN(), true),
-        expectEqual("Infinity", from<Float64>(v.inf), Float64.Inf),
-        expectEqual("-Infinity", from<Float64>(v.negInf), -Float64.Inf),
+        expectEqual("Bool", from<Bool>(values.bool), true),
+        expectEqual("Int8.Min", from<Int8>(values.int8Min), Int8.Min),
+        expectEqual("Int8.Max", from<Int8>(values.int8Max), Int8.Max),
+        expectEqual("Int16", from<Int16>(values.int8Min), -128),
+        expectEqual("Int32", from<Int32>(values.int8Max), 127),
+        expectEqual("UInt8", from<UInt8>(values.int8Max), 127),
+        expectEqual("UInt16", from<UInt16>(values.int8Max), 127),
+        expectEqual("UInt32.Max", from<UInt32>(values.uint32Max), UInt32.Max),
+        expectEqual("Int64.Min", from<Int64>(values.int64Min), Int64.Min),
+        expectEqual("Int64.Max", from<Int64>(values.int64Max), Int64.Max),
+        expectEqual("UInt64.Max", from<UInt64>(values.uint64Max), UInt64.Max),
+        expectEqual("BigInt", from<BigInt>(values.big), BigInt("123456789012345678901234567890")),
+        expectEqual("Float64", from<Float64>(values.float), 0.1),
+        expectEqual("Float32", from<Float32>(values.float), Float32(0.1)),
+        expectEqual("Float16", from<Float16>(values.float), Float16(0.1)),
+        expectEqual("Float16 precision", Float64(from<Float16>(values.float)), 0.0999755859375),
+        expectEqual("NaN", from<Float64>(values.nan).isNaN(), true),
+        expectEqual("Infinity", from<Float64>(values.inf), Float64.Inf),
+        expectEqual("-Infinity", from<Float64>(values.negInf), -Float64.Inf),
         expectEqual("-0", negZero == 0.0 && 1.0 / negZero < 0.0, true),
-        expectEqual("empty string", from<String>(v.empty), ""),
-        expectEqual("non-ASCII string", from<String>(v.text), "héllo 日本 😀"),
-        expectEqual("Unit", from<Unit>(v.obj) == (), true),
-        expectEqual("Option from undefined", from<?Float64>(v.undef), None),
-        expectEqual("Option from null", from<?Float64>(v.nul), None),
-        expectEqual("Option from number", from<?Float64>(v.float), Some(0.1)),
-        expectEqual("nested array", from<Array<Array<Float64>>>(v.nested), [[1.0, 2.0], [], [3.0]]),
-        expectEqual("array of options", from<Array<?Float64>>(v.optional), [Some(1.0), None, Some(3.0)]),
+        expectEqual("empty string", from<String>(values.empty), ""),
+        expectEqual("non-ASCII string", from<String>(values.text), "héllo 日本 😀"),
+        expectEqual("Unit", from<Unit>(values.obj) == (), true),
+        expectEqual("Option from undefined", from<?Float64>(values.undef), None),
+        expectEqual("Option from null", from<?Float64>(values.nul), None),
+        expectEqual("Option from number", from<?Float64>(values.float), Some(0.1)),
+        expectEqual("nested array", from<Array<Array<Float64>>>(values.nested), [[1.0, 2.0], [], [3.0]]),
+        expectEqual("array of options", from<Array<?Float64>>(values.optional), [Some(1.0), None, Some(3.0)]),
         expectEqual("Array<Extern> size", mixed.size, 4),
         expectEqual("Array<Extern>[0]", from<String>(mixed[0]), "a"),
         expectEqual("Array<Extern>[3] is null", unwrap(mixed[3]).isNull(), true),
-        expectEqual("Extern identity", unwrap(from<E>(v.obj)).strictEqual(unwrap(v.obj)), true)
+        expectEqual("Extern identity", unwrap(from<E>(values.obj)).strictEqual(unwrap(values.obj)), true)
     ])
 }
 
@@ -157,7 +152,6 @@ func roundTrips(): String {
     ])
 }
 
-/** fixtures: sink. A 1 MB string and a 100 000-element array; ArkTS checks the stored ones. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func largeValues(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -174,36 +168,31 @@ func largeValues(fixtures: Array<NativeJSValue>): String {
     ])
 }
 
-/**
- * fixtures: Target. An `Extern` converted to an `Extern` is returned with its own pin, a
- * method too; inside an array it gives its value.
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func externInputs(fixtures: Array<NativeJSValue>): String {
-    let e = ext(fixtures, 0)
-    let c = e.a.b.c
-    let a = e.a
-    let m = e.record
+    let target = ext(fixtures, 0)
+    let c = target.a.b.c
+    let a = target.a
+    let m = target.record
     firstFailure([
         expectEqual("fromExtern of a member read", from<Float64>(c), 42.0),
         expectEqual("toExtern of a member read", from<Float64>(to(c)), 42.0),
         expectEqual("toExtern of a number read is an immediate", ArkTSRuntime.payloadKind(to(c)), "Imm"),
-        expectEqual("fromExtern<E> of an object read", ArkTSRuntime.payloadKind(from<E>(e.a)), "Pin"),
+        expectEqual("fromExtern<E> of an object read", ArkTSRuntime.payloadKind(from<E>(target.a)), "Pin"),
         expectEqual("toExtern(a) keeps a's pin", ArkTSRuntime.samePin(to(a), a), true),
         expectEqual("fromExtern<E>(a) keeps a's pin", ArkTSRuntime.samePin(from<E>(a), a), true),
         expectEqual("a retained again is a new pin", ArkTSRuntime.samePin(ArkTSRuntime.retain(unwrap(a)), a), false),
         expectEqual("toExtern(method) keeps its pin", ArkTSRuntime.samePin(to(m), m), true),
         expectEqual("toExtern(method) is still a method", ArkTSRuntime.payloadKind(to(m)), "Method"),
-        expectEqual("Externs inside an array", from<Array<Float64>>(to([c, e.num])), [42.0, 1.5]),
+        expectEqual("Externs inside an array", from<Array<Float64>>(to([c, target.num])), [42.0, 1.5]),
         expectEqual("method inside an array is its function",
             unwrap(to([m])[0]).strictEqual(fixture(fixtures, 0).getProperty("record")), true)
     ])
 }
 
-/** fixtures: Values. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func conversionFailures(fixtures: Array<NativeJSValue>): String {
-    let v = ext(fixtures, 0)
+    let values = ext(fixtures, 0)
     let external = ArkTSRuntime.run {
         ArkTSRuntime.retain(ArkTSRuntime.js.external(ExternalProbe()).toJSValue())
     }
@@ -214,36 +203,35 @@ func conversionFailures(fixtures: Array<NativeJSValue>): String {
         fails("toExtern(Rune)", "Unsupported conversion to ArkTS", { => to(r'a') }),
         fails("toExtern([Rune])", "Unsupported conversion to ArkTS", { => to([r'a']) }),
         fails("toExtern(Some(Rune))", "Unsupported conversion to ArkTS", { => to(Some(r'a')) }),
-        fails("fromExtern<Rune>", "Unsupported conversion from ArkTS", { => from<Rune>(v.text) }),
-        fails("number as Equatable<Float64>", "Unsupported conversion from ArkTS", { => from<Equatable<Float64>>(v.float) }),
-        fails("number as Comparable<Float64>", "Unsupported conversion from ArkTS", { => from<Comparable<Float64>>(v.float) }),
-        fails("number as ToString", "Unsupported conversion from ArkTS", { => from<ToString>(v.float) }),
-        fails("number as Any", "Unsupported conversion from ArkTS", { => from<Any>(v.float) }),
-        fails("string as Equatable<String>", "Unsupported conversion from ArkTS", { => from<Equatable<String>>(v.text) }),
-        fails("object as Any", "Unsupported conversion from ArkTS", { => from<Any>(v.obj) }),
-        fails("string as Float64", "Cannot convert ArkTS string to Float64", { => from<Float64>(v.five) }),
-        fails("object as Bool", "Cannot convert ArkTS object to Bool", { => from<Bool>(v.obj) }),
-        fails("undefined as String", "Cannot convert ArkTS undefined to String", { => from<String>(v.undef) }),
-        fails("number as Int64", "Cannot convert ArkTS number to Int64", { => from<Int64>(v.float) }),
-        fails("bigint as Int32", "Cannot convert ArkTS bigint to Int32", { => from<Int32>(v.int64Max) }),
-        fails("300 as Int8", "ArkTS number does not fit Int8", { => from<Int8>(v.n300) }),
-        fails("-128 as UInt8", "ArkTS number does not fit UInt8", { => from<UInt8>(v.int8Min) }),
-        fails("0.1 as Int32", "ArkTS number does not fit Int32", { => from<Int32>(v.float) }),
-        fails("NaN as Int32", "ArkTS number does not fit Int32", { => from<Int32>(v.nan) }),
-        fails("UInt64.Max as Int64", "ArkTS bigint does not fit Int64", { => from<Int64>(v.uint64Max) }),
-        fails("Int64.Min as UInt64", "ArkTS bigint does not fit UInt64", { => from<UInt64>(v.int64Min) }),
-        fails("object as Array", "Cannot convert ArkTS object to Array", { => from<Array<Float64>>(v.obj) }),
+        fails("fromExtern<Rune>", "Unsupported conversion from ArkTS", { => from<Rune>(values.text) }),
+        fails("number as Equatable<Float64>", "Unsupported conversion from ArkTS",
+            { => from<Equatable<Float64>>(values.float) }),
+        fails("number as Comparable<Float64>", "Unsupported conversion from ArkTS",
+            { => from<Comparable<Float64>>(values.float) }),
+        fails("number as ToString", "Unsupported conversion from ArkTS", { => from<ToString>(values.float) }),
+        fails("number as Any", "Unsupported conversion from ArkTS", { => from<Any>(values.float) }),
+        fails("string as Equatable<String>", "Unsupported conversion from ArkTS",
+            { => from<Equatable<String>>(values.text) }),
+        fails("object as Any", "Unsupported conversion from ArkTS", { => from<Any>(values.obj) }),
+        fails("string as Float64", "Cannot convert ArkTS string to Float64", { => from<Float64>(values.five) }),
+        fails("object as Bool", "Cannot convert ArkTS object to Bool", { => from<Bool>(values.obj) }),
+        fails("undefined as String", "Cannot convert ArkTS undefined to String", { => from<String>(values.undef) }),
+        fails("number as Int64", "Cannot convert ArkTS number to Int64", { => from<Int64>(values.float) }),
+        fails("bigint as Int32", "Cannot convert ArkTS bigint to Int32", { => from<Int32>(values.int64Max) }),
+        fails("300 as Int8", "ArkTS number does not fit Int8", { => from<Int8>(values.n300) }),
+        fails("-128 as UInt8", "ArkTS number does not fit UInt8", { => from<UInt8>(values.int8Min) }),
+        fails("0.1 as Int32", "ArkTS number does not fit Int32", { => from<Int32>(values.float) }),
+        fails("NaN as Int32", "ArkTS number does not fit Int32", { => from<Int32>(values.nan) }),
+        fails("UInt64.Max as Int64", "ArkTS bigint does not fit Int64", { => from<Int64>(values.uint64Max) }),
+        fails("Int64.Min as UInt64", "ArkTS bigint does not fit UInt64", { => from<UInt64>(values.int64Min) }),
+        fails("object as Array", "Cannot convert ArkTS object to Array", { => from<Array<Float64>>(values.obj) }),
         fails("external as String", "Cannot convert ArkTS external to String", { => from<String>(external) }),
         fails("mixed as Array<Float64>", "Cannot convert ArkTS string to Float64",
-            { => from<Array<Float64>>(v.mixed) }),
+            { => from<Array<Float64>>(values.mixed) }),
         fails("foreign payload", "Extern payload was not produced by ArkTSRuntime", { => from<Int64>(payload()) })
     ])
 }
 
-/**
- * fixtures: sink. Through the compiler: a Cangjie value where an `Extern` is expected becomes
- * `toExtern`. ArkTS checks implicit === 42n and implicitArray is [1n, "a"].
- */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func implicitConversion(fixtures: Array<NativeJSValue>): String {
     let sink = ext(fixtures, 0)
@@ -254,7 +242,6 @@ func implicitConversion(fixtures: Array<NativeJSValue>): String {
     expectEqual("Int64 literal", from<Int64>(v), 42)
 }
 
-/** `toExtern` and `fromExtern` from a spawned thread. */
 @When[bundle == "com.example.testArkTSForeignRuntime"]
 func conversionsFromOtherThread(): String {
     let numbers = to([1.5, 2.5])

@@ -4,7 +4,6 @@ import std.collection.HashMap
 import std.sync.Mutex
 import std.math.numeric.BigInt
 
-/** Held for every access to the registries below, on any thread. */
 private let functionMutex = Mutex()
 private let nativeFunctions = HashMap<Int64, (JS, (JS, Array<NativeJSValue>) -> NativeJSValue)>()
 private var nextFunctionId: Int64 = 0
@@ -21,11 +20,13 @@ func ats_rt_ext_nativeFunctionDrop(id: Int64): Unit {
     synchronized(functionMutex) { nativeFunctions.remove(id) }
 }
 
+private func nativeFunctionOf(id: Int64): ?(JS, (JS, Array<NativeJSValue>) -> NativeJSValue) {
+    synchronized(functionMutex) { nativeFunctions.get(id) }
+}
+
 @C
 func ats_rt_ext_nativeFunctionCall(id: Int64, count: UIntNative, values: CPointer<NapiValue>): NapiValue {
-    // Not held while the body runs: the body may create or drop native functions itself.
-    let entry = synchronized(functionMutex) { nativeFunctions.get(id) }
-    if (let Some((js, body)) <- entry) {
+    if (let Some((js, body)) <- nativeFunctionOf(id)) {
         try {
             let args = Array<NativeJSValue>(Int64(count)) { i => NativeJSValue(js.environment, unsafe { values.read(i) }) }
             return body(js, args).raw
@@ -38,7 +39,6 @@ func ats_rt_ext_nativeFunctionCall(id: Int64, count: UIntNative, values: CPointe
     NapiValue()
 }
 
-/** Makes JS values and calls JS operations in one environment; used only through ArkTSRuntime. */
 class JS {
     let environment: Environment
     init(environment: Environment) {
@@ -52,10 +52,8 @@ class JS {
     func string(value: Utf16String): NativeJSValue {
         if (let Some(units) <- value.units) {
             var result = NapiValue()
+            let terminated = terminatedBecauseSomeEnginesReadPastLength(units)
             unsafe {
-                // Some target implementations inspect the terminator even with an explicit length.
-                let terminated = Array<UInt16>(units.size + 1, repeat: 0)
-                for (i in 0..units.size) { terminated[i] = units[i] }
                 let buffer = acquireArrayRawData(terminated)
                 try { nativeCheck(environment, napi_create_string_utf16(environment.env, buffer.pointer, UIntNative(units.size), inout result)) }
                 finally { releaseArrayRawData(buffer) }
@@ -77,8 +75,6 @@ class JS {
         }
     }
     func array(elements: Array<NativeJSValue>): NativeJSValue {
-        // Marshal copied immediate payloads and current-scope heap handles once.
-        // N-API materialization and insertion stay on the native side of the loop.
         let kinds = elements.map { v => v.kind }
         let locals = elements.map { v => v.local }
         let numbers = elements.map { v => v.scalar }
@@ -99,14 +95,13 @@ class JS {
         NativeJSValue(environment, value, 6)
     }
     func numberArray(numbers: Array<Float64>): NativeJSValue {
-        // Match generic conversion: snapshot every input before JS setters can reenter.
-        let copied = numbers.clone()
+        let snapshotBeforeSettersRun = numbers.clone()
         var value = NapiValue()
         unsafe {
-            let buffer = acquireArrayRawData(copied)
+            let buffer = acquireArrayRawData(snapshotBeforeSettersRun)
             try {
                 nativeCheck(environment, ats_rt_ext_create_number_array(environment.env, buffer.pointer,
-                    UIntNative(numbers.size), inout value), checkPending: true)
+                    UIntNative(snapshotBeforeSettersRun.size), inout value), checkPending: true)
             } finally { releaseArrayRawData(buffer) }
         }
         NativeJSValue(environment, value, 6)
@@ -188,17 +183,25 @@ class JS {
     }
 }
 
+private func terminatedBecauseSomeEnginesReadPastLength(units: Array<UInt16>): Array<UInt16> {
+    let terminated = Array<UInt16>(units.size + 1, repeat: 0)
+    for (i in 0..units.size) { terminated[i] = units[i] }
+    terminated
+}
+
+type JSTypeCode = Int32
+
 abstract class JSType {
-    static const UNDEFINED: Int32 = 0
-    static const NULL: Int32 = 1
-    static const BOOLEAN: Int32 = 2
-    static const NUMBER: Int32 = 3
-    static const STRING: Int32 = 4
-    static const SYMBOL: Int32 = 5
-    static const OBJECT: Int32 = 6
-    static const FUNCTION: Int32 = 7
-    static const EXTERNAL: Int32 = 8
-    static const BIGINT: Int32 = 9
+    static const UNDEFINED: JSTypeCode = 0
+    static const NULL: JSTypeCode = 1
+    static const BOOLEAN: JSTypeCode = 2
+    static const NUMBER: JSTypeCode = 3
+    static const STRING: JSTypeCode = 4
+    static const SYMBOL: JSTypeCode = 5
+    static const OBJECT: JSTypeCode = 6
+    static const FUNCTION: JSTypeCode = 7
+    static const EXTERNAL: JSTypeCode = 8
+    static const BIGINT: JSTypeCode = 9
 }
 
 public class Utf16String {

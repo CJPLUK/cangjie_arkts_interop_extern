@@ -2,15 +2,11 @@ import { hidebug, hilog } from '@kit.PerformanceAnalysisKit';
 import { benchmarkNames, dispatchCases, iterations, runBenchmark, timeDispatch } from 'libohos_app_cangjie_entry.so';
 import '../Bench';
 
-// run.sh collects the lines logged with this tag.
 const DOMAIN = 0x0b01;
-const TAG = 'ArkTSBench';
+const TAG_RUN_SH_COLLECTS = 'ArkTSBench';
 const RUNS = 5;
-// Pause between runs: with setTimeout(0) the main thread's event queue starves and the system
-// watchdog kills the app (THREAD_BLOCK_6S).
-const PAUSE_MS = 20;
+const PAUSE_THAT_KEEPS_WATCHDOG_QUIET_MS = 20;
 const VARIANTS = ['arkInterop', 'arktsRuntime'];
-// The dispatch benchmark (issue #7): more paired runs, as the gap it looks for is small.
 const DISPATCH_RUNS = 9;
 const DISPATCH_ITERATIONS = 200000;
 const DISPATCH_VARIANTS = ['probes', 'reflective'];
@@ -36,11 +32,15 @@ function measure(name: string, variant: string): Promise<number> {
   });
 }
 
+async function measureAfterUntimedRunSinceCpuSlowsDuringPause(name: string, variant: string): Promise<number> {
+  await measure(name, variant);
+  return measure(name, variant);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-/** Dumping a heap snapshot runs a full collection; queued pin releases run in between. */
 async function fullCollection(): Promise<void> {
   for (let i = 0; i < 2; i++) {
     await sleep(100);
@@ -87,14 +87,8 @@ struct Index {
     setTimeout(() => suite === 'dispatch' ? this.runDispatch() : this.runAll(), 500);
   }
 
-  /**
-   * Times each dispatch case through the type probes and the reflective conversion. The two
-   * variants alternate within each run, and their order flips from run to run, so drift in
-   * the CPU's speed falls on both. Logs DISPATCH|case|N|probes ns/op|reflective ns/op|saving,
-   * each the median over the runs; the saving is the median of each run's paired difference.
-   */
   async runDispatch(): Promise<void> {
-    hilog.info(DOMAIN, TAG, 'START');
+    hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'START');
     for (const name of dispatchCases()) {
       this.status = `running ${name}`;
       try {
@@ -102,14 +96,13 @@ struct Index {
         for (let i = 0; i < DISPATCH_RUNS; i++) {
           const order = i % 2 === 0 ? [0, 1] : [1, 0];
           for (const v of order) {
-            // Untimed run right before each timed one, as in runAll.
             timeDispatch(name, DISPATCH_VARIANTS[v], DISPATCH_ITERATIONS);
             runs[v].push(timeDispatch(name, DISPATCH_VARIANTS[v], DISPATCH_ITERATIONS));
           }
-          await sleep(PAUSE_MS);
+          await sleep(PAUSE_THAT_KEEPS_WATCHDOG_QUIET_MS);
         }
         for (let v = 0; v < DISPATCH_VARIANTS.length; v++) {
-          hilog.info(DOMAIN, TAG, 'SAMPLES|%{public}s',
+          hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'SAMPLES|%{public}s',
             `dispatch.${name}|${DISPATCH_VARIANTS[v]}|${DISPATCH_ITERATIONS}|${runs[v].join(',')}`);
         }
         const probes = median(runs[0]) / DISPATCH_ITERATIONS;
@@ -117,19 +110,19 @@ struct Index {
         const saving = median(runs[1].map((r: number, i: number) => r - runs[0][i])) / DISPATCH_ITERATIONS;
         const line = `${name}|${DISPATCH_ITERATIONS}|${probes.toFixed(1)}|${reflective.toFixed(1)}|` +
           `${saving.toFixed(1)}`;
-        hilog.info(DOMAIN, TAG, 'DISPATCH|%{public}s', line);
+        hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'DISPATCH|%{public}s', line);
         this.lines.push(line);
       } catch (e) {
-        hilog.error(DOMAIN, TAG, 'ERROR|%{public}s|%{public}s', name, String(e));
+        hilog.error(DOMAIN, TAG_RUN_SH_COLLECTS, 'ERROR|%{public}s|%{public}s', name, String(e));
         this.lines.push(`${name}: ${String(e)}`);
       }
     }
     this.status = 'done';
-    hilog.info(DOMAIN, TAG, 'DONE');
+    hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'DONE');
   }
 
   async runAll(): Promise<void> {
-    hilog.info(DOMAIN, TAG, 'START');
+    hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'START');
     for (const name of benchmarkNames()) {
       this.status = `running ${name}`;
       try {
@@ -138,13 +131,11 @@ struct Index {
         for (const variant of VARIANTS) {
           const runs: number[] = [];
           for (let i = 0; i < RUNS; i++) {
-            // Untimed run right before each timed one: the CPU slows down during the pause.
-            await measure(name, variant);
-            const elapsed = await measure(name, variant);
+            const elapsed = await measureAfterUntimedRunSinceCpuSlowsDuringPause(name, variant);
             runs.push(elapsed);
-            await sleep(PAUSE_MS);
+            await sleep(PAUSE_THAT_KEEPS_WATCHDOG_QUIET_MS);
           }
-          hilog.info(DOMAIN, TAG, 'SAMPLES|%{public}s', `${name}|${variant}|${n}|${runs.join(',')}`);
+          hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'SAMPLES|%{public}s', `${name}|${variant}|${n}|${runs.join(',')}`);
           perOp.push(median(runs) / n);
         }
         const heap = name.startsWith('handles.');
@@ -157,15 +148,15 @@ struct Index {
           arktsRuntimeHeapKB: heap ? await heapGrowthKB(name, VARIANTS[1]) : ''
         };
         const line = format(row);
-        hilog.info(DOMAIN, TAG, 'RESULT|%{public}s', line);
+        hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'RESULT|%{public}s', line);
         this.lines.push(line);
       } catch (e) {
-        hilog.error(DOMAIN, TAG, 'ERROR|%{public}s|%{public}s', name, String(e));
+        hilog.error(DOMAIN, TAG_RUN_SH_COLLECTS, 'ERROR|%{public}s|%{public}s', name, String(e));
         this.lines.push(`${name}: ${String(e)}`);
       }
     }
     this.status = 'done';
-    hilog.info(DOMAIN, TAG, 'DONE');
+    hilog.info(DOMAIN, TAG_RUN_SH_COLLECTS, 'DONE');
   }
 
   build() {

@@ -1,6 +1,3 @@
-// ArkTS objects passed to Cangjie device scenarios. Cangjie changes them through the runtime
-// under test; the tests then check the effect with plain ArkTS code.
-
 export class Rectangle {
   width: number;
   height: number;
@@ -25,7 +22,6 @@ export class Calculator {
   }
 }
 
-// Records the `this` and arguments of its last call, to check receivers and argument types.
 export class CallRecorder {
   lastThis: Object | undefined = undefined;
   lastArgTypes: string[] = [];
@@ -38,7 +34,6 @@ export class CallRecorder {
   }
 }
 
-// Counts reads of `target`, to check that a receiver is evaluated exactly once.
 export class CountingHolder {
   reads: number = 0;
   private value: Object;
@@ -53,7 +48,6 @@ export class CountingHolder {
   }
 }
 
-// Last call of `Target.record`: its `this` and the `typeof` of each argument.
 export class CallLog {
   self: Object | undefined = undefined;
   argTypes: string[] = [];
@@ -70,7 +64,6 @@ export class Branch {
   b: Leaf = new Leaf();
 }
 
-// Fields of every kind for member and index scenarios.
 export class Target {
   num: number = 1.5;
   str: string = 'héllo';
@@ -94,7 +87,6 @@ export class Target {
   }
 }
 
-// Getters that log their reads, to check evaluation order.
 export class OrderLog {
   order: string[] = [];
   private store: number[] = [0, 0];
@@ -119,7 +111,6 @@ export class OrderLog {
   }
 }
 
-// One field per JS kind and boundary, read by Cangjie with `fromExtern`.
 export class Values {
   bool: boolean = true;
   int8Min: number = -128;
@@ -146,7 +137,6 @@ export class Values {
   obj: Rectangle = new Rectangle(1, 2);
 }
 
-// Each way JS code can throw, for the step 7 scenarios.
 export class Thrower {
   missing: Object | undefined = undefined;
   calls: number = 0;
@@ -156,12 +146,11 @@ export class Thrower {
     throw new Error('boom');
   }
 
-  // ArkTS only allows throwing Errors; the cast is type-only, so a plain string is thrown.
   throwString(): void {
-    throw 'boom string' as Object as Error;
+    const plainStringTypedAsError = 'boom string' as Object as Error;
+    throw plainStringTypedAsError;
   }
 
-  // Calls `undefined`: the engine itself raises a TypeError.
   typeError(): void {
     (this.missing as () => void)();
   }

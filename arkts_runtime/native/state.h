@@ -7,26 +7,55 @@
 #include <napi/native_api.h>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
 
-// Task ids below kFirstUserTask belong to the runtime; Cangjie's own tasks are numbered from it.
-constexpr int64_t kTaskWake = 0;
-constexpr int64_t kTaskTurnEnd = -1;
-constexpr int64_t kFirstUserTask = 1;
-inline bool isUserTask(int64_t id) { return id >= kFirstUserTask; }
+constexpr ats_rt_ext_task_id kTaskWake = 0;
+constexpr ats_rt_ext_task_id kTaskTurnEnd = -1;
+constexpr ats_rt_ext_task_id kFirstUserTask = 1;
+inline bool isUserTask(ats_rt_ext_task_id id) { return id >= kFirstUserTask; }
+
+class TaskQueue {
+public:
+    napi_status create(napi_env env, napi_value name, void *context, napi_finalize finalize,
+        napi_threadsafe_function_call_js call) {
+        return napi_create_threadsafe_function(env, nullptr, nullptr, name, 0, 1, context, finalize, context, call, &tsfn);
+    }
+    napi_status unref(napi_env env) { return napi_unref_threadsafe_function(env, tsfn); }
+
+    int32_t post(int64_t id) noexcept try {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (aborted) return napi_closing;
+        auto item = std::make_unique<int64_t>(id);
+        auto status = napi_call_threadsafe_function(tsfn, item.get(), napi_tsfn_nonblocking);
+        if (status == napi_ok) item.release();
+        return status;
+    } catch (...) { return napi_generic_failure; }
+
+    template <class Teardown>
+    void abortAfter(Teardown teardown) {
+        std::lock_guard<std::mutex> lock(mutex);
+        teardown();
+        aborted = true;
+        napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+    }
+    void abort() { abortAfter([] {}); }
+
+private:
+    std::mutex mutex;
+    napi_threadsafe_function tsfn{};
+    bool aborted = false;
+};
 
 struct State {
     napi_env env;
-    napi_threadsafe_function dispatcher{};
+    TaskQueue tasks;
     std::thread::id owner;
     ats_rt_ext_task_callback callback;
     std::atomic<bool> alive{true};
     std::atomic<unsigned> owners{1};
-    // `postMutex` serializes every TSFN post against cleanup, so a finalizer's wake can never call
-    // a TSFN that cleanup already aborted.
-    std::mutex postMutex;
     Pins pins;
     ats_rt_ext::HostBudget budget;
     FrameStack openFrames;
@@ -38,6 +67,6 @@ struct State {
 };
 
 inline bool stateIsOwner(const State *s) { return s->owner == std::this_thread::get_id(); }
-int32_t statePost(State *s, int64_t id);
+inline int32_t statePost(State *s, int64_t id) { return s->tasks.post(id); }
 
 #endif

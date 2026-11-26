@@ -19,11 +19,6 @@ struct HostBudget {
 
     Placement admit(uint32_t worst) const { return units + worst <= kCapacity ? Placement::Spill : Placement::Scoped; }
     void charge(uint32_t spilled) { units += spilled; }
-    // Outside every frame (the outer scope, whose caller the runtime cannot see) a turn marker
-    // resets `units`: a TSFN task posted on the first spill there, which runs once the JS stack has
-    // unwound. Scope rule: the outer scope closes by then (ark_interop exports and JS-called
-    // functions do; Cangjie UI handlers and postJSTask bodies must use ArkTSRuntime.newScope).
-    // Calls `post` (returning whether it posted) if a marker is wanted; returns whether one was posted.
     template <class Post>
     bool postMarkerIfWanted(Post &&post) {
         if (framesOpen != 0 || units == 0 || markerPending || !post()) return false;

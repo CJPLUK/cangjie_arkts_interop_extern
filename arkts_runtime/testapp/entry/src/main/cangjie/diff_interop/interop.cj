@@ -51,7 +51,6 @@ func attempt(log: Transcript, label: String, fragment: String, body: () -> Any):
     log.text(label, outcome)
 }
 
-/** Whether `s` holds valid UTF-8: a String read from a lone surrogate does not, and iterating it throws. */
 func wellFormed(s: String): Bool {
     try {
         for (_ in s.runes()) {}
@@ -493,7 +492,6 @@ func options(js: Js, w: JSValue, log: Transcript): Unit {
 let THREADS = 8
 let THREAD_ITERATIONS = 200
 
-/** DiffPrograms.ts's manyThreads: ark_interop runs only on the owner thread, so the bodies run one after another. */
 func manyThreads(js: Js, w: JSValue, log: Transcript): Unit {
     for (t in 0..THREADS) { threadBody(js, w, t, log) }
     log.num("bumps", num(get(get(w, "shared"), "bumps")))

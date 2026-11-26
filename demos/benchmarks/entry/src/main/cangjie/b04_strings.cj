@@ -3,7 +3,7 @@ package ohos_app_cangjie_entry
 import ohos.ark_interop.*
 import arkts_runtime.ArkTSRuntime
 
-/** A string's length with `ark_interop`: there is no `length` on a string value, so read the text. */
+// @report A string's length with `ark_interop`: there is no `length` on a string value, so read the text.
 func stringBenchmarks(): Array<Benchmark> {
     [
         Benchmark("string.length", 15000,

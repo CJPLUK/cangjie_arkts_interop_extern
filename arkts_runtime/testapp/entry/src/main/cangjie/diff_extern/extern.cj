@@ -243,7 +243,6 @@ func methodsAndThis(w: E, log: Transcript): Unit {
     log.text("own keys", String.join(ArkTSRuntime.objectKeys(c), delimiter: ","))
 }
 
-/** Whether `s` holds valid UTF-8: a String read from a lone surrogate does not, and iterating it throws. */
 func wellFormed(s: String): Bool {
     try {
         for (_ in s.runes()) {}

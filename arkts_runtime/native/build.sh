@@ -1,6 +1,4 @@
 #!/bin/sh
-# Builds libarkts_runtime_native.so into $1 for build mode $2 (debug, the default, or release).
-# Release defines NDEBUG, which compiles out the fused ops' worst-case check (ops.cpp).
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DEVECO="${DEVECO_HOME:-/Applications/DevEco-Studio.app/Contents}"

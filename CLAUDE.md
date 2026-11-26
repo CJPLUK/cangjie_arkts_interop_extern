@@ -2,7 +2,7 @@
 
 Run from `arkts_runtime/`.
 
-- **`./hostcheck.sh`** (seconds, no device): type-checks the Cangjie package with the DevEco SDK's `cjc`, as shipped and for the test app, then the step tests' package, then for the benchmarks app with the dispatch benchmark's package; syntax-checks `native/*.cpp` against the SDK's N-API headers, in debug and release (`-DNDEBUG`), with warnings as errors; runs `native/budget_test.cpp`. Use it as the typecheck after every change. The host's own `cjc` cannot build this package: it has no `Extern` support.
+- **`./hostcheck.sh`** (seconds, no device): checks that every top-level declaration in the step tests' and the dispatch benchmark's packages is gated to its app's bundle, then type-checks the Cangjie package, the step tests' package and the dispatch benchmark's package with the DevEco SDK's `cjc`, for each of: as shipped, the test app, the benchmarks app; syntax-checks `native/*.cpp` against the SDK's N-API headers, in debug and release (`-DNDEBUG`), with warnings as errors; runs `native/budget_test.cpp`. Use it as the typecheck after every change. The host's own `cjc` cannot build this package: it has no `Extern` support.
 - **`./devicetest.sh`** (minutes, needs a connected device): builds the test app, installs it and runs the full suite, including the step tests and the differential suite. Run it once at the end of a piece of work. Use `-s class <Class>` to run one class, for example `-s class Lifetime`. If no device is connected, say so rather than skipping silently.
 
 ## Agent skills

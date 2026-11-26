@@ -4,7 +4,7 @@ import ohos.ark_interop.*
 import ohos.business_exception.BusinessException
 import arkts_runtime.ArkTSRuntime
 
-/** ArkTS `thrower()` throws an `Error`; each operation calls it and catches the exception in Cangjie. */
+// @report ArkTS `thrower()` throws an `Error`; each operation calls it and catches the exception in Cangjie.
 func exceptionBenchmarks(): Array<Benchmark> {
     [
         Benchmark("exception.throwCatch", 2000,

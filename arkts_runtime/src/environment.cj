@@ -4,30 +4,28 @@ import std.collection.HashMap
 import std.sync.Mutex
 import std.sync.SyncCounter
 
-foreign func ats_rt_ext_bind(env: NapiEnv, callback: CFunc<(Int64, Int32) -> Unit>): CPointer<Unit>
+foreign func ats_rt_ext_bind(env: NapiEnv, callback: CFunc<(Int64, Int32) -> Unit>): NativeState
 @FastNative
-foreign func ats_rt_ext_release_state(state: CPointer<Unit>): Unit
+foreign func ats_rt_ext_release_state(state: NativeState): Unit
 @FastNative
-foreign func ats_rt_ext_is_owner(state: CPointer<Unit>): Int32
+foreign func ats_rt_ext_is_owner(state: NativeState): Int32
 @FastNative
-foreign func ats_rt_ext_alive(state: CPointer<Unit>): Int32
+foreign func ats_rt_ext_alive(state: NativeState): Int32
 @FastNative
-foreign func ats_rt_ext_access_status(state: CPointer<Unit>): Int32
-// Nonblocking queue insertion only; callbacks execute later, outside native queue locks.
+foreign func ats_rt_ext_access_status(state: NativeState): Int32
 @FastNative
-foreign func ats_rt_ext_post(state: CPointer<Unit>, id: Int64): Int32
+foreign func ats_rt_ext_post(state: NativeState, id: Int64): Int32
 @FastNative
-foreign func ats_rt_ext_open_scope(state: CPointer<Unit>, scope: CPointer<CPointer<Unit>>, flags: Int32): Int32
+foreign func ats_rt_ext_open_scope(state: NativeState, scope: CPointer<NapiHandleScope>, flags: Int32): Int32
 @FastNative
-foreign func ats_rt_ext_close_scope(state: CPointer<Unit>, scope: CPointer<Unit>): Int32
-foreign func ats_rt_ext_drain(state: CPointer<Unit>): Unit
+foreign func ats_rt_ext_close_scope(state: NativeState, scope: NapiHandleScope): Int32
+foreign func ats_rt_ext_drain(state: NativeState): Unit
 @FastNative
-foreign func ats_rt_ext_pin(state: CPointer<Unit>, value: NapiValue, pin: CPointer<CPointer<Unit>>): Int32
+foreign func ats_rt_ext_pin(state: NativeState, value: NapiValue, pin: CPointer<NativePin>): Int32
 @FastNative
-foreign func ats_rt_ext_pin_value(state: CPointer<Unit>, pin: CPointer<Unit>, value: CPointer<NapiValue>): Int32
-// Only queues deletion (or frees a dead environment's bookkeeping); never invokes callbacks.
+foreign func ats_rt_ext_pin_value(state: NativeState, pin: NativePin, value: CPointer<NapiValue>): Int32
 @FastNative
-foreign func ats_rt_ext_unpin(pin: CPointer<Unit>): Unit
+foreign func ats_rt_ext_unpin(pin: NativePin): Unit
 
 private let taskMutex = Mutex()
 private let nativeTasks = HashMap<Int64, (Bool) -> Unit>()
@@ -36,11 +34,13 @@ private var nextNativeTask: Int64 = 0
 @C
 func ats_rt_ext_executeNativeTask(id: Int64, cancelled: Int32): Unit {
     let task = synchronized(taskMutex) { nativeTasks.remove(id) }
-    if (let Some(callback) <- task) {
-        // Tasks must carry their result or failure back to the waiting caller themselves.
-        // No Cangjie exception may escape this C callback.
-        try { callback(cancelled != 0) } catch (_: Exception) {} catch (_: Error) {}
+    if (let Some(selfReportingTask) <- task) {
+        discardEverythingThrownAtCBoundary { selfReportingTask(cancelled != 0) }
     }
+}
+
+private func discardEverythingThrownAtCBoundary(body: () -> Unit): Unit {
+    try { body() } catch (_: Exception) {} catch (_: Error) {}
 }
 
 private enum NativeResult<R> {
@@ -49,17 +49,31 @@ private enum NativeResult<R> {
     | Failed(Error)
 }
 
-/**
- * The bound environment: owns frames, posting, pins, the pin cache, the owner check and the
- * borrowed raw env. Used only through ArkTSRuntime.
- */
+private class PostedOutcome<R> {
+    private var outcome: ?NativeResult<R> = None
+    private let done = SyncCounter(1)
+
+    func complete(result: NativeResult<R>): Unit {
+        outcome = Some(result)
+        done.dec()
+    }
+
+    func waitForCompletion(): NativeResult<R> {
+        done.waitUntilZero()
+        outcome.getOrThrow()
+    }
+}
+
 class Environment {
     private let raw: NapiEnv
-    let state: CPointer<Unit>
-    let pinCache = PinCache()
+    let state: NativeState
+    private let pinCache = PinCache()
 
     init(env: NapiEnv) {
         if (env.isNull()) { throw IllegalArgumentException("ArkTS environment is null") }
+        if (let Some(mismatched) <- nativeLayoutMismatch()) {
+            throw ForeignRuntimeException("${mismatched} does not match its C struct in native/backend.h")
+        }
         raw = env
         state = unsafe { ats_rt_ext_bind(env, ats_rt_ext_executeNativeTask) }
         if (state.isNull()) { throw ForeignRuntimeException("Cannot initialize ArkTS dispatch queue") }
@@ -69,28 +83,20 @@ class Environment {
 
     prop env: NapiEnv {
         get() {
-            // One leaf call checks the tombstone and native OS thread together.
             let status = unsafe { ats_rt_ext_access_status(state) }
-            if (status == 1) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
-            if (status != 0) { throw ForeignRuntimeException("Thread mismatch") }
+            if (status == AR_ACCESS_DEAD) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
+            if (status != AR_ACCESS_OK) { throw ForeignRuntimeException("Thread mismatch") }
             raw
         }
     }
     func isOnOwnerThread(): Bool { unsafe { ats_rt_ext_is_owner(state) != 0 } }
+    func pinCacheIfOwnerThread(): ?PinCache { if (isOnOwnerThread()) { pinCache } else { None } }
     func checkAlive(): Unit {
         if (unsafe { ats_rt_ext_alive(state) == 0 }) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
     }
 
-    /**
-     * Runs `operation` inside a runtime frame, closed when it returns or throws. A runtime frame
-     * holds `napi_value`s, so it is in flight: no pin is deleted while it is open (ADR-0003).
-     */
     func runtimeFrame<R>(operation: () -> R): R { inFrame(AR_SCOPE_IN_FLIGHT, operation) }
 
-    /**
-     * Runs `operation` inside a user frame (`ArkTSRuntime.newScope`), closed when it returns or
-     * throws. A user frame holds no `napi_value`, so pins may drain inside it (ADR-0003).
-     */
     func userFrame<R>(operation: () -> R): R { inFrame(0, operation) }
 
     private func inFrame<R>(flags: Int32, operation: () -> R): R {
@@ -98,8 +104,8 @@ class Environment {
         try { operation() } finally { unsafe { ats_rt_ext_close_scope(state, scope) } }
     }
 
-    private func frameOpen(flags: Int32): CPointer<Unit> {
-        var scope = CPointer<Unit>()
+    private func frameOpen(flags: Int32): NapiHandleScope {
+        var scope = NapiHandleScope()
         var status = unsafe { ats_rt_ext_open_scope(state, inout scope, flags | AR_SCOPE_DRAIN_CHECK) }
         if (status == AR_DRAIN_FIRST) {
             unsafe { ats_rt_ext_drain(state) }
@@ -113,10 +119,7 @@ class Environment {
     }
 
     func runPosted<R>(operation: () -> R): R {
-        let result = Box(None<NativeResult<R>>)
-        // One writer, one reader. The counter publishes the result and wakes the
-        // caller without a condition-variable mutex handoff/reacquisition.
-        let done = SyncCounter(1)
+        let outcome = PostedOutcome<R>()
         post { cancelled =>
             let completed = try {
                 if (cancelled) { throw ForeignRuntimeException("ArkTS environment has been destroyed") }
@@ -126,24 +129,20 @@ class Environment {
             } catch (e: Error) {
                 NativeResult<R>.Failed(e)
             }
-            result.value = Some(completed)
-            done.dec()
+            outcome.complete(completed)
         }
-        // SyncCounter guarantees that writes before dec() happen-before reads
-        // following waitUntilZero(), including cancellation and error results.
-        done.waitUntilZero()
-        match (result.value.getOrThrow()) {
+        match (outcome.waitForCompletion()) {
             case Ok(value) => value
             case Err(error) => throw error
             case Failed(error) => throw error
         }
     }
 
-    func post(operation: (Bool) -> Unit): Unit {
+    func post(selfReportingTask: (Bool) -> Unit): Unit {
         checkAlive()
         let id = synchronized(taskMutex) {
             nextNativeTask++
-            nativeTasks.add(nextNativeTask, operation)
+            nativeTasks.add(nextNativeTask, selfReportingTask)
             nextNativeTask
         }
         let status = unsafe { ats_rt_ext_post(state, id) }

@@ -43,8 +43,6 @@ func step12Scenarios(): Array<(String, Scenario)> {
             let array = js.array(inputs)
             Array<NativeJSValue>(inputs.size) { i => array.getElement(UInt32(i)) }
         }
-        // Overwrite local handle slots, then materialize both created and read values
-        // into a fresh scope. No primitive may depend on the scope that produced it.
         for (_ in 0..100) { ArkTSRuntime.environment.runtimeFrame { js.object() } }
         gc(heavy: true)
         ArkTSRuntime.environment.runtimeFrame {
@@ -64,15 +62,19 @@ func step12Scenarios(): Array<(String, Scenario)> {
     ("step12.scalarFromOtherThread", { _, _ =>
         let number = ArkTSRuntime.toExtern(42.0)
         let boolean = ArkTSRuntime.toExtern(true)
-        // Keep the JS event loop blocked here. Pure copied-payload reads must
-        // finish without posting a second task to that event loop.
+        let thisScenarioBlocksTheEventLoop = ArkTSRuntime.environment.isOnOwnerThread()
         let reader = spawn {
             let offThread = !ArkTSRuntime.environment.isOnOwnerThread()
             (ArkTSRuntime.fromExtern<Float64>(number), ArkTSRuntime.fromExtern<Int32>(number),
                 ArkTSRuntime.fromExtern<Bool>(boolean), offThread)
         }
-        let result = reader.get(Duration.second * 2)
+        let result = try {
+            reader.get(Duration.second * 2)
+        } catch (_: TimeoutException) {
+            return "copied-payload reads waited for the event loop this scenario blocks"
+        }
         firstFailure([
+            expectEqual("scenario holds the event loop while the reader runs", thisScenarioBlocksTheEventLoop, true),
             expectEqual("off-thread copied number", result[0], 42.0),
             expectEqual("off-thread copied integer", result[1], 42),
             expectEqual("off-thread copied boolean", result[2], true),
